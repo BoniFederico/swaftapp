@@ -142,12 +142,23 @@ describe('env(...) Seebo data capability', () => {
     expect(out.request.headers).toEqual({ Authorization: 'Bearer xyz' });
   });
 
-  it('fails to resolve when there is no active environment', async () => {
+  it('fails to resolve when there is no active environment, with a readable message', async () => {
     const { apiRequest, apiTemplate } = await setup();
     const id = await apiTemplate();
     const req = GET({ url: "https://${ env({ id:'base', type:string() }) }/v" });
+    // The message must be the provider's cause, not the opaque "CAPABILITY_ERROR" code.
     await expect(apiRequest.resolve(id, req, {})).rejects.toMatchObject({
       code: 'REQUEST_RESOLVE_FAILED',
     });
+    await expect(apiRequest.resolve(id, req, {})).rejects.toThrow(/active environment/i);
+  });
+
+  it('surfaces a readable message when a variable is missing from the active environment', async () => {
+    const { environments, apiRequest, apiTemplate } = await setup();
+    const env = await environments.create({ name: 'E', ownerKind: 'workspace' });
+    await environments.setSelection(env.id);
+    const id = await apiTemplate();
+    const req = GET({ url: "https://${ env({ id:'missing', type:string() }) }/v" });
+    await expect(apiRequest.resolve(id, req, {})).rejects.toThrow(/"missing" is not defined/);
   });
 });

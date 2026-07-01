@@ -21,6 +21,11 @@ interface EnvironmentContextValue {
   activeId: string | null;
   active: EnvironmentSummaryDto | null;
   loading: boolean;
+  /**
+   * Bumps whenever the active environment — or its variables — may have changed (select a different
+   * env, or save an edit in settings). Views that resolve `env(...)` watch this to re-render.
+   */
+  revision: number;
   /** Reload the list + active selection from main (after a create/edit/delete in settings). */
   refresh(): Promise<void>;
   /** Set (or clear, with null) the active environment. */
@@ -39,6 +44,7 @@ export function EnvironmentProvider({
   const [environments, setEnvironments] = useState<EnvironmentSummaryDto[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [revision, setRevision] = useState(0);
 
   const refresh = useCallback(async () => {
     try {
@@ -51,6 +57,9 @@ export function EnvironmentProvider({
     } catch {
       setEnvironments([]);
       setActiveId(null);
+    } finally {
+      // A refresh follows any env edit (vars included) — nudge watchers to re-resolve `env(...)`.
+      setRevision((r) => r + 1);
     }
   }, [client]);
 
@@ -69,6 +78,7 @@ export function EnvironmentProvider({
     async (environmentId: string | null) => {
       const res = await client.call('env.selection.set', { environmentId });
       setActiveId(res.environmentId);
+      setRevision((r) => r + 1);
     },
     [client],
   );
@@ -79,10 +89,11 @@ export function EnvironmentProvider({
       activeId,
       active: environments.find((e) => e.id === activeId) ?? null,
       loading,
+      revision,
       refresh,
       setActive,
     }),
-    [environments, activeId, loading, refresh, setActive],
+    [environments, activeId, loading, revision, refresh, setActive],
   );
 
   return <EnvironmentContext.Provider value={value}>{children}</EnvironmentContext.Provider>;

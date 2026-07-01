@@ -7,6 +7,7 @@ import {
   type TemplateDto,
 } from '@swaft/shared';
 import type { ApiClient } from '../api-client/client';
+import { useEnvironmentsOptional } from '../environment/EnvironmentProvider';
 import { useI18n } from '../i18n/I18nProvider';
 import { Card, IconButton, SaveIcon, Select, useToast } from '../ui';
 import { ActionPanel } from './ActionPanel';
@@ -39,6 +40,8 @@ export function DocumentView({
 }) {
   const { t } = useI18n();
   const toast = useToast();
+  // Re-render when the active environment (or its variables) changes, so `env(...)` reflects it live.
+  const envRevision = useEnvironmentsOptional()?.revision ?? 0;
   const [template, setTemplate] = useState<TemplateDto | null>(null);
   const [releases, setReleases] = useState<ReleaseDto[]>([]);
   const [selection, setSelection] = useState<string>(DRAFT_RELEASE);
@@ -174,7 +177,7 @@ export function DocumentView({
         .finally(() => setBusy(false));
     }, 300);
     return () => clearTimeout(handle);
-  }, [client, templateId, template, requirements, values, selection]);
+  }, [client, templateId, template, requirements, values, selection, envRevision]);
 
   // Cache the best-known options per requirement. Dynamic choices (a capability's `args.candidates`,
   // e.g. a multiOption whose options depend on another input) are only resolved on the render's
