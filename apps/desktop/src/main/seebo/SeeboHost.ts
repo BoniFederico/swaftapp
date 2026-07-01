@@ -48,6 +48,12 @@ export interface TemplateDataProvider {
   resolve(ref: string, projectId: string | null): Promise<unknown>;
 }
 
+/** Resolves the `env(...)` data-capability: a variable from the workspace's active environment. */
+export interface EnvDataProvider {
+  /** Resolve `key` to the active environment's value (no user prompt), or throw when absent. */
+  resolve(key: string): Promise<unknown>;
+}
+
 /** Per-render context so data capabilities can scope their lookups (e.g. `template` → same project). */
 export interface SeeboRenderContext {
   projectId: string | null;
@@ -64,6 +70,7 @@ export interface SeeboHostOptions {
 /** Collaborators a host needs for data capabilities; omitted in pure (widget-only) engines/tests. */
 export interface SeeboHostDeps {
   templateData?: TemplateDataProvider;
+  envData?: EnvDataProvider;
 }
 
 /** Per-render policy derived from workspace settings (only non-empty allow-lists restrict). */
@@ -81,6 +88,22 @@ function templateRef(req: SeeboRequirement): string {
   const args = (req as { args?: unknown }).args;
   if (args && typeof args === 'object' && 'ref' in args) {
     const v = (args as { ref?: unknown }).ref;
+    if (typeof v === 'string') return v;
+  }
+  const direct = (req as { ref?: unknown }).ref;
+  if (typeof direct === 'string') return direct;
+  return typeof req.id === 'string' ? req.id : String(req.id ?? '');
+}
+
+/**
+ * The variable name passed to an `env(...)` capability call. Accepts `env({ key: 'API_URL' })`,
+ * `env({ ref: 'API_URL' })`, or the requirement `id` (so `env({ id: 'API_URL', type: string() })`
+ * works, mirroring the `template(...)` convention).
+ */
+function envKey(req: SeeboRequirement): string {
+  const args = (req as { args?: Record<string, unknown> }).args;
+  if (args && typeof args === 'object') {
+    const v = args.key ?? args.ref;
     if (typeof v === 'string') return v;
   }
   const direct = (req as { ref?: unknown }).ref;
@@ -121,10 +144,16 @@ export class SeeboHost {
     // Register `template` (a data capability) only when a provider is wired — pure widget engines
     // (e.g. tests, the Template Editor without a workspace) keep their original surface untouched.
     const dataCapabilities: string[] = [];
-    const { templateData } = this.deps;
+    const { templateData, envData } = this.deps;
     if (templateData) {
       capabilities.template = (req) => templateData.resolve(templateRef(req), ctx?.projectId ?? null);
       dataCapabilities.push('template');
+    }
+    // `env` resolves against the workspace's active environment (global, not project-scoped), so it
+    // needs no render context — it works everywhere Seebo runs (documents, API fields, editor preview).
+    if (envData) {
+      capabilities.env = (req) => envData.resolve(envKey(req));
+      dataCapabilities.push('env');
     }
     const alwaysAllowed = [...WIDGET_CAPABILITIES, ...dataCapabilities];
 

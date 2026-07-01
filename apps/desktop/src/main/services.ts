@@ -8,6 +8,7 @@ import type { ApiRequestService } from './workspace/ApiRequestService';
 import type { BatcherService } from './workspace/BatcherService';
 import type { ChangelogService } from './workspace/ChangelogService';
 import type { DbHistoryService } from './workspace/DbHistoryService';
+import type { EnvironmentService } from './workspace/EnvironmentService';
 import type { OrganizationService } from './workspace/OrganizationService';
 import type { ReleaseService } from './workspace/ReleaseService';
 import type { RenderService } from './workspace/RenderService';
@@ -190,4 +191,14 @@ export function setActionService(value: ActionService | null): void {
 export function getActionService(): ActionService {
   if (!actions) throw new Error('ActionService not initialized');
   return actions;
+}
+
+let environments: EnvironmentService | null = null;
+
+export function setEnvironmentService(value: EnvironmentService | null): void {
+  environments = value;
+}
+export function getEnvironmentService(): EnvironmentService {
+  if (!environments) throw new Error('EnvironmentService not initialized');
+  return environments;
 }

@@ -3,16 +3,24 @@ import { createPortal } from 'react-dom';
 import type { ApiClient } from '../api-client/client';
 import { useI18n } from '../i18n/I18nProvider';
 import type { TranslationKey } from '../i18n/catalogs';
+import { EnvironmentsSettings } from './sections/EnvironmentsSettings';
 import { GeneralSettings } from './sections/GeneralSettings';
 import { PlaceholderSettings } from './sections/PlaceholderSettings';
 import { PreferencesSettings } from './sections/PreferencesSettings';
 import { RestrictionsSettings } from './sections/RestrictionsSettings';
 
-type SectionId = 'general' | 'restrictions' | 'users' | 'groups' | 'preferences';
+export type SettingsSectionId =
+  | 'general'
+  | 'restrictions'
+  | 'environments'
+  | 'users'
+  | 'groups'
+  | 'preferences';
 
-const NAV: { id: SectionId; label: TranslationKey }[] = [
+const NAV: { id: SettingsSectionId; label: TranslationKey }[] = [
   { id: 'general', label: 'set.general' },
   { id: 'restrictions', label: 'set.restrictions' },
+  { id: 'environments', label: 'set.environments' },
   { id: 'users', label: 'set.users' },
   { id: 'groups', label: 'set.groups' },
   { id: 'preferences', label: 'set.preferences' },
@@ -27,13 +35,21 @@ export function SettingsModal({
   open,
   onClose,
   client,
+  initialSection,
 }: {
   open: boolean;
   onClose: () => void;
   client: ApiClient;
+  /** Section to show when the modal opens (e.g. "Manage environments…" → 'environments'). */
+  initialSection?: SettingsSectionId;
 }) {
   const { t } = useI18n();
-  const [section, setSection] = useState<SectionId>('general');
+  const [section, setSection] = useState<SettingsSectionId>('general');
+
+  // Jump to the requested section each time the modal is (re)opened.
+  useEffect(() => {
+    if (open && initialSection) setSection(initialSection);
+  }, [open, initialSection]);
 
   useEffect(() => {
     if (!open) return;
@@ -76,6 +92,7 @@ export function SettingsModal({
           <div className="settings-content">
             {section === 'general' && <GeneralSettings client={client} />}
             {section === 'restrictions' && <RestrictionsSettings client={client} />}
+            {section === 'environments' && <EnvironmentsSettings client={client} />}
             {section === 'users' && (
               <PlaceholderSettings titleKey="set.users" hintKey="set.usersHint" />
             )}

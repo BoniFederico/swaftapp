@@ -8,8 +8,10 @@ import { DatabaseView } from '../database/DatabaseView';
 import { ApiView } from '../document/ApiView';
 import { DocumentView } from '../document/DocumentView';
 import { TemplateEditorModal } from '../document/TemplateEditorModal';
+import { EnvironmentPicker } from '../environment/EnvironmentPicker';
+import { EnvironmentProvider } from '../environment/EnvironmentProvider';
 import { useI18n } from '../i18n/I18nProvider';
-import { SettingsModal } from '../settings/SettingsModal';
+import { SettingsModal, type SettingsSectionId } from '../settings/SettingsModal';
 import {
   ApiIcon,
   Button,
@@ -47,6 +49,7 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
   const { t } = useI18n();
   const { current, close } = useWorkspace();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<SettingsSectionId>('general');
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -99,6 +102,11 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
     );
   }
 
+  function openSettings(section: SettingsSectionId) {
+    setSettingsSection(section);
+    setSettingsOpen(true);
+  }
+
   function onSideResizeDown(e: React.PointerEvent) {
     e.preventDefault();
     resize.current = { startX: e.clientX, startW: sideWidth };
@@ -117,6 +125,7 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
   }
 
   return (
+    <EnvironmentProvider client={client}>
     <div className="ws-shell">
       <header className="ws-topbar">
         <div className="ws-identity">
@@ -156,7 +165,8 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
           >
             {t('db.menu')}
           </Button>
-          <Button variant="secondary" onClick={() => setSettingsOpen(true)}>
+          <EnvironmentPicker onManage={() => openSettings('environments')} />
+          <Button variant="secondary" onClick={() => openSettings('general')}>
             {t('ws.settings')}
           </Button>
           <AccountControls />
@@ -281,7 +291,13 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
         />
       )}
 
-      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} client={client} />
+      <SettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        client={client}
+        initialSection={settingsSection}
+      />
     </div>
+    </EnvironmentProvider>
   );
 }

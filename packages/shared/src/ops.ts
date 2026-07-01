@@ -297,6 +297,47 @@ export const actionExecuteRequestSchema = z
   })
   .strict();
 
+// --- Environments (variable sets read by the `env(...)` capability) ----------
+
+/** Who an environment belongs to: the current user (personal), the workspace, or a project. */
+export const environmentOwnerKindSchema = z.enum(['user', 'workspace', 'project']);
+
+/** A single environment variable's key (identifier-like, so it maps cleanly to `env('KEY')`). */
+const envVarKeySchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z_][A-Za-z0-9_.-]*$/, 'Use letters, digits, _ . - (must start with a letter or _).');
+const envVarsSchema = z.record(envVarKeySchema, z.string().max(8192));
+
+export const envCreateRequestSchema = z
+  .object({
+    name: entityNameSchema,
+    description: z.string().trim().max(2000).optional(),
+    ownerKind: environmentOwnerKindSchema,
+    /** Required when `ownerKind === 'project'` (the owning project); ignored otherwise. */
+    projectId: z.string().min(1).optional(),
+  })
+  .strict()
+  .refine((v) => v.ownerKind !== 'project' || !!v.projectId, {
+    message: 'A project environment requires a projectId.',
+    path: ['projectId'],
+  });
+
+export const envUpdateRequestSchema = z
+  .object({
+    id: z.string().min(1),
+    name: entityNameSchema.optional(),
+    description: z.string().trim().max(2000).nullable().optional(),
+    vars: envVarsSchema.optional(),
+  })
+  .strict();
+
+export const envSelectionSetRequestSchema = z
+  .object({ environmentId: z.string().min(1).nullable() })
+  .strict();
+
 /** The canonical list of op names. The IPC router allow-list is derived from this. */
 export const OP_NAMES = [
   'system.ping',
@@ -372,6 +413,13 @@ export const OP_NAMES = [
   'batch.render',
   'action.execute',
   'receipt.list',
+  'env.list',
+  'env.get',
+  'env.create',
+  'env.update',
+  'env.delete',
+  'env.selection.get',
+  'env.selection.set',
 ] as const;
 export type OpName = (typeof OP_NAMES)[number];
 
@@ -450,6 +498,13 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'batch.render': batchRenderRequestSchema,
   'action.execute': actionExecuteRequestSchema,
   'receipt.list': templateRefRequestSchema,
+  'env.list': emptyRequestSchema,
+  'env.get': idRequestSchema,
+  'env.create': envCreateRequestSchema,
+  'env.update': envUpdateRequestSchema,
+  'env.delete': idRequestSchema,
+  'env.selection.get': emptyRequestSchema,
+  'env.selection.set': envSelectionSetRequestSchema,
 };
 
 /**
@@ -653,7 +708,7 @@ export interface RequirementDto {
  * which surface as requirements for the user). They are never shown in the Input panel. Single source
  * of truth for both the main host (`SeeboHost`) and the renderer (Input panel pruning).
  */
-export const DATA_CAPABILITIES = ['template'] as const;
+export const DATA_CAPABILITIES = ['template', 'env'] as const;
 export type DataCapability = (typeof DATA_CAPABILITIES)[number];
 
 export interface DiagnosticDto {
@@ -831,6 +886,44 @@ export interface RestrictionDto {
   id: string;
   kind: string;
   value: string;
+}
+
+// --- Environment DTOs -------------------------------------------------------
+
+export type EnvironmentOwnerKind = z.infer<typeof environmentOwnerKindSchema>;
+
+/** An environment in a list (header picker + settings), without its variables. */
+export interface EnvironmentSummaryDto {
+  id: string;
+  name: string;
+  description: string | null;
+  ownerKind: EnvironmentOwnerKind;
+  /** Username (user), null (workspace), or project id (project). */
+  ownerId: string | null;
+  /** Human label for the owner: the project name (project envs) or username (user envs), else null. */
+  ownerName: string | null;
+  /** Number of variables (so the list can show a count without shipping every value). */
+  varCount: number;
+}
+
+/** A single environment with its variables (settings editor + the `env(...)` capability source). */
+export interface EnvironmentDto extends EnvironmentSummaryDto {
+  vars: Record<string, string>;
+}
+
+export type EnvCreateRequest = z.infer<typeof envCreateRequestSchema>;
+export type EnvUpdateRequest = z.infer<typeof envUpdateRequestSchema>;
+export type EnvSelectionSetRequest = z.infer<typeof envSelectionSetRequestSchema>;
+
+export interface EnvironmentsResponse {
+  environments: EnvironmentSummaryDto[];
+}
+export interface EnvironmentResponse {
+  environment: EnvironmentDto;
+}
+export interface EnvironmentSelectionResponse {
+  /** The active environment id, or null when none is selected. */
+  environmentId: string | null;
 }
 
 export type NameColorRequest = z.infer<typeof nameColorRequestSchema>;
@@ -1019,6 +1112,13 @@ export interface OpContracts {
   'batch.render': { request: BatchRenderRequest; response: RenderResponse };
   'action.execute': { request: ActionExecuteRequest; response: ReceiptsResponse };
   'receipt.list': { request: TemplateRefRequest; response: ReceiptsResponse };
+  'env.list': { request: EmptyRequest; response: EnvironmentsResponse };
+  'env.get': { request: IdRequest; response: EnvironmentResponse };
+  'env.create': { request: EnvCreateRequest; response: EnvironmentResponse };
+  'env.update': { request: EnvUpdateRequest; response: EnvironmentResponse };
+  'env.delete': { request: IdRequest; response: EnvironmentsResponse };
+  'env.selection.get': { request: EmptyRequest; response: EnvironmentSelectionResponse };
+  'env.selection.set': { request: EnvSelectionSetRequest; response: EnvironmentSelectionResponse };
 }
 
 export type OpRequest<N extends OpName> = OpContracts[N]['request'];

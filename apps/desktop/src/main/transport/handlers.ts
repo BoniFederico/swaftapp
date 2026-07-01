@@ -5,6 +5,9 @@ import {
   type BatchRenderRequest,
   type DbExportRequest,
   type DbQueryRequest,
+  type EnvCreateRequest,
+  type EnvSelectionSetRequest,
+  type EnvUpdateRequest,
   type ErrorEnvelope,
   type FolderCreateRequest,
   type FolderMoveRequest,
@@ -56,6 +59,7 @@ import {
   getChangelogService,
   getDatabaseService,
   getDbHistoryService,
+  getEnvironmentService,
   getHttpService,
   getOrganizationService,
   getPlatformDialogs,
@@ -393,5 +397,33 @@ export const handlers: Record<OpName, Handler> = {
   'receipt.list': (p) =>
     svc(async () => ({
       receipts: await getActionService().list((p as TemplateRefRequest).templateId),
+    })),
+
+  // Environments + the `env(...)` capability (API-view automation, Fase 3)
+  'env.list': () => svc(async () => ({ environments: await getEnvironmentService().list() })),
+  'env.get': (p) =>
+    svc(async () => ({ environment: await getEnvironmentService().get((p as IdRequest).id) })),
+  'env.create': (p) =>
+    svc(async () => ({ environment: await getEnvironmentService().create(p as EnvCreateRequest) })),
+  'env.update': (p) =>
+    svc(async () => {
+      const r = p as EnvUpdateRequest;
+      return {
+        environment: await getEnvironmentService().update(r.id, {
+          name: r.name,
+          description: r.description,
+          vars: r.vars,
+        }),
+      };
+    }),
+  'env.delete': (p) =>
+    svc(async () => ({ environments: await getEnvironmentService().delete((p as IdRequest).id) })),
+  'env.selection.get': () =>
+    svc(async () => ({ environmentId: await getEnvironmentService().getSelection() })),
+  'env.selection.set': (p) =>
+    svc(async () => ({
+      environmentId: await getEnvironmentService().setSelection(
+        (p as EnvSelectionSetRequest).environmentId,
+      ),
     })),
 };
