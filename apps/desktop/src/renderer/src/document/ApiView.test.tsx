@@ -194,6 +194,27 @@ describe('ApiView — bindings', () => {
     await waitFor(() => expect(readField(container, 'URL')).toContain('token='));
   });
 
+  it('keeps query values raw in the URL bar (no visible percent-encoding)', async () => {
+    const { container } = renderApiView([]);
+    await screen.findByRole('button', { name: 'Send' });
+
+    // A value with a space appears verbatim in the Params tab (URL → Params), not percent-encoded.
+    typeInto(container, 'URL', 'https://example.com?q=hello world');
+    await waitFor(() =>
+      expect(screen.getAllByLabelText('Key').map((el) => (el as HTMLInputElement).value)).toContain('q'),
+    );
+
+    // Adding a param rebuilds the URL WITHOUT encoding the space (Params → URL) — encoding is done
+    // invisibly only at send time.
+    const keys = screen.getAllByLabelText('Key');
+    fireEvent.change(keys[keys.length - 1]!, { target: { value: 'x' } });
+    await waitFor(() => {
+      const url = readField(container, 'URL');
+      expect(url).toContain('q=hello world');
+      expect(url).not.toContain('%20');
+    });
+  });
+
   it('reflects an external template save in the fields (editor → API view)', async () => {
     const state = { source: JSON.stringify({ method: 'GET', url: 'https://one.example.com' }) };
     const transport: Transport = {

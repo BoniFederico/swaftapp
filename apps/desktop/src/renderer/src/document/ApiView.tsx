@@ -53,25 +53,40 @@ function bodyLanguage(type: HttpBodyType): string | null {
 function parseRequest(source: string): HttpRequestModel {
   try {
     const r = JSON.parse(source) as Partial<HttpRequestModel>;
-    if (r && typeof r === 'object' && r.method && r.url !== undefined) return r as HttpRequestModel;
+    if (r && typeof r === 'object' && r.method && r.url !== undefined) {
+      // The query lives in the URL (single source of truth) — drop any redundant `query` field so it
+      // is never double-appended to the request at send time.
+      const model = { ...r } as HttpRequestModel;
+      delete model.query;
+      return model;
+    }
   } catch {
     /* fall through */
   }
   return { method: 'GET', url: '' };
 }
 
-/** Split a URL into its base and its query params; rebuild it from a base + params. */
+/**
+ * Split a URL into its base and its **raw** query params; rebuild it from a base + params. Values are
+ * kept verbatim (no percent-encoding) so the URL bar / Params tab show exactly what the user typed;
+ * the real encoding happens invisibly at send time (`new URL(...)` in the HTTP client).
+ */
 function splitUrl(url: string): { base: string; query: Record<string, string> } {
   const qi = url.indexOf('?');
   if (qi === -1) return { base: url, query: {} };
   const query: Record<string, string> = {};
-  new URLSearchParams(url.slice(qi + 1)).forEach((v, k) => (query[k] = v));
+  for (const pair of url.slice(qi + 1).split('&')) {
+    if (!pair) continue;
+    const eq = pair.indexOf('=');
+    const k = eq === -1 ? pair : pair.slice(0, eq);
+    if (k) query[k] = eq === -1 ? '' : pair.slice(eq + 1);
+  }
   return { base: url.slice(0, qi), query };
 }
 function buildUrl(base: string, query: Record<string, string>): string {
   const keys = Object.keys(query).filter((k) => k);
   if (keys.length === 0) return base;
-  const qs = keys.map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(query[k] ?? '')}`).join('&');
+  const qs = keys.map((k) => `${k}=${query[k] ?? ''}`).join('&');
   return `${base}?${qs}`;
 }
 
@@ -202,12 +217,14 @@ export function ApiView({
   function patch(p: Partial<HttpRequestModel>) {
     setReq((r) => ({ ...r, ...p }));
   }
-  // URL ↔ Params: editing the URL updates the Params tab and vice-versa.
+  // URL ↔ Params: the URL is the single source of truth; the Params tab is derived from it (see the
+  // `query` prop below), so editing either side reflects in the other. Values stay raw here — encoding
+  // is applied invisibly at send time.
   function setUrl(url: string) {
-    patch({ url, query: splitUrl(url).query });
+    patch({ url });
   }
   function setParams(query: Record<string, string>) {
-    patch({ url: buildUrl(splitUrl(req.url).base, query), query });
+    patch({ url: buildUrl(splitUrl(req.url).base, query) });
   }
   const bodyType: HttpBodyType = req.bodyType ?? (req.body ? 'text' : 'none');
   function setBodyType(type: HttpBodyType) {
@@ -353,7 +370,7 @@ export function ApiView({
           />
           <div className="api__tabbody">
             {reqTab === 'params' && (
-              <KeyValueEditor value={req.query ?? {}} onChange={setParams} />
+              <KeyValueEditor value={splitUrl(req.url).query} onChange={setParams} />
             )}
             {reqTab === 'headers' && (
               <KeyValueEditor value={req.headers ?? {}} onChange={(headers) => patch({ headers })} />
