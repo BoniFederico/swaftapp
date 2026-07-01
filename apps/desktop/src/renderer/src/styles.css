@@ -1,0 +1,2756 @@
+/* =====================================================================
+   Swaft design tokens + shared component styles (M2)
+   - All visual values are tokens; components consume tokens, never literals.
+   - Light/dark via [data-theme]; primary color injected as --primary (JS).
+   - Derived primary states use color-mix (Chromium/Electron supports it).
+   ===================================================================== */
+
+:root {
+  /* primary is set at runtime by ThemeProvider (default Blue) */
+  --primary: #2563eb;
+  --primary-contrast: #ffffff;
+  --primary-hover: color-mix(in srgb, var(--primary) 88%, black);
+  --primary-active: color-mix(in srgb, var(--primary) 78%, black);
+
+  /* spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* radii / elevation / typography */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.12);
+  --shadow-2: 0 6px 24px rgba(0, 0, 0, 0.18);
+  --font-sans:
+    'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono:
+    'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 14px;
+  --fs-lg: 18px;
+  --fs-2xl: 40px;
+
+  /* HTTP/response status colors — fixed across themes so the colored badges
+     (white text) keep enough contrast in both light and dark mode. */
+  --status-ok: #1a9c4f;
+  --status-warn: #c9810a;
+  --status-err: #d33;
+}
+
+/* ---- Light theme (default) — neutral "zinc", not blue ---- */
+:root,
+:root[data-theme='light'] {
+  --bg: #f7f7f8;
+  --surface: #ffffff;
+  --surface-2: #f0f0f2;
+  --text: #18181b;
+  --text-muted: #71717a;
+  --border: #e4e4e7;
+  --danger: #dc2626;
+  --success: #16a34a;
+  --warning: #d97706;
+  color-scheme: light;
+}
+
+/* ---- Dark theme — deep neutral, near-black ---- */
+:root[data-theme='dark'] {
+  --bg: #0a0a0b;
+  --surface: #151517;
+  --surface-2: #1e1e21;
+  --text: #f4f4f5;
+  --text-muted: #a1a1aa;
+  --border: #2a2a2e;
+  --danger: #f87171;
+  --success: #4ade80;
+  --warning: #fbbf24;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--fs-md);
+  background: var(--bg);
+  color: var(--text);
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* ---------- Layout helpers ---------- */
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-6);
+  max-width: 980px;
+  margin: 0 auto;
+}
+.brand {
+  font-size: var(--fs-2xl);
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  line-height: 1.1;
+  margin-bottom: var(--space-3);
+}
+.brand .accent {
+  color: var(--primary);
+}
+.subtitle {
+  color: var(--text-muted);
+  margin: 0;
+}
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+.account {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* ---------- Workspace shell (full-width app surface) ---------- */
+.ws-shell {
+  /* Fixed to the viewport so only the main area scrolls — the Working Tree stays put. */
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.ws-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.ws-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.ws-appname {
+  font-size: var(--fs-lg);
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+}
+.ws-appname .accent {
+  color: var(--primary);
+}
+.ws-sep {
+  width: 1px;
+  height: 28px;
+  background: var(--border);
+}
+.ws-title {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+}
+.ws-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.ws-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+.ws-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ws-main__content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-4);
+}
+/* Each open tab's view is kept mounted; only the active one is shown (others get [hidden]). */
+.ws-pane {
+  height: 100%;
+}
+.ws-pane[hidden] {
+  display: none;
+}
+
+/* ---------- Open-template tabs (above the per-template name bar) ---------- */
+.ws-tabs {
+  flex-shrink: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
+  min-height: 36px;
+  padding: 0 var(--space-2);
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.ws-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 220px;
+  padding: 0 var(--space-2) 0 var(--space-3);
+  border: none;
+  border-top: 2px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--fs-md);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+.ws-tab:hover {
+  color: var(--text);
+}
+.ws-tab--active {
+  color: var(--text);
+  background: var(--bg);
+  border-top-color: var(--primary);
+}
+.ws-tab--preview .ws-tab__name {
+  font-style: italic;
+}
+.ws-tab__type {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+.ws-tab__name {
+  overflow: hidden;
+  max-width: 150px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ws-tab__dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--primary);
+  display: none;
+}
+.ws-tab--dirty .ws-tab__dot {
+  display: inline-block;
+}
+.ws-tab--dirty:hover .ws-tab__dot {
+  display: none;
+}
+.ws-tab__close {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.ws-tab__close svg {
+  width: 12px;
+  height: 12px;
+}
+.ws-tab:hover .ws-tab__close,
+.ws-tab--active:not(.ws-tab--dirty) .ws-tab__close {
+  display: inline-flex;
+}
+.ws-tab__close:hover {
+  background: var(--border);
+  color: var(--text);
+}
+/* The input-config save button accents when there are unsaved edits. */
+.doc__save--dirty {
+  color: var(--primary);
+}
+
+/* ---------- Left sidebar (Working Tree + Batcher panel) ---------- */
+.ws-side {
+  position: relative;
+  width: 280px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+}
+/* Drag handle on the sidebar's right edge (VS Code-style resize). */
+.ws-side__resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: ew-resize;
+  z-index: 5;
+}
+.ws-side__resizer:hover {
+  background: color-mix(in srgb, var(--primary) 40%, transparent);
+}
+/* Collapsed sidebar: a thin rail with a reopen button. */
+.ws-rail {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  padding: var(--space-2);
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+}
+
+/* ---------- Working Tree ---------- */
+.tree {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- Batcher docked panel ---------- */
+.batch-panel {
+  flex-shrink: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+.batch-panel--open {
+  overflow: hidden;
+}
+.batch-panel__resizer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+}
+.batch-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
+}
+.batch-panel__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  /* Match the Working Tree title (.tree__title): muted color, same size/weight/spacing. */
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.batch-panel__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.2rem;
+  height: 1.2rem;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.batch-panel__tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.batch-panel__chev {
+  transition: transform 0.15s ease;
+}
+.batch-panel__chev--up {
+  transform: rotate(180deg);
+}
+.batch-panel__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-4);
+}
+.tree__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  /* Right padding matches .tree__project so the collapse button lines up vertically with the
+     tag/subtype toggle in the row below. */
+  padding: var(--space-3) var(--space-2) var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.tree__title {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+/* Small square controls, all the same size as the Batcher's minimize button (compound selectors so
+   they out-specify the base .ui-icon-btn 34px rule defined later in the file). */
+.ui-icon-btn.tree__collapse,
+.ui-icon-btn.tree__badgetoggle,
+.batch-panel__tools .ui-icon-btn {
+  width: 28px;
+  height: 28px;
+}
+.ui-icon-btn.tree__collapse svg,
+.ui-icon-btn.tree__badgetoggle svg,
+.batch-panel__tools .ui-icon-btn svg {
+  width: 16px;
+  height: 16px;
+}
+.tree__project {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+}
+/* The project picker now lives on its own row and fills the available width. */
+.tree__project .project-select {
+  flex: 1;
+  max-width: none;
+}
+.tree__project-desc {
+  padding: 0 var(--space-4) var(--space-2);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Same horizontal padding as .tree__actions so the segmented control lines up exactly with the
+   Create template / Create folder buttons in the row below. */
+.tree__viewmodes {
+  padding: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+/* Segmented control (Tree / Tags / Type). */
+.seg {
+  display: flex;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--surface);
+}
+.seg__btn {
+  flex: 1;
+  padding: var(--space-1) var(--space-2);
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--border);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.seg__btn:first-child {
+  border-left: none;
+}
+.seg__btn--active {
+  background: var(--primary);
+  color: #fff;
+  font-weight: 600;
+}
+.tree__actions {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.tree__actions .ui-btn {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  padding: var(--space-1) var(--space-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tree-action--dashed {
+  border-style: dashed !important;
+}
+.tree__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: var(--space-4);
+}
+.tree__body[data-dragover='true'] {
+  box-shadow: inset 0 -2px 0 var(--primary);
+}
+.tree-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 28px;
+  padding-right: var(--space-2);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.tree-item:hover {
+  background: var(--surface-2);
+}
+.tree-folder[data-dragover='true'] {
+  box-shadow: inset 0 0 0 2px var(--primary);
+  border-radius: var(--radius-sm);
+}
+/* The selected/open template keeps a soft grey highlight (folders never persist a highlight). */
+.tree-template[data-active='true'] {
+  background: var(--surface-2);
+  font-weight: 600;
+}
+.tree-item__icon {
+  flex: 0 0 auto;
+  width: 17px;
+  height: 17px;
+  color: var(--text-muted);
+}
+/* Colored type icons so the three template kinds read at a glance. */
+.tree-item__icon--document {
+  color: #3b82f6;
+}
+.tree-item__icon--render {
+  color: #8b5cf6;
+}
+.tree-item__icon--api {
+  color: #f59e0b;
+}
+.tree-item__icon--database {
+  color: #14b8a6;
+}
+.tree-item__icon--folder {
+  color: #94a3b8;
+}
+.tree-item__twisty {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+.tree-item__spacer {
+  flex: 0 0 auto;
+  width: 16px;
+}
+.tree-twisty {
+  width: 14px;
+  height: 14px;
+  transform: rotate(-90deg);
+  transition: transform 0.12s ease;
+}
+.tree-twisty--open {
+  transform: rotate(0deg);
+}
+/* Smaller, lighter three-dot menu that doesn't fill the row height. */
+.tree-item__menu {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.tree-item__menu .ui-icon-btn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  opacity: 0.55;
+}
+.tree-item__menu .ui-icon-btn svg {
+  width: 16px;
+  height: 16px;
+}
+.tree-item:hover .tree-item__menu .ui-icon-btn,
+.tree-item__menu .ui-icon-btn:focus-visible {
+  opacity: 1;
+}
+/* Row badge (subtype / HTTP method) sitting just left of the menu. */
+.tree-badge {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+/* Tag dots on a template row (Tree/Type views). */
+.tree-item__tags {
+  flex: 0 0 auto;
+  display: inline-flex;
+  gap: 3px;
+}
+.tree-tagdot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+/* Section headers in the Tags/Type grouping views. */
+.tree-section {
+  font-weight: 600;
+}
+.tree-section__label {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tree-section__spacer {
+  flex: 1;
+}
+.tree-section__count {
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  padding-right: var(--space-1);
+}
+/* A tag badge used as a Tags-view section header — sized to the tag name, not the whole row. */
+.tree-tag {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: #fff;
+  padding: 1px 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- API View ---------- */
+.api-history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.api-history__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-sm);
+}
+.api-history__url {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- API View (Postman/Bruno-style) ---------- */
+.api {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  /* Definite height so the embedded code editors fill (see .doc note). */
+  height: 100%;
+}
+/* Template-name bar above the method/URL row. */
+.api__bar {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+.api__method .ui-field {
+  margin: 0;
+}
+/* Compact method listbox (fits OPTIONS) + slightly larger method/URL/tab fonts. */
+.api__method .ui-select {
+  min-width: 0;
+  width: 104px;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  font-weight: 700;
+  font-size: var(--fs-md);
+  letter-spacing: 0.03em;
+}
+/* Keep the selected method label from overflowing into the chevron. */
+.api__method .ui-select > span:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.api__save {
+  flex: 0 0 auto;
+}
+.api__method[data-method='GET'] .ui-select {
+  color: var(--status-ok);
+}
+.api__method[data-method='POST'] .ui-select {
+  color: var(--status-warn);
+}
+.api__method[data-method='PUT'] .ui-select {
+  color: #2563c9;
+}
+.api__method[data-method='PATCH'] .ui-select {
+  color: #8b5cf6;
+}
+.api__method[data-method='DELETE'] .ui-select {
+  color: var(--status-err);
+}
+.api__url {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+}
+.api__url .seebo-field {
+  flex: 1;
+  font-size: 13px;
+}
+.api__cols {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: var(--space-3);
+}
+.api__pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow: hidden;
+}
+.api__tabs {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-2) 0;
+}
+.api__tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--fs-md);
+}
+.api__tab--active {
+  color: var(--text);
+  border-bottom-color: var(--primary);
+  font-weight: 600;
+}
+.api__resp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+.api__tabbody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+}
+.api__textarea {
+  flex: 1;
+  min-height: 160px;
+  resize: none;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+.api__secrets {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+/* "Request render" tab: an overview of the concrete (rendered) request that was sent. */
+.api-render {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.api-render__line {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+.api-render__method {
+  font-weight: 700;
+}
+.api-render__url {
+  word-break: break-all;
+  color: var(--text-muted);
+}
+.api-render__method[data-method='GET'] {
+  color: var(--status-ok);
+}
+.api-render__method[data-method='POST'] {
+  color: var(--status-warn);
+}
+.api-render__method[data-method='PUT'] {
+  color: #2563c9;
+}
+.api-render__method[data-method='PATCH'] {
+  color: #8b5cf6;
+}
+.api-render__method[data-method='DELETE'] {
+  color: var(--status-err);
+}
+.api-status {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  padding: 0 var(--space-3);
+  white-space: nowrap;
+}
+.api-status--ok {
+  color: var(--status-ok);
+}
+.api-status--warn {
+  color: var(--status-warn);
+}
+.api-status--err {
+  color: var(--status-err);
+}
+.kv {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.kv__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.kv__row .ui-input {
+  flex: 1;
+  min-width: 0;
+}
+.kv__spacer {
+  width: 34px;
+  flex: 0 0 auto;
+}
+/* Wraps read-only headers so the copy overlay can sit top-right. */
+.kv-readonly-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.kv-readonly {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.kv-readonly__row {
+  display: flex;
+  gap: var(--space-3);
+  font-size: var(--fs-sm);
+  font-family: var(--font-mono);
+}
+.kv-readonly__key {
+  min-width: 160px;
+  font-weight: 600;
+}
+/* Key/value batch-edit toggle + textarea. */
+.kv__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  /* Align the button's right edge with the value column (clearing the trailing delete/spacer column),
+     leaving a little horizontal breathing room from it. */
+  padding-right: calc(34px + var(--space-3));
+}
+.kv__toolbar .ui-icon-btn {
+  width: 28px;
+  height: 28px;
+}
+.kv__toolbar .ui-icon-btn svg {
+  width: 16px;
+  height: 16px;
+}
+.kv__mode {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.kv__mode:hover {
+  color: var(--text);
+}
+
+/* Request body editor (type + code) and the Information tab. */
+.api__body,
+.api__info {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.api__body-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.api__body-editor {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.api__body-editor .cm-host {
+  flex: 1;
+  min-width: 0;
+}
+/* Copy (+ body-type badge) overlaid top-right of a body/response editor. */
+.api__editor-tools {
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-1);
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-1);
+}
+.api__editor-tools .ui-icon-btn {
+  width: 26px;
+  height: 26px;
+  border: none;
+}
+.api__editor-tools .ui-icon-btn svg {
+  width: 15px;
+  height: 15px;
+}
+.api__editor-tools .tree-badge {
+  text-transform: uppercase;
+}
+.api__info-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.api__info-view .render-frame {
+  flex: 1;
+  border: none;
+}
+
+/* Response/Request history as a table. */
+.api-hist {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.api-hist__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.api-hist__list > li + li {
+  border-top: 1px solid var(--border);
+}
+.api-hist__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.api-hist__row:hover {
+  background: var(--surface-2);
+}
+.api-hist__status {
+  flex: 0 0 auto;
+  min-width: 40px;
+  text-align: center;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  color: #fff;
+}
+.api-hist__status--ok {
+  background: var(--status-ok);
+}
+.api-hist__status--warn {
+  background: var(--status-warn);
+}
+.api-hist__status--err {
+  background: var(--status-err);
+}
+.api-hist__method {
+  flex: 0 0 auto;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.api-hist__url {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+.api-hist__time {
+  flex: 0 0 auto;
+  font-size: var(--fs-sm);
+}
+.api-hist__foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-4);
+}
+
+/* History detail modal (compound selector to out-specify the base .editor-modal size). */
+.editor-modal.api-detail {
+  width: min(720px, 100%);
+  height: min(520px, 100%);
+}
+.api-detail__tabs {
+  border-bottom: 1px solid var(--border);
+}
+.api-detail__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-4);
+}
+.api-detail__note {
+  margin-top: var(--space-4);
+  font-size: var(--fs-sm);
+}
+
+/* ---------- Batcher ---------- */
+.batch-lead {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+.batch-load {
+  width: 100%;
+  justify-content: center;
+}
+.batch-drop {
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  min-height: 64px;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.batch-drop--over {
+  border-color: var(--primary);
+  background: var(--surface-2);
+}
+.batch-drop__hint {
+  margin: 0;
+  text-align: center;
+  font-size: var(--fs-sm);
+}
+.batch-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.batch-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.batch-chip__n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+.batch-chip__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Database results grid ---------- */
+.db-grid {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.db-grid__head {
+  display: flex;
+  background: var(--surface-2);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+.db-grid__row {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  border-bottom: 1px solid var(--border);
+}
+.db-grid__cell {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--fs-sm);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tree-item__name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-select {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 28px;
+  max-width: 150px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-2);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.project-select > span:first-child {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+/* Keep the dropdown chevron pinned to the right edge of the picker. */
+.project-select .ui-select__chevron {
+  margin-left: auto;
+}
+.project-select:hover {
+  border-color: color-mix(in srgb, var(--text) 25%, var(--border));
+}
+/* A project row in the picker: name + a delete (×) affordance. */
+.project-row {
+  display: flex;
+  align-items: center;
+}
+.project-row__name {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+.ui-icon-btn.project-row__del {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  border: none;
+}
+.ui-icon-btn.project-row__del svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ---------- Virtual list ---------- */
+.ui-vlist {
+  overflow: auto;
+  position: relative;
+}
+.ui-vlist__spacer {
+  position: relative;
+}
+.ui-vlist__row {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+
+/* ---------- Menu ---------- */
+.ui-menu {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1);
+  min-width: 168px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-2);
+  z-index: 150;
+}
+.ui-menu__item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.ui-menu__item:hover {
+  background: var(--surface-2);
+}
+.ui-menu__item--danger {
+  color: var(--danger);
+}
+.ui-menu__item--accent {
+  color: var(--primary);
+  font-weight: 600;
+}
+.ui-menu__sep {
+  height: 1px;
+  background: var(--border);
+  margin: var(--space-1) 0;
+}
+
+/* ---------- Chips (settings lists) ---------- */
+.chip-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: var(--space-1) var(--space-3);
+}
+.chip__remove {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--fs-md);
+  line-height: 1;
+  padding: 0;
+}
+.chip__remove:hover {
+  color: var(--danger);
+}
+
+/* ---------- JSON input (file dropzone + paste) ---------- */
+.jsonfield {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+  padding: var(--space-3);
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.jsonfield:hover {
+  border-color: color-mix(in srgb, var(--text) 25%, var(--border));
+}
+.jsonfield--over {
+  border-color: var(--primary);
+  background: var(--surface-2);
+}
+.jsonfield__paste {
+  margin-top: var(--space-2);
+  width: 100%;
+  resize: vertical;
+  font-family: var(--font-mono);
+}
+
+/* ---------- Document View ---------- */
+.doc {
+  position: relative;
+  display: flex;
+  gap: var(--space-3);
+  align-items: stretch;
+  /* A *definite* height (not min-height) so the cards — and the rendered iframe inside them, which
+     has no intrinsic height — fill the area instead of collapsing. Overridden when resized taller. */
+  height: 100%;
+}
+.doc__panel {
+  width: 360px;
+  flex-shrink: 0;
+  min-width: 0;
+  display: flex;
+}
+.doc__output {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+/* Drag handle between the Input and Output cards (horizontal resize). */
+.doc__hsplit {
+  flex: 0 0 auto;
+  width: 8px;
+  margin: 0 calc(-1 * var(--space-2));
+  cursor: ew-resize;
+  z-index: 2;
+}
+.doc__hsplit:hover {
+  background: color-mix(in srgb, var(--primary) 30%, transparent);
+  border-radius: var(--radius-sm);
+}
+/* Drag handle along the bottom edge (vertical resize / lengthen). */
+.doc__vsplit {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -4px;
+  height: 8px;
+  cursor: ns-resize;
+  z-index: 2;
+}
+.doc__vsplit:hover {
+  background: color-mix(in srgb, var(--primary) 30%, transparent);
+}
+/* The input/output cards fill the full page height regardless of content (scroll inside). The
+   optional Action Panel sits below the output at its natural height. */
+/* Scroll the card *body*, not the whole card, so the vertical scrollbar stays inset by the card
+   padding and never overlaps the rounded corners (the header band keeps spanning edge-to-edge). */
+.doc__panel > .ui-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.doc__panel > .ui-card > .ui-card__head {
+  flex: 0 0 auto;
+}
+.doc__panel > .ui-card > :not(.ui-card__head) {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* Put the scrollbar at the card's right edge (not inset against the inputs); keep the inputs
+     themselves padded away from it. */
+  margin-right: calc(-1 * var(--space-5));
+  padding-right: var(--space-5);
+}
+/* The output card is a flex column so its body (code editor / rendered preview) fills + scrolls. */
+.doc__output > .ui-card:first-child {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.output-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.output-code {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.output-code .cm-host {
+  flex: 1;
+  min-width: 0;
+}
+.output-render {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.output-render .render-frame {
+  flex: 1;
+  border: none;
+  width: 100%;
+}
+/* eml output: headers above a rendered (HTML) body. */
+.eml {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.eml__headers {
+  flex: 0 0 auto;
+  margin: 0 0 var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.eml__subject {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  line-height: 1.3;
+  margin-bottom: var(--space-2);
+  word-break: break-word;
+}
+.eml__fields {
+  margin: 0;
+  display: grid;
+  gap: var(--space-1);
+}
+.eml__row {
+  display: flex;
+  gap: var(--space-2);
+  font-size: var(--fs-sm);
+}
+.eml__row dt {
+  flex: 0 0 56px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.eml__row dd {
+  margin: 0;
+  min-width: 0;
+  word-break: break-word;
+}
+.eml__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+/* Fullscreen output — fills the overlay like the Template Editor's fullscreen mode. Compound
+   selector so it out-specifies the base `.editor-modal` size rule defined later in the file. */
+.editor-modal.output-modal {
+  width: 100%;
+  height: 100%;
+}
+.output-modal__title {
+  flex: 1;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+}
+.output-modal__body {
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+}
+
+.field-error {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: var(--fs-sm);
+  color: var(--danger, #d33);
+}
+
+/* ---------- Action Panel ---------- */
+.action-list,
+.action-receipts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.action-receipts {
+  margin-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-3);
+}
+.action-item,
+.action-receipt {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-sm);
+}
+.action-item__spacer {
+  width: 13px;
+  flex: 0 0 auto;
+}
+.action-item__id {
+  font-family: var(--font-mono);
+}
+.doc__rendered {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+
+/* ---------- Render View ---------- */
+.render-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  /* Definite height so the rendered iframe fills (see .doc note). */
+  height: 100%;
+}
+/* The Document View nests .doc under the top bar: fill the remaining height (flex) rather than 100%
+   of the whole area (which would ignore the bar). An explicit resized height overrides this. */
+.render-view > .doc {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+.render-view__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.render-view__name {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+}
+.render-view__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.render-frame {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: transparent;
+}
+.render-engine {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: var(--space-4);
+  background: var(--surface);
+  color: var(--text);
+}
+.render-engine--center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.render-engine--chart {
+  padding: 0;
+  min-height: 420px;
+}
+.render-engine--swagger {
+  background: #fff;
+  padding: 0;
+}
+/* Dark theme for Swagger UI (it ships only a light theme). */
+.render-engine--swagger.is-dark {
+  background: #14141a;
+}
+.render-engine--swagger.is-dark .swagger-ui,
+.render-engine--swagger.is-dark .swagger-ui .info .title,
+.render-engine--swagger.is-dark .swagger-ui .opblock-tag,
+.render-engine--swagger.is-dark .swagger-ui .opblock .opblock-summary-operation-id,
+.render-engine--swagger.is-dark .swagger-ui .opblock .opblock-summary-path,
+.render-engine--swagger.is-dark .swagger-ui .opblock .opblock-summary-description,
+.render-engine--swagger.is-dark .swagger-ui .opblock-description-wrapper p,
+.render-engine--swagger.is-dark .swagger-ui table thead tr td,
+.render-engine--swagger.is-dark .swagger-ui table thead tr th,
+.render-engine--swagger.is-dark .swagger-ui .parameter__name,
+.render-engine--swagger.is-dark .swagger-ui .parameter__type,
+.render-engine--swagger.is-dark .swagger-ui .response-col_status,
+.render-engine--swagger.is-dark .swagger-ui .response-col_description,
+.render-engine--swagger.is-dark .swagger-ui label,
+.render-engine--swagger.is-dark .swagger-ui .tab li,
+.render-engine--swagger.is-dark .swagger-ui .model,
+.render-engine--swagger.is-dark .swagger-ui .model-title {
+  color: #e7e7ea;
+}
+.render-engine--swagger.is-dark .swagger-ui .info a,
+.render-engine--swagger.is-dark .swagger-ui .scheme-container .schemes > label {
+  color: #7ab7ff;
+}
+.render-engine--swagger.is-dark .swagger-ui .scheme-container,
+.render-engine--swagger.is-dark .swagger-ui .opblock .opblock-section-header {
+  background: #1b1b22;
+  box-shadow: none;
+}
+.render-engine--swagger.is-dark .swagger-ui .opblock {
+  background: #1b1b22;
+  border-color: #2a2a30;
+}
+.render-engine--swagger.is-dark .swagger-ui .opblock .opblock-summary {
+  border-color: #2a2a30;
+}
+.render-engine--swagger.is-dark .swagger-ui .model-box,
+.render-engine--swagger.is-dark .swagger-ui section.models,
+.render-engine--swagger.is-dark .swagger-ui section.models .model-container {
+  background: #1b1b22;
+  border-color: #2a2a30;
+}
+.render-engine--swagger.is-dark .swagger-ui input,
+.render-engine--swagger.is-dark .swagger-ui textarea,
+.render-engine--swagger.is-dark .swagger-ui select {
+  background: #14141a;
+  color: #e7e7ea;
+  border-color: #2a2a30;
+}
+.render-engine--swagger.is-dark .swagger-ui .highlight-code,
+.render-engine--swagger.is-dark .swagger-ui .microlight {
+  background: #0e0e12;
+}
+.render-engine--swagger.is-dark .swagger-ui svg:not(:root) {
+  fill: #c7c7cc;
+}
+.diag-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.diag {
+  color: var(--danger);
+  font-size: var(--fs-sm);
+}
+.diag__code {
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+.editor__source {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  resize: vertical;
+}
+.release-list,
+.changelog-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.release-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+.changelog-item {
+  font-size: var(--fs-sm);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+.changelog-item__msg {
+  color: var(--text);
+}
+.changelog-item__meta {
+  font-size: var(--fs-xs);
+  margin-top: 2px;
+}
+
+/* ---------- Release picker ---------- */
+.release-picker {
+  min-width: 140px;
+}
+.release-menu {
+  min-width: 260px;
+  max-height: 320px;
+  overflow: auto;
+  padding: var(--space-1);
+  /* Above the editor modal overlay (z-index 320), else the dropdown is hidden behind it. */
+  z-index: 400;
+}
+.release-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.release-opt {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  background: transparent;
+  border: none;
+  color: inherit;
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.release-opt:hover,
+.release-opt[aria-selected='true'] {
+  background: var(--surface-2);
+}
+.release-opt__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.release-opt__date {
+  flex: 0 0 auto;
+  font-size: var(--fs-xs);
+}
+
+/* ---------- Template Editor modal (overlay) ---------- */
+.editor-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+  z-index: 320;
+}
+.editor-modal {
+  width: min(1100px, 100%);
+  height: min(760px, 100%);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+}
+.editor-modal--full {
+  width: 100%;
+  height: 100%;
+}
+.editor-modal__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.editor-modal__name {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  color: inherit;
+}
+.editor-modal__name:hover {
+  border-color: var(--border);
+}
+.editor-modal__name:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+.editor-modal__tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.editor-modal__tools .ui-field {
+  margin: 0;
+}
+.editor-modal__tagbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 46px;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.editor-modal__tagbar .tag-editor {
+  flex: 1;
+  min-width: 0;
+}
+/* The format + view/code controls sit inline at the right of the tag row, with no enclosing box. */
+.editor-modal__tagtools {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.editor-modal__body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+/* ---------- Tag editor ---------- */
+.tag-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.tag-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border-radius: 999px;
+  color: #fff;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.tag-badge__x {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+}
+.tag-badge__x:hover {
+  color: #fff;
+}
+.tag-combo {
+  position: relative;
+  flex: 0 0 auto;
+}
+.tag-editor__input {
+  width: 150px;
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  color: inherit;
+  font-size: var(--fs-sm);
+}
+.tag-editor__input:focus {
+  outline: none;
+  border-color: var(--primary);
+  border-style: solid;
+}
+.tag-suggest {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 180px;
+  max-height: 240px;
+  overflow: auto;
+  z-index: 5;
+}
+.tag-suggest .ui-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.tag-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.editor-modal__main {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+.editor-modal__code {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+.editor-modal__preview {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+.editor-overlay-tr {
+  position: absolute;
+  /* Clear the editor's vertical scrollbar when present. */
+  right: calc(var(--space-3) + 16px);
+  top: var(--space-3);
+  display: flex;
+  gap: var(--space-1);
+  z-index: 3;
+  padding: var(--space-1);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-1);
+}
+/* Save + New release: stacked (New release on top, Save below), same size, no enclosing box. */
+.editor-overlay-br {
+  position: absolute;
+  right: calc(var(--space-3) + 16px);
+  bottom: var(--space-3);
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.editor-overlay-br .ui-btn {
+  width: 150px;
+  justify-content: center;
+}
+.editor-modal__diags {
+  position: absolute;
+  left: var(--space-3);
+  bottom: var(--space-3);
+  right: 40%;
+  max-height: 30%;
+  overflow: auto;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+}
+.editor-modal__history {
+  width: 280px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  padding: var(--space-3);
+  overflow: auto;
+}
+.editor-modal__history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
+
+/* ---------- Settings modal (overlay) ---------- */
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+  z-index: 300;
+}
+.settings-modal {
+  width: min(900px, 100%);
+  height: min(640px, 100%);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+}
+.settings-modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+.settings-modal__title {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+}
+.settings-modal__close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.settings-modal__close:hover {
+  color: var(--text);
+}
+.settings-modal__body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+.settings-nav {
+  width: 200px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.settings-nav__item {
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.settings-nav__item:hover {
+  background: var(--surface-2);
+}
+.settings-nav__item.is-active {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--primary);
+  font-weight: 600;
+}
+.settings-content {
+  flex: 1;
+  overflow: auto;
+  padding: var(--space-5);
+}
+
+/* ---------- Badge ---------- */
+.ui-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px var(--space-2);
+}
+
+/* ---------- Recent workspaces ---------- */
+.recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.recent-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+}
+.recent-item:hover {
+  border-color: var(--primary);
+}
+.recent-item__name {
+  font-weight: 600;
+}
+.recent-item__path {
+  margin-left: auto;
+  font-size: var(--fs-sm);
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Auth screen ---------- */
+.auth {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+}
+.auth-card {
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+}
+.auth-card > .ui-card {
+  width: 100%;
+}
+.auth-brand {
+  font-size: var(--fs-2xl);
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  line-height: 1.1;
+  text-align: center;
+}
+.auth-brand .accent {
+  color: var(--primary);
+}
+.auth-tagline {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  margin-bottom: var(--space-2);
+  text-align: center;
+}
+.auth-hint {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  margin-top: calc(-1 * var(--space-2));
+}
+.auth-error {
+  color: var(--danger);
+  font-size: var(--fs-sm);
+}
+.lang-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.auth-switch {
+  display: block;
+  width: fit-content;
+  margin: var(--space-4) auto 0;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--primary);
+  font: inherit;
+  cursor: pointer;
+}
+.auth-switch:hover {
+  text-decoration: underline;
+}
+.auth-appearance {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-4);
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.muted {
+  color: var(--text-muted);
+}
+.result {
+  margin-top: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+/* ---------- Card ---------- */
+.ui-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-1);
+}
+/* More prominent card header: a titled band whose separator line spans the full card width (pulled
+   out to the edges over the card's padding) and is a touch shorter. */
+.ui-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  /* min-height keeps a title-only header as tall as one with action icons, so the separator lines
+     up across the Input and Output cards. */
+  min-height: 44px;
+  margin: calc(-1 * var(--space-5)) calc(-1 * var(--space-5)) var(--space-4);
+  padding: var(--space-2) var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+.ui-card__title {
+  font-size: var(--fs-md);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  margin: 0;
+}
+.ui-card__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+/* Header action icons match the Working Tree control size (28px). */
+.ui-card__actions .ui-icon-btn {
+  width: 28px;
+  height: 28px;
+}
+.ui-card__actions .ui-icon-btn svg {
+  width: 16px;
+  height: 16px;
+}
+.ui-card__actions .ui-icon-btn:not(:disabled) {
+  cursor: pointer;
+}
+.ui-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Fullscreen output overlay. */
+.output-full {
+  position: fixed;
+  inset: 0;
+  z-index: 360;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+.output-full__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.output-full__title {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+}
+.output-full__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: var(--space-4);
+}
+
+/* ---------- Button ---------- */
+.ui-btn {
+  font-family: inherit;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+.ui-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.ui-btn--primary {
+  background: var(--primary);
+  color: var(--primary-contrast);
+}
+.ui-btn--primary:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+.ui-btn--primary:active:not(:disabled) {
+  background: var(--primary-active);
+}
+.ui-btn--secondary {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--border);
+}
+.ui-btn--secondary:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+.ui-btn--ghost {
+  background: transparent;
+  color: var(--text);
+  border-color: transparent;
+}
+.ui-btn--ghost:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+.ui-btn--danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* ---------- Icon button ---------- */
+.ui-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.ui-icon-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.ui-icon-btn.is-active {
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
+}
+
+/* ---------- TextField / Select ---------- */
+.ui-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.ui-field__label {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.field-hint {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+.ui-input {
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+}
+.ui-input:focus {
+  border-color: var(--primary);
+  outline: none;
+}
+
+/* ---------- Select (custom listbox) ---------- */
+.ui-select-wrap {
+  position: relative;
+}
+.ui-select {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 160px;
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  text-align: left;
+}
+.ui-select:hover {
+  border-color: color-mix(in srgb, var(--text) 25%, var(--border));
+}
+.ui-select[aria-expanded='true'] {
+  border-color: var(--primary);
+}
+.ui-select__chevron {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.ui-listbox {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 100%;
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-2);
+  z-index: 50;
+  max-height: 260px;
+  overflow: auto;
+}
+.ui-option {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ui-option[data-active='true'] {
+  background: var(--surface-2);
+}
+.ui-option[aria-selected='true'] {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* ---------- Switch ---------- */
+.ui-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  user-select: none;
+  /* reset native <button> chrome (was showing a grey rectangle) */
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+}
+.ui-switch__track {
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  position: relative;
+  transition: background 0.12s ease;
+}
+.ui-switch__track[data-on='true'] {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.ui-switch__thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.12s ease;
+}
+.ui-switch__track[data-on='true'] .ui-switch__thumb {
+  transform: translateX(16px);
+}
+
+/* ---------- Color swatch ---------- */
+.ui-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  cursor: pointer;
+  padding: 0;
+}
+.ui-swatch[aria-pressed='true'] {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+/* ---------- Dialog ---------- */
+.ui-dialog__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.ui-dialog {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+  width: min(480px, calc(100vw - 32px));
+  padding: var(--space-5);
+}
+.ui-dialog__title {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  margin: 0 0 var(--space-2);
+}
+.ui-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+}
+
+/* ---------- Toast ---------- */
+.ui-toasts {
+  position: fixed;
+  right: var(--space-5);
+  bottom: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  z-index: 200;
+}
+.ui-toast {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--primary);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-2);
+  padding: var(--space-3) var(--space-4);
+  min-width: 240px;
+}
+.ui-toast[data-kind='error'] {
+  border-left-color: var(--danger);
+}
+.ui-toast[data-kind='success'] {
+  border-left-color: var(--success);
+}
+
+/* ---------- Table ---------- */
+.ui-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-md);
+}
+.ui-table th,
+.ui-table td {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.ui-table th {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+/* ---------- States ---------- */
+.ui-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6);
+  color: var(--text-muted);
+  text-align: center;
+}
+.ui-state__title {
+  color: var(--text);
+  font-weight: 700;
+}
+.ui-spinner {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 3px solid var(--surface-2);
+  border-top-color: var(--primary);
+  animation: ui-spin 0.8s linear infinite;
+}
+@keyframes ui-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- CodeMirror editor ---------- */
+.cm-host {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+.cm-host .cm-editor {
+  height: 100%;
+}
+.cm-host .cm-editor.cm-focused {
+  outline: none;
+}
+/* Seebo formula slots — semantic highlight over the base language (Atom One palette). */
+.cm-sb-delim,
+.cm-sb-kw {
+  color: #a626a4;
+  font-weight: 600;
+}
+.cm-sb-fn {
+  color: #4078f2;
+}
+.cm-sb-str {
+  color: #50a14f;
+}
+.cm-sb-num {
+  color: #986801;
+}
+.cm-sb-prop {
+  color: #e45649;
+}
+.cm-sb-punc {
+  color: var(--text-muted);
+}
+.cm-host--dark .cm-sb-delim,
+.cm-host--dark .cm-sb-kw {
+  color: #c678dd;
+}
+.cm-host--dark .cm-sb-fn {
+  color: #61afef;
+}
+.cm-host--dark .cm-sb-str {
+  color: #98c379;
+}
+.cm-host--dark .cm-sb-num {
+  color: #d19a66;
+}
+.cm-host--dark .cm-sb-prop {
+  color: #e06c75;
+}
+.cm-host .cm-selectionBackground,
+.cm-host .cm-content ::selection,
+.seebo-field .cm-selectionBackground,
+.seebo-field .cm-content ::selection {
+  background: color-mix(in srgb, var(--primary) 28%, transparent) !important;
+}
+
+
+/* Single-line Seebo-aware input (request header/query values that accept ${ … } formulas). */
+.seebo-field {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-3);
+}
+.seebo-field:focus-within {
+  border-color: var(--primary);
+}
+.seebo-field .cm-editor {
+  width: 100%;
+  background: transparent;
+}
+.seebo-field .cm-editor.cm-focused {
+  outline: none;
+}
+.seebo-field .cm-scroller {
+  font-family: var(--font-mono);
+  line-height: 1.5;
+  /* Single-line: scroll to follow the cursor but never show a horizontal scrollbar. */
+  scrollbar-width: none;
+}
+.seebo-field .cm-scroller::-webkit-scrollbar {
+  display: none;
+}
+.seebo-field .cm-content {
+  color: var(--text);
+  caret-color: var(--text);
+  padding: var(--space-2) 0;
+}
+.seebo-field .cm-line {
+  padding: 0;
+}
+.kv__row .seebo-field {
+  flex: 1;
+}
+
+/* Multiline variant — the key/value bulk editor (wraps, grows, with a vertical scrollbar). */
+.seebo-field--multi {
+  align-items: stretch;
+  min-height: 160px;
+  max-height: 320px;
+}
+.seebo-field--multi .cm-scroller {
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.seebo-field--multi .cm-scroller::-webkit-scrollbar {
+  display: block;
+  width: 8px;
+}

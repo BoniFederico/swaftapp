@@ -1,0 +1,96 @@
+import type { DiagnosticDto, RenderResultDto, RequirementDto } from '@swaft/shared';
+import { toDiagnosticDto, toRenderResult, toRequirementDto } from '../seebo/map';
+import type { RenderPolicy, SeeboHost, SeeboRenderContext } from '../seebo/SeeboHost';
+import { RepoBase } from './RepoBase';
+import type { ReleaseService } from './ReleaseService';
+import type { SettingsService } from './SettingsService';
+import type { TemplateService } from './TemplateService';
+import type { WorkspaceService } from './WorkspaceService';
+
+/**
+ * Drives the Seebo engine for a template: surfaces input requirements (widgets) and renders output
+ * with the host-provided values. The render policy (allowed capabilities/types) comes from workspace
+ * settings. Last input values are persisted **local-only** (🔵) per template. See SWAFT_ARCHITECTURE
+ * §8–§8.2.1.
+ */
+export class RenderService extends RepoBase {
+  constructor(
+    ws: WorkspaceService,
+    private readonly templates: TemplateService,
+    private readonly settings: SettingsService,
+    private readonly host: SeeboHost,
+    private readonly releases: ReleaseService,
+  ) {
+    super(ws);
+  }
+
+  private async policy(): Promise<RenderPolicy> {
+    const s = await this.settings.getSettings();
+    return { allowedCapabilities: s.allowedCapabilities, allowedTypes: s.allowedTypes };
+  }
+
+  /** Render context so data capabilities (e.g. `template`) can scope their lookups to the project. */
+  private async renderCtx(templateId: string): Promise<SeeboRenderContext> {
+    return { projectId: await this.templates.projectIdOf(templateId), templateId };
+  }
+
+  /** The widget requirements for the template's **effective** source (selected release / draft). */
+  async analyze(templateId: string): Promise<RequirementDto[]> {
+    const { source } = await this.releases.resolveSource(templateId);
+    const ctx = await this.renderCtx(templateId);
+    return (await this.host.analyze(source, await this.policy(), ctx)).requirements.map(
+      toRequirementDto,
+    );
+  }
+
+  /** Render the template's effective source with the provided values; persists them as last inputs. */
+  async render(templateId: string, values: Record<string, unknown>): Promise<RenderResultDto> {
+    await this.templates.requireTemplate(templateId);
+    await this.setInputState(templateId, values);
+    const { source } = await this.releases.resolveSource(templateId);
+    const ctx = await this.renderCtx(templateId);
+    const state = await this.host.render(source, values, await this.policy(), ctx);
+    return toRenderResult(state);
+  }
+
+  /** Analyze arbitrary source (Template Editor live feedback). */
+  async analyzeSource(source: string): Promise<RequirementDto[]> {
+    return (await this.host.analyze(source, await this.policy())).requirements.map(toRequirementDto);
+  }
+
+  /** Render arbitrary (possibly unsaved) source — the Template Editor's view/render preview. */
+  async renderSource(source: string, values: Record<string, unknown>): Promise<RenderResultDto> {
+    return toRenderResult(await this.host.render(source, values, await this.policy()));
+  }
+
+  /** Static diagnostics for arbitrary source (Template Editor live feedback). */
+  async validateSource(source: string): Promise<DiagnosticDto[]> {
+    return (await this.host.validate(source, await this.policy())).map(toDiagnosticDto);
+  }
+
+  async getInputState(templateId: string): Promise<Record<string, unknown>> {
+    const row = await this.adapter.get<{ values_json: string }>(
+      `SELECT values_json FROM local_input_state WHERE template_id = ?`,
+      [templateId],
+    );
+    if (!row) return {};
+    try {
+      const parsed: unknown = JSON.parse(row.values_json);
+      return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  async setInputState(
+    templateId: string,
+    values: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    await this.adapter.run(
+      `INSERT OR REPLACE INTO local_input_state (template_id, values_json, updated_at) VALUES (?, ?, ?)`,
+      [templateId, JSON.stringify(values), this.ws.nowIso()],
+    );
+    await this.ws.save();
+    return values;
+  }
+}

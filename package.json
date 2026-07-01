@@ -1,0 +1,41 @@
+{
+  "name": "swaft",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Swaft — Strange Web App for Technician (Electron desktop app)",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm --workspace @swaft/desktop run dev",
+    "build": "npm --workspace @swaft/desktop run build",
+    "typecheck": "npm --workspace @swaft/shared run typecheck && npm --workspace @swaft/desktop run typecheck",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e": "playwright test",
+    "verify": "npm run typecheck && npm run lint && npm run test",
+    "see": "npm run dev"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.13.0",
+    "@playwright/test": "^1.48.0",
+    "@testing-library/jest-dom": "^6.5.0",
+    "@testing-library/react": "^16.0.1",
+    "@types/node": "^22.7.0",
+    "@types/sql.js": "^1.4.11",
+    "@vitejs/plugin-react": "^4.3.2",
+    "eslint": "^9.13.0",
+    "eslint-config-prettier": "^9.1.0",
+    "jsdom": "^25.0.1",
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.10.0",
+    "vitest": "^2.1.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
