@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -45,6 +46,15 @@ export function EnvironmentProvider({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [revision, setRevision] = useState(0);
+  // Guard against state updates after unmount (heavy full-app tests mount/unmount the App repeatedly;
+  // a settled env.* call must not touch a torn-down tree — it wastes work and churns React internals).
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -52,31 +62,31 @@ export function EnvironmentProvider({
         client.call('env.list'),
         client.call('env.selection.get'),
       ]);
+      if (!mounted.current) return;
       setEnvironments(list.environments);
       setActiveId(sel.environmentId);
     } catch {
-      setEnvironments([]);
-      setActiveId(null);
+      if (mounted.current) {
+        setEnvironments([]);
+        setActiveId(null);
+      }
     } finally {
       // A refresh follows any env edit (vars included) — nudge watchers to re-resolve `env(...)`.
-      setRevision((r) => r + 1);
+      if (mounted.current) setRevision((r) => r + 1);
     }
   }, [client]);
 
   useEffect(() => {
-    let cancelled = false;
     void (async () => {
       await refresh();
-      if (!cancelled) setLoading(false);
+      if (mounted.current) setLoading(false);
     })();
-    return () => {
-      cancelled = true;
-    };
   }, [refresh]);
 
   const setActive = useCallback(
     async (environmentId: string | null) => {
       const res = await client.call('env.selection.set', { environmentId });
+      if (!mounted.current) return;
       setActiveId(res.environmentId);
       setRevision((r) => r + 1);
     },
