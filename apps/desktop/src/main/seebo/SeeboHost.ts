@@ -39,6 +39,25 @@ export const WIDGET_CAPABILITIES = [
 export type WidgetCapability = (typeof WIDGET_CAPABILITIES)[number];
 
 /**
+ * The base Seebo **type** each widget capability contracts for (SPEC §1.6). Registered as the
+ * capability's static contract so `need('number')` etc. inherit the right type without the template
+ * repeating `type:int()` — a bare `${ number('x') }` then validates its value as an int instead of
+ * defaulting to `string` (which accepted any text). A template may still override the type per call.
+ * `number` defaults to `int` (matching the UI's integer-first widget); use `type:float()` for decimals.
+ */
+const WIDGET_TYPES: Record<WidgetCapability, string> = {
+  textbox: 'string',
+  textarea: 'string',
+  number: 'int',
+  boolean: 'bool',
+  listbox: 'string',
+  multiOption: 'array',
+  jsonInput: 'object',
+  datetimebox: 'datetime',
+  durationbox: 'duration',
+};
+
+/**
  * Non-widget **data** capabilities ({@link DATA_CAPABILITIES}, shared with the renderer): unlike
  * widgets (which suspend for UI input), these resolve a real value during the drive loop. `template`
  * reads another `json` template's content as a Seebo object. Always allow-listed (like widgets), but
@@ -140,8 +159,15 @@ export class SeeboHost {
 
   private async engine(policy?: RenderPolicy, ctx?: SeeboRenderContext): Promise<SeeboEngine> {
     const { createEngine, defineCapability } = await this.loadSeebo();
+    // Each widget resolves to `undefined` (suspends for UI input); its `type` contract makes the
+    // requirement carry the widget's natural type instead of defaulting to `string`.
     const capabilities: Record<string, SeeboCapabilityFn | SeeboCapabilityDescriptor> =
-      Object.fromEntries(WIDGET_CAPABILITIES.map((name) => [name, () => undefined]));
+      Object.fromEntries(
+        WIDGET_CAPABILITIES.map((name) => [
+          name,
+          defineCapability(name, { type: WIDGET_TYPES[name], resolve: () => undefined }),
+        ]),
+      );
     // Register `template` (a data capability) only when a provider is wired — pure widget engines
     // (e.g. tests, the Template Editor without a workspace) keep their original surface untouched.
     const dataCapabilities: string[] = [];
