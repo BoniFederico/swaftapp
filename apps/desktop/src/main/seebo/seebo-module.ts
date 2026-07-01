@@ -125,8 +125,23 @@ export interface SeeboPolicy {
   audit?: (...args: unknown[]) => void;
 }
 
+/** A capability resolver function (bare form: no static contract). */
+export type SeeboCapabilityFn = (req: SeeboRequirement) => unknown;
+
+/**
+ * A capability descriptor (from {@link SeeboModule.defineCapability}) carrying a `resolve` plus an
+ * optional static **contract** (`type`/`label`/`description`) that `need('cap')` inherits — so a
+ * template need not repeat the type. `type` accepts a base-type name string (e.g. `'object'`).
+ */
+export interface SeeboCapabilityDescriptor {
+  resolve: SeeboCapabilityFn;
+  type?: string;
+  label?: string;
+  description?: string;
+}
+
 export interface SeeboConfig {
-  capabilities?: Record<string, (req: SeeboRequirement) => unknown>;
+  capabilities?: Record<string, SeeboCapabilityFn | SeeboCapabilityDescriptor>;
   functions?: unknown[];
   libraries?: unknown[];
   types?: unknown[];
@@ -155,6 +170,8 @@ export interface SeeboEngine {
 /** The shape of the `seebo` module namespace (the subset Swaft calls). */
 export interface SeeboModule {
   createEngine(config: SeeboConfig): SeeboEngine;
+  /** Declares a capability with a static contract (`type`/`label`/`description`) inherited by `need`. */
+  defineCapability(name: string, def: SeeboCapabilityDescriptor): SeeboCapabilityDescriptor;
 }
 
 /** The shape of the `seebo/actions` execution-layer module (the subset Swaft calls). */

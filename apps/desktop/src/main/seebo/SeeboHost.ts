@@ -4,6 +4,8 @@ import type {
   SeeboActionExecutionResult,
   SeeboActionsModule,
   SeeboAnalysis,
+  SeeboCapabilityDescriptor,
+  SeeboCapabilityFn,
   SeeboDiagnostic,
   SeeboEngine,
   SeeboExecuteContext,
@@ -137,16 +139,21 @@ export class SeeboHost {
   }
 
   private async engine(policy?: RenderPolicy, ctx?: SeeboRenderContext): Promise<SeeboEngine> {
-    const { createEngine } = await this.loadSeebo();
-    const capabilities: Record<string, (req: SeeboRequirement) => unknown> = Object.fromEntries(
-      WIDGET_CAPABILITIES.map((name) => [name, () => undefined]),
-    );
+    const { createEngine, defineCapability } = await this.loadSeebo();
+    const capabilities: Record<string, SeeboCapabilityFn | SeeboCapabilityDescriptor> =
+      Object.fromEntries(WIDGET_CAPABILITIES.map((name) => [name, () => undefined]));
     // Register `template` (a data capability) only when a provider is wired — pure widget engines
     // (e.g. tests, the Template Editor without a workspace) keep their original surface untouched.
     const dataCapabilities: string[] = [];
     const { templateData, envData } = this.deps;
     if (templateData) {
-      capabilities.template = (req) => templateData.resolve(templateRef(req), ctx?.projectId ?? null);
+      // Declare an `object` contract so member access (`template('cfg').baseUrl`) type-checks without
+      // the template repeating `type:object()`; a JSON object would otherwise fail the default (string)
+      // validation with CAPABILITY_INVALID_VALUE. Templates can still override the type when needed.
+      capabilities.template = defineCapability('template', {
+        type: 'object',
+        resolve: (req) => templateData.resolve(templateRef(req), ctx?.projectId ?? null),
+      });
       dataCapabilities.push('template');
     }
     // `env` resolves against the workspace's active environment (global, not project-scoped), so it
