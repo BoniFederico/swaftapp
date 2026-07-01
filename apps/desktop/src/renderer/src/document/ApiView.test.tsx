@@ -5,6 +5,7 @@ import { makeError, ok, type RequirementDto, type ResultEnvelope } from '@swaft/
 import { AppProviders } from '../AppProviders';
 import { ApiClient } from '../api-client/client';
 import type { Transport } from '../api-client/transport/types';
+import { notifyTreeChanged } from '../workspace/treeBus';
 import { ApiView } from './ApiView';
 
 /** Type into a CodeMirror-backed field (the URL/value editors) — `fireEvent.change` doesn't apply. */
@@ -12,6 +13,13 @@ function typeInto(container: HTMLElement, ariaLabel: string, text: string) {
   const content = container.querySelector(`[aria-label="${ariaLabel}"]`);
   const view = EditorView.findFromDOM(content?.closest('.cm-editor') as HTMLElement);
   act(() => view!.dispatch({ changes: { from: 0, to: view!.state.doc.length, insert: text } }));
+}
+
+/** Read the current text of a CodeMirror-backed field (e.g. the URL bar). */
+function readField(container: HTMLElement, ariaLabel: string): string {
+  const content = container.querySelector(`[aria-label="${ariaLabel}"]`);
+  const view = EditorView.findFromDOM(content?.closest('.cm-editor') as HTMLElement);
+  return view?.state.doc.toString() ?? '';
 }
 
 const SEG: RequirementDto = {
@@ -40,12 +48,19 @@ function template(source = JSON.stringify({ method: 'GET', url: '' })) {
 
 /** A fake transport: canned op responses; `http.send` records calls and enforces the input gate. */
 function makeTransport(sent: unknown[]): Transport {
+  // Persisted source, so `template.get` reflects a prior `template.updateSource` (as the real backend
+  // does) — otherwise the API view's reload-on-save would clobber the just-saved request.
+  let source = template().source;
   return {
     call(op, payload): Promise<ResultEnvelope<unknown>> {
-      const p = (payload ?? {}) as { request?: { url?: string }; values?: Record<string, unknown> };
+      const p = (payload ?? {}) as {
+        request?: { url?: string };
+        values?: Record<string, unknown>;
+        source?: string;
+      };
       switch (op) {
         case 'template.get':
-          return Promise.resolve(ok({ template: template() }));
+          return Promise.resolve(ok({ template: { ...template(), source } }));
         case 'api.history.list':
           return Promise.resolve(ok({ items: [] }));
         case 'secret.list':
@@ -55,7 +70,8 @@ function makeTransport(sent: unknown[]): Transport {
         case 'inputState.set':
           return Promise.resolve(ok({ values: p.values ?? {} }));
         case 'template.updateSource':
-          return Promise.resolve(ok({ template: template() }));
+          source = p.source ?? source;
+          return Promise.resolve(ok({ template: { ...template(), source } }));
         case 'api.analyze': {
           const url = p.request?.url ?? '';
           return Promise.resolve(ok({ requirements: url.includes('${') ? [SEG] : [], diagnostics: [] }));
@@ -148,5 +164,67 @@ describe('ApiView — formula inputs (Fase 1)', () => {
     fireEvent.click(tab);
     const overview = await screen.findByTestId('api-request-render');
     expect(overview.textContent).toContain('https://example.com/users');
+  });
+});
+
+describe('ApiView — bindings', () => {
+  it('reflects URL query params in the Params tab (URL → Params)', async () => {
+    const { container } = renderApiView([]);
+    await screen.findByRole('button', { name: 'Send' });
+
+    typeInto(container, 'URL', 'https://example.com/x?a=1&b=2');
+
+    // The Params tab is the default; its Key inputs must mirror the URL query string.
+    await waitFor(() => {
+      const keys = screen.getAllByLabelText('Key').map((el) => (el as HTMLInputElement).value);
+      expect(keys).toContain('a');
+      expect(keys).toContain('b');
+    });
+  });
+
+  it('reflects a Params-tab edit back into the URL (Params → URL)', async () => {
+    const { container } = renderApiView([]);
+    await screen.findByRole('button', { name: 'Send' });
+    typeInto(container, 'URL', 'https://example.com');
+
+    // Type a key into the trailing (empty) row → the URL gains the query param.
+    const keyInputs = screen.getAllByLabelText('Key');
+    fireEvent.change(keyInputs[keyInputs.length - 1]!, { target: { value: 'token' } });
+
+    await waitFor(() => expect(readField(container, 'URL')).toContain('token='));
+  });
+
+  it('reflects an external template save in the fields (editor → API view)', async () => {
+    const state = { source: JSON.stringify({ method: 'GET', url: 'https://one.example.com' }) };
+    const transport: Transport = {
+      call(op): Promise<ResultEnvelope<unknown>> {
+        switch (op) {
+          case 'template.get':
+            return Promise.resolve(ok({ template: { ...template(), source: state.source } }));
+          case 'api.history.list':
+            return Promise.resolve(ok({ items: [] }));
+          case 'secret.list':
+            return Promise.resolve(ok({ refs: [] }));
+          case 'inputState.get':
+            return Promise.resolve(ok({ values: {} }));
+          case 'api.analyze':
+            return Promise.resolve(ok({ requirements: [], diagnostics: [] }));
+          default:
+            return Promise.resolve(ok({}));
+        }
+      },
+    };
+    const { container } = render(
+      <AppProviders>
+        <ApiView client={new ApiClient(transport)} templateId="t1" />
+      </AppProviders>,
+    );
+    await waitFor(() => expect(readField(container, 'URL')).toBe('https://one.example.com'));
+
+    // The Template Editor saves a new source, then fires the tree-changed bus — the API view reloads.
+    state.source = JSON.stringify({ method: 'POST', url: 'https://two.example.com' });
+    act(() => notifyTreeChanged());
+
+    await waitFor(() => expect(readField(container, 'URL')).toBe('https://two.example.com'));
   });
 });

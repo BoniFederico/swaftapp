@@ -1,9 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { SeeboField } from '../editor/SeeboField';
 import { useI18n } from '../i18n/I18nProvider';
 import { CopyIcon, IconButton, TrashIcon } from '../ui';
 
 type Pair = { k: string; v: string };
+
+/** Shallow record equality (same keys + values), used to tell our own echo from an external change. */
+function recordsEqual(a: Record<string, string>, b: Record<string, string>): boolean {
+  const ak = Object.keys(a);
+  return ak.length === Object.keys(b).length && ak.every((k) => a[k] === b[k]);
+}
 
 /** Serialize non-empty pairs to `key: value` lines for the batch editor. */
 function toText(pairs: Pair[]): string {
@@ -47,10 +53,28 @@ export function KeyValueEditor({
     const seed = Object.entries(value).map(([k, v]) => ({ k, v }));
     return [...seed, { k: '', v: '' }];
   });
+  // The record we last emitted via onChange, so we can tell our own echo from an external change.
+  const lastEmitted = useRef(value);
+
+  // Re-seed the rows when `value` changes EXTERNALLY (e.g. the URL bar was edited → the Params tab must
+  // reflect it). Skips the echo of our own onChange (comparing to `lastEmitted`) so typing a row never
+  // resets the cursor or the trailing empty row.
+  useEffect(() => {
+    if (recordsEqual(value, lastEmitted.current)) return;
+    lastEmitted.current = value;
+    const seed = Object.entries(value).map(([k, v]) => ({ k, v }));
+    setPairs([...seed, { k: '', v: '' }]);
+    if (batch) setBatchText(toText(seed));
+  }, [value, batch]);
 
   function toggleBatch() {
     if (!batch) setBatchText(toText(pairs)); // entering batch: seed from the current pairs
     setBatch((b) => !b);
+  }
+
+  function emit(rec: Record<string, string>) {
+    lastEmitted.current = rec;
+    onChange(rec);
   }
 
   function commit(next: Pair[]) {
@@ -65,7 +89,7 @@ export function KeyValueEditor({
     setPairs(trimmed);
     const rec: Record<string, string> = {};
     for (const p of trimmed) if (p.k.trim()) rec[p.k.trim()] = p.v;
-    onChange(rec);
+    emit(rec);
   }
 
   function setAt(i: number, patch: Partial<Pair>) {
@@ -78,7 +102,7 @@ export function KeyValueEditor({
   function applyBatch(text: string) {
     const rec = fromText(text);
     setPairs([...Object.entries(rec).map(([k, v]) => ({ k, v })), { k: '', v: '' }]);
-    onChange(rec);
+    emit(rec);
   }
 
   return (

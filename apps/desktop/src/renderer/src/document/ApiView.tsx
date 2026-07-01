@@ -25,7 +25,7 @@ import {
   TextField,
   useToast,
 } from '../ui';
-import { notifyTreeChanged } from '../workspace/treeBus';
+import { notifyTreeChanged, subscribeTreeChanged } from '../workspace/treeBus';
 import { InputPanel } from './InputPanel';
 import { compactValues } from './inputValidation';
 import { KeyValueEditor } from './KeyValueEditor';
@@ -114,7 +114,9 @@ export function ApiView({
     );
   };
   // The last-persisted serialized request; `req` differs from it exactly when there are unsaved edits.
+  // A ref mirrors it so the tree-change reload can tell an external save from the echo of our own save.
   const [savedSource, setSavedSource] = useState<string | null>(null);
+  const savedSourceRef = useRef<string | null>(null);
   const [req, setReq] = useState<HttpRequestModel>({ method: 'GET', url: '' });
   const [response, setResponse] = useState<HttpResponseDto | null>(null);
   // The concrete (rendered) request that was sent, when the request used `${ … }` formulas.
@@ -143,6 +145,26 @@ export function ApiView({
 
   useEffect(() => {
     let cancelled = false;
+    const applySaved = (source: string) => {
+      savedSourceRef.current = source;
+      setSavedSource(source);
+    };
+    // Reflect an EXTERNAL change to the template source (e.g. edited + saved in the Template Editor):
+    // re-parse it into the structured request. Skips the echo of our own save (source === saved).
+    async function reloadSource() {
+      try {
+        const res = await client.call('template.get', { id: templateId });
+        if (cancelled) return;
+        onTitleChange?.(res.template.name);
+        const parsed = parseRequest(res.template.source);
+        const source = JSON.stringify(parsed);
+        if (source === savedSourceRef.current) return;
+        setReq(parsed);
+        applySaved(source);
+      } catch {
+        /* best-effort */
+      }
+    }
     void (async () => {
       try {
         const [tpl, hist, sec, inp] = await Promise.all([
@@ -155,7 +177,7 @@ export function ApiView({
         onTitleChange?.(tpl.template.name);
         const parsed = parseRequest(tpl.template.source);
         setReq(parsed);
-        setSavedSource(JSON.stringify(parsed));
+        applySaved(JSON.stringify(parsed));
         setHistory(hist.items);
         setRefs(sec.refs);
         setValues(inp.values);
@@ -170,8 +192,10 @@ export function ApiView({
         /* best-effort */
       }
     })();
+    const unsubscribe = subscribeTreeChanged(() => void reloadSource());
     return () => {
       cancelled = true;
+      unsubscribe();
     };
   }, [client, templateId]);
 
@@ -242,6 +266,7 @@ export function ApiView({
   async function save() {
     const source = JSON.stringify(req);
     await client.call('template.updateSource', { id: templateId, source });
+    savedSourceRef.current = source;
     setSavedSource(source);
     notifyTreeChanged();
   }
