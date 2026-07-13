@@ -2754,3 +2754,223 @@ body {
   display: block;
   width: 8px;
 }
+
+/* ---------- Environments: header picker ---------- */
+.env-picker__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 280px;
+  height: 34px;
+  padding: 0 var(--space-2) 0 var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.env-picker__trigger:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+}
+.env-picker__trigger.is-empty {
+  color: var(--text-muted);
+}
+.env-picker__name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.env-picker__placeholder {
+  white-space: nowrap;
+}
+.env-picker__chevron {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+/* Ownership badges — subtle color per scope. */
+.env-badge {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.env-badge--user {
+  color: color-mix(in srgb, var(--primary) 80%, var(--text));
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
+}
+.env-badge--project {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 40%, var(--border));
+}
+
+/* The header picker's popover listbox. */
+.env-menu {
+  padding: var(--space-1);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-2);
+  z-index: 150;
+}
+.env-menu__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow: auto;
+}
+.env-menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.env-menu__item:hover {
+  background: var(--surface-2);
+}
+.env-menu__item.is-active {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+.env-menu__item--muted {
+  color: var(--text-muted);
+}
+.env-menu__name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.env-menu__empty {
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+.env-menu__sep {
+  height: 1px;
+  background: var(--border);
+  margin: var(--space-1) 0;
+}
+.env-menu__manage {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* ---------- Environments: settings section ---------- */
+.env-settings {
+  display: flex;
+  gap: var(--space-5);
+  align-items: flex-start;
+}
+.env-settings__list {
+  width: 240px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.env-settings__listhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.env-settings__items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.env-settings__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.env-settings__item:hover {
+  background: var(--surface-2);
+}
+.env-settings__item.is-active {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
+}
+.env-settings__name {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.env-settings__dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--success);
+}
+.env-settings__detail {
+  flex: 1;
+  min-width: 0;
+  max-width: 520px;
+}
+.env-settings__title {
+  margin: 0;
+  font-size: var(--fs-lg);
+}
+.env-settings__detailhead {
+  align-items: center;
+  justify-content: space-between;
+}
+.env-settings__desc {
+  resize: vertical;
+  min-height: 52px;
+  font-family: inherit;
+}
+.env-settings__actions {
+  gap: var(--space-2);
+  justify-content: space-between;
+}
+
+/* Key/value variable rows. */
+.env-vars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.env-vars__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.env-vars__key {
+  flex: 0 0 38%;
+  font-family: var(--font-mono);
+}
+.env-vars__value {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+}

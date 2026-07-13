@@ -19,6 +19,7 @@ import {
   setChangelogService,
   setDatabaseService,
   setDbHistoryService,
+  setEnvironmentService,
   setHttpService,
   setOrganizationService,
   setPlatformDialogs,
@@ -36,6 +37,7 @@ import { ApiRequestService } from './ApiRequestService';
 import { BatcherService } from './BatcherService';
 import { ChangelogService } from './ChangelogService';
 import { DbHistoryService } from './DbHistoryService';
+import { EnvironmentService } from './EnvironmentService';
 import { OrganizationService } from './OrganizationService';
 import { ReleaseService } from './ReleaseService';
 import { RenderService } from './RenderService';
@@ -88,7 +90,8 @@ export function installTestWorkspaceBackend(
   const templates = new TemplateService(workspace, organization, changelog);
   const releases = new ReleaseService(workspace, templates, changelog);
   const templateData = new TemplateDataProvider(workspace, releases);
-  const host = new SeeboHost({}, { templateData });
+  const environments = new EnvironmentService(workspace, currentUsername);
+  const host = new SeeboHost({}, { templateData, envData: environments });
   const render = new RenderService(workspace, templates, settings, host, releases);
   const apiRequest = new ApiRequestService(templates, settings, host);
   const batcher = new BatcherService(templates, releases, settings, host);
@@ -123,8 +126,9 @@ export function installTestWorkspaceBackend(
   setDbHistoryService(dbHistory);
   setBatcherService(batcher);
   setActionService(actions);
+  setEnvironmentService(environments);
   setPlatformDialogs(dialogs);
-  return { files, appStore, workspace, actions };
+  return { files, appStore, workspace, actions, environments };
 }
 
 export function resetTestWorkspaceBackend(): void {
@@ -144,5 +148,6 @@ export function resetTestWorkspaceBackend(): void {
   setDbHistoryService(null);
   setBatcherService(null);
   setActionService(null);
+  setEnvironmentService(null);
   setPlatformDialogs(null);
 }

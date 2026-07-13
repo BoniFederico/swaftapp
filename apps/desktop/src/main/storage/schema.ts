@@ -11,7 +11,7 @@
  * reshaped to flat collections) + workspace settings + restrictions.
  */
 
-export const SCHEMA_VERSION = 17;
+export const SCHEMA_VERSION = 18;
 
 /** Sync-metadata columns present on every 🟢 synchronized entity. */
 export const SYNC_META_COLUMNS = [
@@ -34,6 +34,7 @@ export const SYNCHRONIZED_TABLES = [
   'releases',
   'changelog',
   'template_tags',
+  'environments',
 ] as const;
 
 /** 🔵 local-only tables (no sync metadata; never synchronized). */
@@ -43,6 +44,7 @@ export const LOCAL_ONLY_TABLES = [
   'api_history',
   'db_history',
   'receipts',
+  'environment_selection',
 ] as const;
 
 /** DDL fragment: the shared sync-metadata columns. */
@@ -151,6 +153,27 @@ const TEMPLATE_TAGS_DDL = `CREATE TABLE template_tags (
   ${SYNC_META_DDL}
 );`;
 
+// Environments: 🟢 synchronized named variable sets. `owner_kind` scopes each environment to the
+// current user (personal), the workspace (shared), or a specific project; `owner_id` carries the
+// username / null / project id respectively. `vars` is a JSON object (string → string) — plain
+// (non-secret) values, read by the `env(...)` Seebo data capability.
+const ENVIRONMENTS_DDL = `CREATE TABLE environments (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  owner_kind TEXT NOT NULL,
+  owner_id TEXT,
+  vars TEXT NOT NULL DEFAULT '{}',
+  ${SYNC_META_DDL}
+);`;
+
+// 🔵 local-only: the single active environment for this workspace (per device/user, never synced).
+const ENVIRONMENT_SELECTION_DDL = `CREATE TABLE environment_selection (
+  id TEXT PRIMARY KEY,
+  environment_id TEXT,
+  updated_at TEXT NOT NULL
+);`;
+
 // M10: 🔵 local-only, redacted action receipts (never the action input values).
 const RECEIPTS_DDL = `CREATE TABLE receipts (
   id TEXT PRIMARY KEY,
@@ -218,6 +241,10 @@ ${DB_HISTORY_DDL}
 ${RECEIPTS_DDL}
 
 ${TEMPLATE_TAGS_DDL}
+
+${ENVIRONMENTS_DDL}
+
+${ENVIRONMENT_SELECTION_DDL}
 `;
 
 /**
@@ -356,5 +383,14 @@ export const MIGRATIONS: { to: number; sql: string }[] = [
     to: 17,
     // v17 folds the `render` type into `document` (its subtypes are now document subtypes).
     sql: `UPDATE templates SET type = 'document' WHERE type = 'render';`,
+  },
+  {
+    to: 18,
+    // v18 adds environments (named variable sets, read by the `env(...)` capability) + the local-only
+    // active-environment selection.
+    sql: `
+      ${ENVIRONMENTS_DDL}
+      ${ENVIRONMENT_SELECTION_DDL}
+    `,
   },
 ];

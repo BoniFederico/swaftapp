@@ -19,6 +19,7 @@ import {
   setChangelogService,
   setDatabaseService,
   setDbHistoryService,
+  setEnvironmentService,
   setHttpService,
   setOrganizationService,
   setPlatformDialogs,
@@ -36,6 +37,7 @@ import { ApiRequestService } from './workspace/ApiRequestService';
 import { BatcherService } from './workspace/BatcherService';
 import { ChangelogService } from './workspace/ChangelogService';
 import { DbHistoryService } from './workspace/DbHistoryService';
+import { EnvironmentService } from './workspace/EnvironmentService';
 import { OrganizationService } from './workspace/OrganizationService';
 import { ReleaseService } from './workspace/ReleaseService';
 import { RenderService } from './workspace/RenderService';
@@ -128,7 +130,9 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
   const releases = new ReleaseService(workspaceService, templates, changelog);
   // The `template` data capability reads other `json` templates' effective source as JSON objects.
   const templateData = new TemplateDataProvider(workspaceService, releases);
-  const host = new SeeboHost({}, { templateData });
+  // The `env` data capability reads the active environment's variables (no user input needed).
+  const environments = new EnvironmentService(workspaceService, currentUsername);
+  const host = new SeeboHost({}, { templateData, envData: environments });
   const render = new RenderService(workspaceService, templates, settings, host, releases);
   const apiRequest = new ApiRequestService(templates, settings, host);
   const batcher = new BatcherService(templates, releases, settings, host);
@@ -179,5 +183,6 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
   setDbHistoryService(dbHistory);
   setBatcherService(batcher);
   setActionService(actionService);
+  setEnvironmentService(environments);
   setPlatformDialogs(dialogs);
 }

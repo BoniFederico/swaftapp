@@ -4,6 +4,8 @@ import type {
   SeeboActionExecutionResult,
   SeeboActionsModule,
   SeeboAnalysis,
+  SeeboCapabilityDescriptor,
+  SeeboCapabilityFn,
   SeeboDiagnostic,
   SeeboEngine,
   SeeboExecuteContext,
@@ -37,6 +39,25 @@ export const WIDGET_CAPABILITIES = [
 export type WidgetCapability = (typeof WIDGET_CAPABILITIES)[number];
 
 /**
+ * The base Seebo **type** each widget capability contracts for (SPEC §1.6). Registered as the
+ * capability's static contract so `need('number')` etc. inherit the right type without the template
+ * repeating `type:int()` — a bare `${ number('x') }` then validates its value as an int instead of
+ * defaulting to `string` (which accepted any text). A template may still override the type per call.
+ * `number` defaults to `int` (matching the UI's integer-first widget); use `type:float()` for decimals.
+ */
+const WIDGET_TYPES: Record<WidgetCapability, string> = {
+  textbox: 'string',
+  textarea: 'string',
+  number: 'int',
+  boolean: 'bool',
+  listbox: 'string',
+  multiOption: 'array',
+  jsonInput: 'object',
+  datetimebox: 'datetime',
+  durationbox: 'duration',
+};
+
+/**
  * Non-widget **data** capabilities ({@link DATA_CAPABILITIES}, shared with the renderer): unlike
  * widgets (which suspend for UI input), these resolve a real value during the drive loop. `template`
  * reads another `json` template's content as a Seebo object. Always allow-listed (like widgets), but
@@ -46,6 +67,12 @@ export type WidgetCapability = (typeof WIDGET_CAPABILITIES)[number];
 export interface TemplateDataProvider {
   /** Resolve `ref` (a template name) within `projectId` to its parsed JSON content, or throw. */
   resolve(ref: string, projectId: string | null): Promise<unknown>;
+}
+
+/** Resolves the `env(...)` data-capability: a variable from the workspace's active environment. */
+export interface EnvDataProvider {
+  /** Resolve `key` to the active environment's value (no user prompt), or throw when absent. */
+  resolve(key: string): Promise<unknown>;
 }
 
 /** Per-render context so data capabilities can scope their lookups (e.g. `template` → same project). */
@@ -64,6 +91,7 @@ export interface SeeboHostOptions {
 /** Collaborators a host needs for data capabilities; omitted in pure (widget-only) engines/tests. */
 export interface SeeboHostDeps {
   templateData?: TemplateDataProvider;
+  envData?: EnvDataProvider;
 }
 
 /** Per-render policy derived from workspace settings (only non-empty allow-lists restrict). */
@@ -81,6 +109,22 @@ function templateRef(req: SeeboRequirement): string {
   const args = (req as { args?: unknown }).args;
   if (args && typeof args === 'object' && 'ref' in args) {
     const v = (args as { ref?: unknown }).ref;
+    if (typeof v === 'string') return v;
+  }
+  const direct = (req as { ref?: unknown }).ref;
+  if (typeof direct === 'string') return direct;
+  return typeof req.id === 'string' ? req.id : String(req.id ?? '');
+}
+
+/**
+ * The variable name passed to an `env(...)` capability call. Accepts `env({ key: 'API_URL' })`,
+ * `env({ ref: 'API_URL' })`, or the requirement `id` (so `env({ id: 'API_URL', type: string() })`
+ * works, mirroring the `template(...)` convention).
+ */
+function envKey(req: SeeboRequirement): string {
+  const args = (req as { args?: Record<string, unknown> }).args;
+  if (args && typeof args === 'object') {
+    const v = args.key ?? args.ref;
     if (typeof v === 'string') return v;
   }
   const direct = (req as { ref?: unknown }).ref;
@@ -114,17 +158,35 @@ export class SeeboHost {
   }
 
   private async engine(policy?: RenderPolicy, ctx?: SeeboRenderContext): Promise<SeeboEngine> {
-    const { createEngine } = await this.loadSeebo();
-    const capabilities: Record<string, (req: SeeboRequirement) => unknown> = Object.fromEntries(
-      WIDGET_CAPABILITIES.map((name) => [name, () => undefined]),
-    );
+    const { createEngine, defineCapability } = await this.loadSeebo();
+    // Each widget resolves to `undefined` (suspends for UI input); its `type` contract makes the
+    // requirement carry the widget's natural type instead of defaulting to `string`.
+    const capabilities: Record<string, SeeboCapabilityFn | SeeboCapabilityDescriptor> =
+      Object.fromEntries(
+        WIDGET_CAPABILITIES.map((name) => [
+          name,
+          defineCapability(name, { type: WIDGET_TYPES[name], resolve: () => undefined }),
+        ]),
+      );
     // Register `template` (a data capability) only when a provider is wired — pure widget engines
     // (e.g. tests, the Template Editor without a workspace) keep their original surface untouched.
     const dataCapabilities: string[] = [];
-    const { templateData } = this.deps;
+    const { templateData, envData } = this.deps;
     if (templateData) {
-      capabilities.template = (req) => templateData.resolve(templateRef(req), ctx?.projectId ?? null);
+      // Declare an `object` contract so member access (`template('cfg').baseUrl`) type-checks without
+      // the template repeating `type:object()`; a JSON object would otherwise fail the default (string)
+      // validation with CAPABILITY_INVALID_VALUE. Templates can still override the type when needed.
+      capabilities.template = defineCapability('template', {
+        type: 'object',
+        resolve: (req) => templateData.resolve(templateRef(req), ctx?.projectId ?? null),
+      });
       dataCapabilities.push('template');
+    }
+    // `env` resolves against the workspace's active environment (global, not project-scoped), so it
+    // needs no render context — it works everywhere Seebo runs (documents, API fields, editor preview).
+    if (envData) {
+      capabilities.env = (req) => envData.resolve(envKey(req));
+      dataCapabilities.push('env');
     }
     const alwaysAllowed = [...WIDGET_CAPABILITIES, ...dataCapabilities];
 

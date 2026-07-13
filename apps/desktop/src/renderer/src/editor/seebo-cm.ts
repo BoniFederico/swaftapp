@@ -112,6 +112,10 @@ const WIDGET_COMPLETIONS: Completion[] = [
   widget('durationbox', 'duration', "id: '${id}', label: '${Label}', type: duration()"),
   widget('need', 'required input', "id: '${id}', type: string(), capability: 'input'"),
 ];
+/** Data capabilities: auto-resolved during render (no user input). Usable in documents and fields. */
+const DATA_COMPLETIONS: Completion[] = [
+  widget('env', 'active environment variable', "id: '${KEY}', type: string()"),
+];
 const TYPE_COMPLETIONS: Completion[] = ['string()', 'int()', 'float()', 'bool()', 'datetime()', 'duration()', 'object()'].map(
   (label): Completion => ({ label, type: 'type' }),
 );
@@ -119,10 +123,19 @@ const ACTION_COMPLETION = snippetCompletion(
   "action({ id: '${id}', type: '${type}', input: { ${field}: ${value} }, confirm: true, environment: 'test' })",
   { label: 'action', type: 'function', detail: 'external effect' },
 );
-/** Full set (documents/templates): widgets, the `action` effect, and types. */
-const SEEBO_COMPLETIONS: Completion[] = [...WIDGET_COMPLETIONS, ACTION_COMPLETION, ...TYPE_COMPLETIONS];
+/** Full set (documents/templates): widgets, data capabilities, the `action` effect, and types. */
+const SEEBO_COMPLETIONS: Completion[] = [
+  ...WIDGET_COMPLETIONS,
+  ...DATA_COMPLETIONS,
+  ACTION_COMPLETION,
+  ...TYPE_COMPLETIONS,
+];
 /** Pure subset for fields where effects are forbidden (API request fields): no `action`. */
-const SEEBO_FORMULA_COMPLETIONS: Completion[] = [...WIDGET_COMPLETIONS, ...TYPE_COMPLETIONS];
+const SEEBO_FORMULA_COMPLETIONS: Completion[] = [
+  ...WIDGET_COMPLETIONS,
+  ...DATA_COMPLETIONS,
+  ...TYPE_COMPLETIONS,
+];
 
 /** True when the cursor sits inside an unclosed `${` / `@{` slot. */
 function insideSeeboSlot(context: CompletionContext): boolean {

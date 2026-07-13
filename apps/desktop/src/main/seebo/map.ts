@@ -55,8 +55,20 @@ export function toRequirementDto(r: SeeboRequirement): RequirementDto {
   };
 }
 
+/**
+ * Human-readable message for a diagnostic. Driver diagnostics (e.g. a capability provider that threw)
+ * carry only the code as their `message`; the real cause lives in `data.cause` (the thrown error's
+ * message). Prefer that so failures like `env('MISSING')` read "Variable … is not defined" instead of
+ * the opaque "CAPABILITY_ERROR".
+ */
+function diagnosticMessage(d: SeeboDiagnostic): string {
+  const cause = d.data?.cause;
+  if (typeof cause === 'string' && cause.trim() && cause !== d.code) return cause;
+  return d.message && d.message !== d.code ? d.message : (d.message || d.code);
+}
+
 export function toDiagnosticDto(d: SeeboDiagnostic): DiagnosticDto {
-  return { code: d.code, message: d.message, position: d.position ?? null };
+  return { code: d.code, message: diagnosticMessage(d), position: d.position ?? null };
 }
 
 export function toActionSummaryDto(a: SeeboAction): ActionSummaryDto {
