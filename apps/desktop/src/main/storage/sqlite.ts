@@ -101,14 +101,6 @@ export class SqliteDb {
     this.db.exec(sql);
   }
 
-  /** Run a query returning the raw columns + row tuples (for the Database View). */
-  select(sql: string): { columns: string[]; rows: SqlValue[][] } {
-    const result = this.db.exec(sql);
-    const first = result[0];
-    if (!first) return { columns: [], rows: [] };
-    return { columns: first.columns, rows: first.values as SqlValue[][] };
-  }
-
   /** The `.swaft` schema version, stored in SQLite's `user_version` pragma. */
   userVersion(): number {
     const res = this.db.exec('PRAGMA user_version');

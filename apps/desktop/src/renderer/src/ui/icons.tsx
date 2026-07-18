@@ -90,14 +90,6 @@ export function ApiIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-export function DatabaseIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <Icon {...props}>
-      <path d="M12 3C7.58 3 4 4.79 4 7s3.58 4 8 4 8-1.79 8-4-3.58-4-8-4zM4 9v3c0 2.21 3.58 4 8 4s8-1.79 8-4V9c0 2.21-3.58 4-8 4s-8-1.79-8-4zm0 5v3c0 2.21 3.58 4 8 4s8-1.79 8-4v-3c0 2.21-3.58 4-8 4s-8-1.79-8-4z" />
-    </Icon>
-  );
-}
-
 export function ChevronIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Icon {...props}>

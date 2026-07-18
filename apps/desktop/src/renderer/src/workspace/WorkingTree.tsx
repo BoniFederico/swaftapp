@@ -16,7 +16,6 @@ import {
   ChevronIcon,
   ChevronLeftIcon,
   ConfirmDialog,
-  DatabaseIcon,
   DocumentIcon,
   EmptyIcon,
   FolderIcon,
@@ -80,8 +79,6 @@ function TypeIcon({ type }: { type: TemplateType }) {
   switch (type) {
     case 'api':
       return <ApiIcon className={className} />;
-    case 'database':
-      return <DatabaseIcon className={className} />;
     default:
       return <DocumentIcon className={className} />;
   }
@@ -540,7 +537,7 @@ export function WorkingTree({
   }
 
   function renderTypeView() {
-    const types: TemplateType[] = ['document', 'api', 'database'];
+    const types: TemplateType[] = ['document', 'api'];
     return types.map((type) => {
       const ofType = projectTemplates.filter((tpl) => tpl.type === type);
       if (ofType.length === 0) return null;

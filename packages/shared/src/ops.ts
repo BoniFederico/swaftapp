@@ -149,8 +149,8 @@ export const restrictionCreateRequestSchema = z
 // --- M6: templates + Seebo rendering ----------------------------------------
 
 // Template kinds. `render` was folded into `document` (its subtypes — mermaid/swagger/echarts — are
-// now document subtypes that render in the output). `database` is reserved (the DB client is a tool).
-export const templateTypeSchema = z.enum(['document', 'api', 'database']);
+// now document subtypes that render in the output).
+export const templateTypeSchema = z.enum(['document', 'api']);
 
 export const templateCreateRequestSchema = z
   .object({
@@ -255,25 +255,6 @@ export const apiAnalyzeRequestSchema = z
   .strict();
 export const secretSetRequestSchema = z
   .object({ ref: z.string().trim().min(1).max(64), value: z.string().max(4096) })
-  .strict();
-
-// --- M9: read-only database client ------------------------------------------
-
-export const dbEngineSchema = z.enum(['sqlite', 'postgres']);
-export const dbQueryRequestSchema = z
-  .object({
-    engine: dbEngineSchema,
-    file: z.string().optional(),
-    sql: z.string().min(1).max(100_000),
-  })
-  .strict();
-export const dbExportRequestSchema = z
-  .object({
-    format: z.enum(['csv', 'json']),
-    columns: z.array(z.string()),
-    rows: z.array(z.array(z.unknown())),
-    defaultName: z.string().max(120).optional(),
-  })
   .strict();
 
 // --- M10: batcher + actions -------------------------------------------------
@@ -398,11 +379,6 @@ export const OP_NAMES = [
   'api.history.delete',
   'secret.set',
   'secret.list',
-  'db.query',
-  'db.history.list',
-  'db.history.clear',
-  'db.export',
-  'db.pickFile',
   'batch.analyze',
   'batch.render',
   'action.execute',
@@ -483,11 +459,6 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'api.history.delete': idRequestSchema,
   'secret.set': secretSetRequestSchema,
   'secret.list': emptyRequestSchema,
-  'db.query': dbQueryRequestSchema,
-  'db.history.list': emptyRequestSchema,
-  'db.history.clear': emptyRequestSchema,
-  'db.export': dbExportRequestSchema,
-  'db.pickFile': emptyRequestSchema,
   'batch.analyze': batchAnalyzeRequestSchema,
   'batch.render': batchRenderRequestSchema,
   'action.execute': actionExecuteRequestSchema,
@@ -771,13 +742,11 @@ export const SUBTYPES: Record<TemplateType, string[]> = {
     'yaml',
   ],
   api: ['json'],
-  database: [],
 };
 /** Default subtype assigned to a new template (and used to group subtype-less ones in the tree). */
 export const DEFAULT_SUBTYPE: Record<TemplateType, string> = {
   document: 'text',
   api: 'json',
-  database: 'text',
 };
 /** Subtypes the Document output shows rendered (not as code). */
 export const RENDERABLE_SUBTYPES = new Set(['html', 'markdown', 'eml', 'mermaid', 'swagger', 'echarts']);
@@ -827,25 +796,6 @@ export interface ApiHistoryItem {
   method: string;
   url: string;
   status: number | null;
-  createdAt: string;
-}
-
-// --- M9 DTOs ----------------------------------------------------------------
-
-export type DbEngine = z.infer<typeof dbEngineSchema>;
-
-export interface DbResultDto {
-  columns: string[];
-  rows: unknown[][];
-  rowCount: number;
-}
-
-/** 🔵 local-only, metadata-only query history (never result rows). */
-export interface DbHistoryItem {
-  id: string;
-  engine: string;
-  sql: string;
-  status: string;
   createdAt: string;
 }
 
@@ -998,16 +948,6 @@ export interface OkResponse {
   ok: true;
 }
 
-export type DbQueryRequest = z.infer<typeof dbQueryRequestSchema>;
-export type DbExportRequest = z.infer<typeof dbExportRequestSchema>;
-
-export interface DbResultResponse {
-  result: DbResultDto;
-}
-export interface DbHistoryResponse {
-  items: DbHistoryItem[];
-}
-
 export type BatchAnalyzeRequest = z.infer<typeof batchAnalyzeRequestSchema>;
 export type BatchRenderRequest = z.infer<typeof batchRenderRequestSchema>;
 export type ActionExecuteRequest = z.infer<typeof actionExecuteRequestSchema>;
@@ -1095,11 +1035,6 @@ export interface OpContracts {
   'api.history.delete': { request: IdRequest; response: OkResponse };
   'secret.set': { request: SecretSetRequest; response: SecretsResponse };
   'secret.list': { request: EmptyRequest; response: SecretsResponse };
-  'db.query': { request: DbQueryRequest; response: DbResultResponse };
-  'db.history.list': { request: EmptyRequest; response: DbHistoryResponse };
-  'db.history.clear': { request: EmptyRequest; response: DbHistoryResponse };
-  'db.export': { request: DbExportRequest; response: DialogPathResponse };
-  'db.pickFile': { request: EmptyRequest; response: DialogPathResponse };
   'batch.analyze': { request: BatchAnalyzeRequest; response: RequirementsResponse };
   'batch.render': { request: BatchRenderRequest; response: RenderResponse };
   'action.execute': { request: ActionExecuteRequest; response: ReceiptsResponse };

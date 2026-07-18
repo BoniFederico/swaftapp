@@ -3,8 +3,6 @@ import {
   type ApiAnalyzeRequest,
   type BatchAnalyzeRequest,
   type BatchRenderRequest,
-  type DbExportRequest,
-  type DbQueryRequest,
   type EnvCreateRequest,
   type EnvSelectionSetRequest,
   type EnvUpdateRequest,
@@ -48,8 +46,6 @@ import {
 } from '@swaft/shared';
 import { getAuthService } from '../auth/registry';
 import { toErrorEnvelope } from '../errors';
-import { writeFile } from 'node:fs/promises';
-import { toCsv, toJson } from '../db/export';
 import {
   getActionService,
   getApiHistoryService,
@@ -57,8 +53,6 @@ import {
   getAppStore,
   getBatcherService,
   getChangelogService,
-  getDatabaseService,
-  getDbHistoryService,
   getEnvironmentService,
   getHttpService,
   getOrganizationService,
@@ -340,39 +334,6 @@ export const handlers: Record<OpName, Handler> = {
       return { refs: getSecretService().list() };
     }),
   'secret.list': () => ({ refs: getSecretService().list() }),
-
-  // Read-only database client (M9)
-  'db.query': (p) =>
-    svc(async () => {
-      const r = p as DbQueryRequest;
-      try {
-        const result = await getDatabaseService().query(r);
-        await getDbHistoryService().record(r.engine, r.sql, `ok (${result.rowCount})`);
-        return { result };
-      } catch (err) {
-        // Record blocked/failed attempts too (metadata only), then rethrow for the envelope.
-        const code = err && typeof err === 'object' && 'code' in err ? String(err.code) : 'error';
-        await getDbHistoryService()
-          .record(r.engine, r.sql, code)
-          .catch(() => undefined);
-        throw err;
-      }
-    }),
-  'db.history.list': () => svc(async () => ({ items: await getDbHistoryService().list() })),
-  'db.history.clear': () => svc(async () => ({ items: await getDbHistoryService().clear() })),
-  'db.pickFile': () => svc(async () => ({ path: await getPlatformDialogs().pickDatabaseFile() })),
-  'db.export': (p) =>
-    svc(async () => {
-      const r = p as DbExportRequest;
-      const path = await getPlatformDialogs().pickSaveTarget(
-        `${r.defaultName ?? 'export'}.${r.format}`,
-      );
-      if (path) {
-        const content = r.format === 'csv' ? toCsv(r.columns, r.rows) : toJson(r.columns, r.rows);
-        await writeFile(path, content, 'utf8');
-      }
-      return { path };
-    }),
 
   // Batcher + actions (M10)
   'batch.analyze': (p) =>

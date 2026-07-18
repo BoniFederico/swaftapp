@@ -11,7 +11,7 @@
  * reshaped to flat collections) + workspace settings + restrictions.
  */
 
-export const SCHEMA_VERSION = 18;
+export const SCHEMA_VERSION = 19;
 
 /** Sync-metadata columns present on every 🟢 synchronized entity. */
 export const SYNC_META_COLUMNS = [
@@ -42,7 +42,6 @@ export const LOCAL_ONLY_TABLES = [
   'local_input_state',
   'release_selection',
   'api_history',
-  'db_history',
   'receipts',
   'environment_selection',
 ] as const;
@@ -136,15 +135,6 @@ const API_HISTORY_DDL = `CREATE TABLE api_history (
   created_at TEXT NOT NULL
 );`;
 
-// M9: 🔵 local-only, metadata-only DB query history (never result rows).
-const DB_HISTORY_DDL = `CREATE TABLE db_history (
-  id TEXT PRIMARY KEY,
-  engine TEXT NOT NULL,
-  sql TEXT NOT NULL,
-  status TEXT NOT NULL,
-  created_at TEXT NOT NULL
-);`;
-
 // Tags: 🟢 synchronized many-to-many between templates and the reusable workspace tags.
 const TEMPLATE_TAGS_DDL = `CREATE TABLE template_tags (
   id TEXT PRIMARY KEY,
@@ -235,8 +225,6 @@ CREATE TABLE local_input_state (
 ${RELEASE_SELECTION_DDL}
 
 ${API_HISTORY_DDL}
-
-${DB_HISTORY_DDL}
 
 ${RECEIPTS_DDL}
 
@@ -336,8 +324,15 @@ export const MIGRATIONS: { to: number; sql: string }[] = [
   },
   {
     to: 8,
-    // v8 adds local-only, metadata-only DB query history.
-    sql: DB_HISTORY_DDL,
+    // v8 added local-only, metadata-only DB query history (frozen snapshot — the DB client and its
+    // table were removed again in v19).
+    sql: `CREATE TABLE db_history (
+      id TEXT PRIMARY KEY,
+      engine TEXT NOT NULL,
+      sql TEXT NOT NULL,
+      status TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );`,
   },
   {
     to: 9,
@@ -391,6 +386,15 @@ export const MIGRATIONS: { to: number; sql: string }[] = [
     sql: `
       ${ENVIRONMENTS_DDL}
       ${ENVIRONMENT_SELECTION_DDL}
+    `,
+  },
+  {
+    to: 19,
+    // v19 removes the read-only database client: drop its query history and fold any stray reserved
+    // `database` templates (never creatable from the UI) into `document`.
+    sql: `
+      DROP TABLE IF EXISTS db_history;
+      UPDATE templates SET type = 'document' WHERE type = 'database';
     `,
   },
 ];

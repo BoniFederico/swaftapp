@@ -6,7 +6,6 @@ import { AppStore } from './app-store/AppStore';
 import { CryptoService } from './crypto/CryptoService';
 import { SafeStorageCipher } from './auth/cipher';
 import { getAuthService } from './auth/registry';
-import { DatabaseService } from './db/DatabaseService';
 import { HttpService } from './http/HttpService';
 import { SecretService } from './secret/SecretService';
 import { SeeboHost } from './seebo/SeeboHost';
@@ -17,8 +16,6 @@ import {
   setAppStore,
   setBatcherService,
   setChangelogService,
-  setDatabaseService,
-  setDbHistoryService,
   setEnvironmentService,
   setHttpService,
   setOrganizationService,
@@ -36,7 +33,6 @@ import { ApiHistoryService } from './workspace/ApiHistoryService';
 import { ApiRequestService } from './workspace/ApiRequestService';
 import { BatcherService } from './workspace/BatcherService';
 import { ChangelogService } from './workspace/ChangelogService';
-import { DbHistoryService } from './workspace/DbHistoryService';
 import { EnvironmentService } from './workspace/EnvironmentService';
 import { OrganizationService } from './workspace/OrganizationService';
 import { ReleaseService } from './workspace/ReleaseService';
@@ -105,16 +101,6 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
       const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
       return res.canceled || res.filePaths.length === 0 ? null : (res.filePaths[0] ?? null);
     },
-    pickDatabaseFile: async () => {
-      const win = getWindow();
-      const opts: Electron.OpenDialogOptions = {
-        title: 'Open database',
-        properties: ['openFile'],
-        filters: [{ name: 'SQLite database', extensions: ['db', 'sqlite', 'sqlite3'] }],
-      };
-      const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
-      return res.canceled || res.filePaths.length === 0 ? null : (res.filePaths[0] ?? null);
-    },
     pickSaveTarget: async (defaultName) => {
       const win = getWindow();
       const opts: Electron.SaveDialogOptions = { title: 'Export', defaultPath: defaultName };
@@ -154,18 +140,6 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
     settings,
   });
   const apiHistory = new ApiHistoryService(workspaceService);
-  const databaseService = new DatabaseService({
-    fs: {
-      read: async (path) => {
-        try {
-          return await readFile(path);
-        } catch {
-          return null;
-        }
-      },
-    },
-  });
-  const dbHistory = new DbHistoryService(workspaceService);
 
   setAppStore(appStore);
   setWorkspaceService(workspaceService);
@@ -179,8 +153,6 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
   setHttpService(httpService);
   setApiHistoryService(apiHistory);
   setApiRequestService(apiRequest);
-  setDatabaseService(databaseService);
-  setDbHistoryService(dbHistory);
   setBatcherService(batcher);
   setActionService(actionService);
   setEnvironmentService(environments);

@@ -4,7 +4,6 @@ import type { ApiClient } from '../api-client/client';
 import { AccountControls } from '../auth/AccountControls';
 import { BatchDocumentView } from '../batcher/BatchDocumentView';
 import { BatcherPanel } from '../batcher/BatcherPanel';
-import { DatabaseView } from '../database/DatabaseView';
 import { ApiView } from '../document/ApiView';
 import { DocumentView } from '../document/DocumentView';
 import { TemplateEditorModal } from '../document/TemplateEditorModal';
@@ -17,7 +16,6 @@ import {
   Button,
   ChevronRightIcon,
   CloseIcon,
-  DatabaseIcon,
   DocumentIcon,
   EmptyState,
   IconButton,
@@ -36,7 +34,6 @@ type Tab = { id: string; type: TemplateType; name: string; preview: boolean; dir
 function TabIcon({ type }: { type: TemplateType }) {
   const className = `ws-tab__type ws-tab__type--${type}`;
   if (type === 'api') return <ApiIcon className={className} />;
-  if (type === 'database') return <DatabaseIcon className={className} />;
   return <DocumentIcon className={className} />;
 }
 
@@ -53,7 +50,6 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
-  const [tool, setTool] = useState<'none' | 'db'>('none');
   const [batch, setBatch] = useState<string[] | null>(null);
   const [sideCollapsed, setSideCollapsed] = useState(false);
   const [sideWidth, setSideWidth] = useState(280);
@@ -62,7 +58,6 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
   // Open a template in a tab. A single click opens (or reuses) a *preview* tab — at most one exists,
   // and the next single-clicked template replaces it. An already-open template is just re-activated.
   function openTemplate(id: string, type: TemplateType, name: string) {
-    setTool('none');
     setBatch(null);
     setActiveId(id);
     setTabs((prev) => {
@@ -76,7 +71,6 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
     });
   }
   function activateTab(id: string) {
-    setTool('none');
     setBatch(null);
     setActiveId(id);
   }
@@ -156,15 +150,6 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
           </div>
         </div>
         <div className="ws-actions">
-          <Button
-            variant={tool === 'db' ? 'primary' : 'secondary'}
-            onClick={() => {
-              setTool((v) => (v === 'db' ? 'none' : 'db'));
-              setBatch(null);
-            }}
-          >
-            {t('db.menu')}
-          </Button>
           <EnvironmentPicker onManage={() => openSettings('environments')} />
           <Button variant="secondary" onClick={() => openSettings('general')}>
             {t('ws.settings')}
@@ -203,12 +188,7 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
             onCloseTemplate={closeTab}
             onCollapse={() => setSideCollapsed(true)}
           />
-          <BatcherPanel
-            onLoadInputs={(ids) => {
-              setTool('none');
-              setBatch(ids);
-            }}
-          />
+          <BatcherPanel onLoadInputs={setBatch} />
           <div
             className="ws-side__resizer"
             onPointerDown={onSideResizeDown}
@@ -220,7 +200,7 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
           {tabs.length > 0 && (
             <div className="ws-tabs" role="tablist" aria-label={t('ws.openTabs')}>
               {tabs.map((tb) => {
-                const active = tb.id === activeId && tool === 'none' && !batch;
+                const active = tb.id === activeId && !batch;
                 return (
                   <div
                     key={tb.id}
@@ -254,9 +234,7 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
           )}
 
           <div className="ws-main__content">
-            {tool === 'db' ? (
-              <DatabaseView client={client} />
-            ) : batch ? (
+            {batch ? (
               <BatchDocumentView key={batch.join(',')} client={client} templateIds={batch} />
             ) : tabs.length === 0 ? (
               <EmptyState title={t('ws.welcome.title')} hint={t('ws.welcome.hint')} />
@@ -265,7 +243,7 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
             {/* Keep every open tab mounted (hidden when inactive) so unsaved edits — API requests and
                 Document input configs — survive switching tabs and tools. */}
             {tabs.map((tb) => {
-              const visible = tool === 'none' && !batch && tb.id === activeId;
+              const visible = !batch && tb.id === activeId;
               const shared = {
                 client,
                 templateId: tb.id,

@@ -6,7 +6,6 @@ import { AppStore } from '../app-store/AppStore';
 import { getAuthService } from '../auth/registry';
 import { IdentityCipher } from '../auth/testing';
 import { CryptoService } from '../crypto/CryptoService';
-import { DatabaseService } from '../db/DatabaseService';
 import { HttpService } from '../http/HttpService';
 import { SecretService } from '../secret/SecretService';
 import { SeeboHost } from '../seebo/SeeboHost';
@@ -17,8 +16,6 @@ import {
   setAppStore,
   setBatcherService,
   setChangelogService,
-  setDatabaseService,
-  setDbHistoryService,
   setEnvironmentService,
   setHttpService,
   setOrganizationService,
@@ -36,7 +33,6 @@ import { ApiHistoryService } from './ApiHistoryService';
 import { ApiRequestService } from './ApiRequestService';
 import { BatcherService } from './BatcherService';
 import { ChangelogService } from './ChangelogService';
-import { DbHistoryService } from './DbHistoryService';
 import { EnvironmentService } from './EnvironmentService';
 import { OrganizationService } from './OrganizationService';
 import { ReleaseService } from './ReleaseService';
@@ -51,7 +47,7 @@ import { WorkspaceService, type WorkspaceFs } from './WorkspaceService';
  * dialogs) into the services registry. Used by component tests that drive the real dispatch path.
  */
 export function installTestWorkspaceBackend(
-  opts: { createPath?: string; openPath?: string; fetchFn?: typeof fetch; dbFile?: string } = {},
+  opts: { createPath?: string; openPath?: string; fetchFn?: typeof fetch } = {},
 ) {
   const files = new Map<string, Uint8Array>();
   const fs: WorkspaceFs = {
@@ -73,7 +69,6 @@ export function installTestWorkspaceBackend(
   const dialogs: PlatformDialogs = {
     pickCreateTarget: () => Promise.resolve(opts.createPath ?? 'mem://new.swaft'),
     pickOpenTarget: () => Promise.resolve(opts.openPath ?? null),
-    pickDatabaseFile: () => Promise.resolve(opts.dbFile ?? null),
     pickSaveTarget: () => Promise.resolve(null),
   };
 
@@ -107,8 +102,6 @@ export function installTestWorkspaceBackend(
   const fetchFn = opts.fetchFn ?? (() => Promise.resolve(new Response('{}', { status: 200 })));
   const http = new HttpService({ fetchFn, secrets, settings });
   const apiHistory = new ApiHistoryService(workspace);
-  const database = new DatabaseService({ fs: { read: (p) => Promise.resolve(files.get(p) ?? null) } });
-  const dbHistory = new DbHistoryService(workspace);
 
   setAppStore(appStore);
   setWorkspaceService(workspace);
@@ -122,8 +115,6 @@ export function installTestWorkspaceBackend(
   setHttpService(http);
   setApiHistoryService(apiHistory);
   setApiRequestService(apiRequest);
-  setDatabaseService(database);
-  setDbHistoryService(dbHistory);
   setBatcherService(batcher);
   setActionService(actions);
   setEnvironmentService(environments);
@@ -144,8 +135,6 @@ export function resetTestWorkspaceBackend(): void {
   setHttpService(null);
   setApiHistoryService(null);
   setApiRequestService(null);
-  setDatabaseService(null);
-  setDbHistoryService(null);
   setBatcherService(null);
   setActionService(null);
   setEnvironmentService(null);
