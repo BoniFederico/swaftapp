@@ -8,7 +8,7 @@ export interface PrimaryColor {
 }
 
 export const PRIMARY_COLORS: PrimaryColor[] = [
-  { key: 'blue', label: 'Blue', hex: '#2563EB' },
+  { key: 'blue', label: 'Blue', hex: '#3574F0' },
   { key: 'indigo', label: 'Indigo', hex: '#6750A4' },
   { key: 'teal', label: 'Teal', hex: '#0D9488' },
   { key: 'green', label: 'Green', hex: '#16A34A' },
