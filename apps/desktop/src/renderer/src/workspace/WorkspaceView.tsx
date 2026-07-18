@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import type { TemplateType } from '@swaft/shared';
 import type { ApiClient } from '../api-client/client';
-import { AccountControls } from '../auth/AccountControls';
+import { useAuth } from '../auth/AuthProvider';
 import { BatchDocumentView } from '../batcher/BatchDocumentView';
 import { BatcherPanel } from '../batcher/BatcherPanel';
 import { ApiView } from '../document/ApiView';
@@ -13,12 +13,14 @@ import { useI18n } from '../i18n/I18nProvider';
 import { SettingsModal, type SettingsSectionId } from '../settings/SettingsModal';
 import {
   ApiIcon,
-  Button,
   ChevronRightIcon,
   CloseIcon,
   DocumentIcon,
   EmptyState,
   IconButton,
+  LockIcon,
+  LogoutIcon,
+  SettingsIcon,
 } from '../ui';
 import { WorkingTree } from './WorkingTree';
 import { useWorkspace } from './WorkspaceProvider';
@@ -45,6 +47,7 @@ function TabIcon({ type }: { type: TemplateType }) {
 export function WorkspaceView({ client }: { client: ApiClient }) {
   const { t } = useI18n();
   const { current, close } = useWorkspace();
+  const { lock } = useAuth();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSectionId>('general');
   const [tabs, setTabs] = useState<Tab[]>([]);
@@ -133,31 +136,31 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
             Swaft<span className="accent">.</span>
           </button>
           <span className="ws-sep" aria-hidden="true" />
-          <div>
-            <div className="ws-title">
-              {current?.icon ? `${current.icon} ` : ''}
-              {current?.name}
-            </div>
-            <div className="row" style={{ gap: 'var(--space-2)', marginTop: 'var(--space-1)' }}>
-              <span className="ui-badge">{t('ws.storageLocal')}</span>
-              <span className="ui-badge">
-                {t('ws.executionMode')}: {current?.executionMode}
-              </span>
-              <span className="ui-badge">
-                {current?.encrypted ? t('ws.encrypted') : t('ws.notEncrypted')}
-              </span>
-            </div>
+          <div className="ws-title">
+            {current?.icon ? `${current.icon} ` : ''}
+            {current?.name}
+          </div>
+          <div className="ws-meta">
+            <span className="ui-badge">{t('ws.storageLocal')}</span>
+            <span className="ui-badge">
+              {t('ws.executionMode')}: {current?.executionMode}
+            </span>
+            <span className="ui-badge">
+              {current?.encrypted ? t('ws.encrypted') : t('ws.notEncrypted')}
+            </span>
           </div>
         </div>
         <div className="ws-actions">
           <EnvironmentPicker onManage={() => openSettings('environments')} />
-          <Button variant="secondary" onClick={() => openSettings('general')}>
-            {t('ws.settings')}
-          </Button>
-          <AccountControls />
-          <Button variant="secondary" onClick={() => void close()}>
-            {t('ws.close')}
-          </Button>
+          <IconButton label={t('ws.settings')} onClick={() => openSettings('general')}>
+            <SettingsIcon />
+          </IconButton>
+          <IconButton label={t('account.lock')} onClick={() => void lock()}>
+            <LockIcon />
+          </IconButton>
+          <IconButton label={t('ws.close')} onClick={() => void close()}>
+            <LogoutIcon />
+          </IconButton>
         </div>
       </header>
 

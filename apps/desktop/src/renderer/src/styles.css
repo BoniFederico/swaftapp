@@ -160,14 +160,22 @@ body {
   justify-content: space-between;
   gap: var(--space-4);
   flex-wrap: wrap;
-  padding: var(--space-3) var(--space-5);
+  padding: var(--space-1) var(--space-4);
+  min-height: 40px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
 .ws-identity {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-3);
+  min-width: 0;
+}
+/* Storage / execution / encryption badges, inline right of the workspace name. */
+.ws-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 .ws-appname {
   font-size: var(--fs-lg);
@@ -184,17 +192,29 @@ body {
 }
 .ws-sep {
   width: 1px;
-  height: 28px;
+  height: 18px;
   background: var(--border);
 }
 .ws-title {
   font-size: var(--fs-md);
   font-weight: 600;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .ws-actions {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
+}
+/* Compact square controls so the slimmer bar stays tight. */
+.ws-actions .ui-icon-btn {
+  width: 30px;
+  height: 30px;
+}
+.ws-actions .env-picker__trigger {
+  height: 30px;
 }
 .ws-body {
   flex: 1;
