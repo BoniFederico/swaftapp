@@ -61,25 +61,19 @@ const GET = (over: Partial<HttpRequestModel>): HttpRequestModel => ({
 });
 
 describe('EnvironmentService', () => {
-  it('creates environments scoped to user / workspace / project with the right owner + label', async () => {
-    const { environments, projectId } = await setup('alice');
+  it('creates environments scoped to user / workspace with the right owner', async () => {
+    const { environments } = await setup('alice');
     const personal = await environments.create({ name: 'Personal', ownerKind: 'user' });
     const shared = await environments.create({ name: 'Team', ownerKind: 'workspace' });
-    const proj = await environments.create({ name: 'ProjEnv', ownerKind: 'project', projectId });
 
     expect(personal.ownerKind).toBe('user');
     expect(personal.ownerId).toBe('alice');
-    expect(personal.ownerName).toBe('alice');
 
+    expect(shared.ownerKind).toBe('workspace');
     expect(shared.ownerId).toBeNull();
-    expect(shared.ownerName).toBeNull();
-
-    expect(proj.ownerKind).toBe('project');
-    expect(proj.ownerId).toBe(projectId);
-    expect(proj.ownerName).toBe('P');
 
     const list = await environments.list();
-    expect(list.map((e) => e.name).sort()).toEqual(['Personal', 'ProjEnv', 'Team']);
+    expect(list.map((e) => e.name).sort()).toEqual(['Personal', 'Team']);
   });
 
   it('updates name, description and variables', async () => {

@@ -299,8 +299,8 @@ export const actionExecuteRequestSchema = z
 
 // --- Environments (variable sets read by the `env(...)` capability) ----------
 
-/** Who an environment belongs to: the current user (personal), the workspace, or a project. */
-export const environmentOwnerKindSchema = z.enum(['user', 'workspace', 'project']);
+/** Who an environment belongs to: the current user (personal) or the whole workspace. */
+export const environmentOwnerKindSchema = z.enum(['user', 'workspace']);
 
 /** A single environment variable's key (identifier-like, so it maps cleanly to `env('KEY')`). */
 const envVarKeySchema = z
@@ -316,14 +316,8 @@ export const envCreateRequestSchema = z
     name: entityNameSchema,
     description: z.string().trim().max(2000).optional(),
     ownerKind: environmentOwnerKindSchema,
-    /** Required when `ownerKind === 'project'` (the owning project); ignored otherwise. */
-    projectId: z.string().min(1).optional(),
   })
-  .strict()
-  .refine((v) => v.ownerKind !== 'project' || !!v.projectId, {
-    message: 'A project environment requires a projectId.',
-    path: ['projectId'],
-  });
+  .strict();
 
 export const envUpdateRequestSchema = z
   .object({
@@ -898,10 +892,8 @@ export interface EnvironmentSummaryDto {
   name: string;
   description: string | null;
   ownerKind: EnvironmentOwnerKind;
-  /** Username (user), null (workspace), or project id (project). */
+  /** Username for personal (user) environments, null for workspace ones. */
   ownerId: string | null;
-  /** Human label for the owner: the project name (project envs) or username (user envs), else null. */
-  ownerName: string | null;
   /** Number of variables (so the list can show a count without shipping every value). */
   varCount: number;
 }

@@ -8,8 +8,8 @@ import { EnvironmentProvider } from './EnvironmentProvider';
 import { EnvironmentPicker } from './EnvironmentPicker';
 
 const ENVS: EnvironmentSummaryDto[] = [
-  { id: 'e1', name: 'Staging', description: null, ownerKind: 'workspace', ownerId: null, ownerName: null, varCount: 2 },
-  { id: 'e2', name: 'My Local', description: null, ownerKind: 'user', ownerId: 'alice', ownerName: 'alice', varCount: 1 },
+  { id: 'e1', name: 'Staging', description: null, ownerKind: 'workspace', ownerId: null, varCount: 2 },
+  { id: 'e2', name: 'My Local', description: null, ownerKind: 'user', ownerId: 'alice', varCount: 1 },
 ];
 
 /** Fake transport for the env ops; records the last selection set. */

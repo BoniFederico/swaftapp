@@ -5,13 +5,12 @@ import { usePopover } from '../ui/usePopover';
 import { useEnvironments } from './EnvironmentProvider';
 import { OWNER_KIND_LABEL } from './ownerKind';
 
-/** The small ownership badge (Personal / Workspace / Project · Name) shown next to an env name. */
+/** The small ownership badge (Personal / Workspace) shown next to an env name. */
 function OwnerBadge({ env }: { env: EnvironmentSummaryDto }) {
   const { t } = useI18n();
-  const label = t(OWNER_KIND_LABEL[env.ownerKind]);
   return (
     <span className={`ui-badge env-badge env-badge--${env.ownerKind}`}>
-      {env.ownerKind === 'project' && env.ownerName ? `${label} · ${env.ownerName}` : label}
+      {t(OWNER_KIND_LABEL[env.ownerKind])}
     </span>
   );
 }

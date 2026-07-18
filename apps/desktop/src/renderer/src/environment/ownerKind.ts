@@ -5,5 +5,4 @@ import type { TranslationKey } from '../i18n/catalogs';
 export const OWNER_KIND_LABEL: Record<EnvironmentOwnerKind, TranslationKey> = {
   user: 'env.owner.user',
   workspace: 'env.owner.workspace',
-  project: 'env.owner.project',
 };
