@@ -608,21 +608,26 @@ export function WorkingTree({
   return (
     <aside className="tree" aria-label={t('tree.title')}>
       <div className="tree__head">
-        <span className="tree__title">{t('tree.title')}</span>
+        <div className="tree__field">
+          <span className="ui-field__label">{t('tree.project')}</span>
+          <ProjectSelector
+            projects={tree.projects}
+            selectedId={selectedProject}
+            onSelect={(id) => setSelectedProject(id)}
+            onCreate={() => setProjectOpen(true)}
+            onDelete={(p) => setConfirm({ kind: 'project', id: p.id, name: p.name })}
+          />
+        </div>
         <IconButton label={t('tree.collapse')} className="tree__collapse" onClick={onCollapse}>
           <ChevronLeftIcon />
         </IconButton>
       </div>
 
-      <div className="tree__project">
-        <ProjectSelector
-          projects={tree.projects}
-          selectedId={selectedProject}
-          onSelect={(id) => setSelectedProject(id)}
-          onCreate={() => setProjectOpen(true)}
-          onDelete={(p) => setConfirm({ kind: 'project', id: p.id, name: p.name })}
-        />
-        {selected && (
+      {selected?.description && <div className="tree__project-desc">{selected.description}</div>}
+
+      {selected && (
+        <div className="tree__viewmodes">
+          <ViewModeControl mode={viewMode} onChange={setViewMode} labels={viewLabels} />
           <IconButton
             label={t(`tree.badge.${badgeMode}`)}
             className="tree__badgetoggle"
@@ -636,14 +641,6 @@ export function WorkingTree({
               <LabelIcon />
             )}
           </IconButton>
-        )}
-      </div>
-
-      {selected?.description && <div className="tree__project-desc">{selected.description}</div>}
-
-      {selected && (
-        <div className="tree__viewmodes">
-          <ViewModeControl mode={viewMode} onChange={setViewMode} labels={viewLabels} />
         </div>
       )}
 
@@ -665,6 +662,8 @@ export function WorkingTree({
           </Button>
         </div>
       )}
+
+      {selected && <div className="tree__label">{t('tree.title')}</div>}
 
       <div
         className="tree__body"

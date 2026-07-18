@@ -359,12 +359,14 @@ body {
 .ws-side__resizer:hover {
   background: color-mix(in srgb, var(--primary) 40%, transparent);
 }
-/* Collapsed sidebar: a thin rail with a reopen button. */
+/* Collapsed sidebar: a thin rail with a reopen button. Top padding = .tree__head padding + the
+   picker offset, so the 28px expand button sits exactly where the collapse button was. */
 .ws-rail {
   flex-shrink: 0;
   display: flex;
+  align-items: flex-start;
   justify-content: center;
-  padding: var(--space-2);
+  padding: calc(var(--space-3) + var(--tree-picker-offset)) var(--space-2) var(--space-2);
   border-right: 1px solid var(--border);
   background: var(--surface);
 }
@@ -402,7 +404,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-4);
 }
 .batch-panel__toggle {
   display: flex;
@@ -450,17 +452,36 @@ body {
   overflow: auto;
   padding: var(--space-4);
 }
+/* Head: the "Project" labelled picker (fills the width) + the collapse chevron, aligned with the
+   picker row (not the label). --tree-picker-offset is the label height + gap above the picker; the
+   collapsed rail (.ws-rail) reuses it so the 28px expand button sits at exactly the same height. */
+:root {
+  --tree-picker-offset: calc(18px + var(--space-1));
+}
 .tree__head {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: flex-end;
   gap: var(--space-2);
-  /* Right padding matches .tree__project so the collapse button lines up vertically with the
-     tag/subtype toggle in the row below. */
   padding: var(--space-3) var(--space-2) var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border);
 }
-.tree__title {
+.tree__field {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.tree__field .ui-field__label {
+  line-height: 18px;
+}
+.tree__field .project-select {
+  width: 100%;
+  max-width: none;
+}
+/* Small caption over the tree body (sits under the create buttons). */
+.tree__label {
+  padding: var(--space-3) var(--space-4) var(--space-1);
   font-size: var(--fs-xs);
   font-weight: 600;
   color: var(--text-muted);
@@ -471,41 +492,39 @@ body {
    they out-specify the base .ui-icon-btn 34px rule defined later in the file). */
 .ui-icon-btn.tree__collapse,
 .ui-icon-btn.tree__badgetoggle,
+.ws-rail .ui-icon-btn,
 .batch-panel__tools .ui-icon-btn {
   width: 28px;
   height: 28px;
 }
 .ui-icon-btn.tree__collapse svg,
 .ui-icon-btn.tree__badgetoggle svg,
+.ws-rail .ui-icon-btn svg,
 .batch-panel__tools .ui-icon-btn svg {
   width: 16px;
   height: 16px;
 }
-.tree__project {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
-}
-/* The project picker now lives on its own row and fills the available width. */
-.tree__project .project-select {
-  flex: 1;
-  max-width: none;
-}
 .tree__project-desc {
-  padding: 0 var(--space-4) var(--space-2);
+  padding: var(--space-2) var(--space-4) 0;
   font-size: var(--fs-xs);
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Same horizontal padding as .tree__actions so the segmented control lines up exactly with the
-   Create template / Create folder buttons in the row below. */
+/* Same left padding as .tree__actions so the segmented control lines up exactly with the
+   Create template / Create folder buttons in the row below; the badge toggle sits at its right,
+   aligned with the collapse chevron above. */
 .tree__viewmodes {
-  padding: var(--space-2) var(--space-4);
-  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--border);
+}
+.tree__viewmodes .seg {
+  flex: 1;
+  min-width: 0;
 }
 /* Segmented control (Tree / Tags / Type). */
 .seg {

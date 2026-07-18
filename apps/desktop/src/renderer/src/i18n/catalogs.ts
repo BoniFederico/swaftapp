@@ -80,6 +80,7 @@ export const en = {
   'ws.openTabs': 'Open templates',
 
   'tree.title': 'Working Tree',
+  'tree.project': 'Project',
   'tree.selectProject': 'Select project',
   'tree.deleteProject': 'Delete project',
   'tree.createProject': 'Create project',
@@ -450,6 +451,7 @@ export const it: Partial<Record<TranslationKey, string>> = {
   'ws.openTabs': 'Template aperti',
 
   'tree.title': 'Working Tree',
+  'tree.project': 'Progetto',
   'tree.selectProject': 'Seleziona progetto',
   'tree.deleteProject': 'Elimina progetto',
   'tree.createProject': 'Crea progetto',
