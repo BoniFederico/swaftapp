@@ -11,7 +11,7 @@
  * reshaped to flat collections) + workspace settings + restrictions.
  */
 
-export const SCHEMA_VERSION = 20;
+export const SCHEMA_VERSION = 21;
 
 /** Sync-metadata columns present on every 🟢 synchronized entity. */
 export const SYNC_META_COLUMNS = [
@@ -55,11 +55,16 @@ const SYNC_META_DDL = `
 `;
 
 // Individual table DDL, reused by both the fresh schema and the migration so they never drift.
+// v21: folders carry a propagated HTTP policy (`headers` JSON object, `proxy` JSON or NULL) applied
+// to every API call beneath them, plus markdown `notes` (the Folder view).
 const FOLDERS_DDL = `CREATE TABLE folders (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   project_id TEXT,
   parent_folder_id TEXT,
+  headers TEXT NOT NULL DEFAULT '{}',
+  proxy TEXT,
+  notes TEXT NOT NULL DEFAULT '',
   ${SYNC_META_DDL}
 );`;
 
@@ -405,6 +410,16 @@ export const MIGRATIONS: { to: number; sql: string }[] = [
       ALTER TABLE workspace_settings ADD COLUMN blocked_domains TEXT NOT NULL DEFAULT '[]';
       ALTER TABLE workspace_settings ADD COLUMN enforced_headers TEXT NOT NULL DEFAULT '{}';
       DROP TABLE IF EXISTS restrictions;
+    `,
+  },
+  {
+    to: 21,
+    // v21 gives folders a propagated HTTP policy (headers + proxy for the API calls beneath them)
+    // and markdown notes, backing the Folder view.
+    sql: `
+      ALTER TABLE folders ADD COLUMN headers TEXT NOT NULL DEFAULT '{}';
+      ALTER TABLE folders ADD COLUMN proxy TEXT;
+      ALTER TABLE folders ADD COLUMN notes TEXT NOT NULL DEFAULT '';
     `,
   },
 ];

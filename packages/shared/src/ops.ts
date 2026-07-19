@@ -47,6 +47,8 @@ export const preferencesSchema = z
     primaryColor: z.string().max(32).optional(),
     font: z.string().max(32).optional(),
     language: z.string().max(8).optional(),
+    /** Double-clicking a Working Tree template: pin its tab (classic) or open the editor. */
+    treeDoubleClick: z.enum(['pin', 'edit']).optional(),
   })
   .strict();
 
@@ -131,6 +133,28 @@ const headerNameSchema = z
   .min(1)
   .max(128)
   .regex(/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/, 'Invalid header name.');
+
+/** A folder's propagated proxy for the API calls beneath it (null/absent = direct connection).
+ * The hostname may carry Seebo `${ … }` formulas, rendered when the request is resolved. */
+export const folderProxySchema = z
+  .object({
+    protocol: z.enum(['http', 'https']),
+    hostname: z.string().trim().min(1).max(1024),
+    port: z.number().int().min(1).max(65535),
+  })
+  .strict();
+
+/** Partial update of a folder's propagated HTTP policy + notes (the Folder view tabs). */
+export const folderUpdateRequestSchema = z
+  .object({
+    id: z.string().min(1),
+    /** Headers propagated to every API call in the folder; values may carry Seebo formulas. */
+    headers: z.record(headerNameSchema, z.string().max(4096)).optional(),
+    proxy: folderProxySchema.nullable().optional(),
+    /** Markdown documentation for the folder. */
+    notes: z.string().max(200_000).optional(),
+  })
+  .strict();
 
 export const settingsUpdateSchema = z
   .object({
@@ -341,6 +365,8 @@ export const OP_NAMES = [
   'folder.rename',
   'folder.delete',
   'folder.move',
+  'folder.get',
+  'folder.update',
   'template.move',
   'tag.list',
   'template.tags.list',
@@ -419,6 +445,8 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'folder.rename': renameRequestSchema,
   'folder.delete': idRequestSchema,
   'folder.move': folderMoveRequestSchema,
+  'folder.get': idRequestSchema,
+  'folder.update': folderUpdateRequestSchema,
   'template.move': templateMoveRequestSchema,
   'tag.list': emptyRequestSchema,
   'template.tags.list': templateRefRequestSchema,
@@ -595,6 +623,16 @@ export interface FolderDto {
   name: string;
   projectId: string;
   parentFolderId: string | null;
+}
+export type FolderProxyDto = z.infer<typeof folderProxySchema>;
+/** Full folder incl. its propagated HTTP policy + markdown notes (the Folder view). */
+export interface FolderDetailDto extends FolderDto {
+  /** Headers propagated to every API call in the folder (values may carry Seebo formulas). */
+  headers: Record<string, string>;
+  /** Proxy propagated to every API call in the folder (null = direct connection). */
+  proxy: FolderProxyDto | null;
+  /** Markdown documentation for the folder. */
+  notes: string;
 }
 export interface TagDto {
   id: string;
@@ -861,6 +899,11 @@ export type NameColorRequest = z.infer<typeof nameColorRequestSchema>;
 export type ProjectCreateRequest = z.infer<typeof projectCreateRequestSchema>;
 export type FolderCreateRequest = z.infer<typeof folderCreateRequestSchema>;
 export type FolderMoveRequest = z.infer<typeof folderMoveRequestSchema>;
+export type FolderUpdateRequest = z.infer<typeof folderUpdateRequestSchema>;
+
+export interface FolderResponse {
+  folder: FolderDetailDto;
+}
 export type TemplateMoveRequest = z.infer<typeof templateMoveRequestSchema>;
 export type TemplateTagAddRequest = z.infer<typeof templateTagAddRequestSchema>;
 export type TemplateTagRemoveRequest = z.infer<typeof templateTagRemoveRequestSchema>;
@@ -978,6 +1021,8 @@ export interface OpContracts {
   'folder.rename': { request: RenameRequest; response: TreeResponse };
   'folder.delete': { request: IdRequest; response: TreeResponse };
   'folder.move': { request: FolderMoveRequest; response: TreeResponse };
+  'folder.get': { request: IdRequest; response: FolderResponse };
+  'folder.update': { request: FolderUpdateRequest; response: FolderResponse };
   'template.move': { request: TemplateMoveRequest; response: TreeResponse };
   'tag.list': { request: EmptyRequest; response: TagsResponse };
   'template.tags.list': { request: TemplateRefRequest; response: TagsResponse };

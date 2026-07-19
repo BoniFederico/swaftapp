@@ -101,6 +101,47 @@ describe('HttpService', () => {
     expect(seen!.get('accept')).toBe('application/json');
   });
 
+  it('routes through proxyFetchFn when a folder proxy is given (direct fetch otherwise)', async () => {
+    let directCalls = 0;
+    let proxiedVia: string | null = null;
+    const http = new HttpService({
+      fetchFn: fakeFetch(() => {
+        directCalls++;
+        return new Response('direct', { status: 200 });
+      }),
+      proxyFetchFn: (proxy) => {
+        proxiedVia = `${proxy.protocol}://${proxy.hostname}:${proxy.port}`;
+        return fakeFetch(() => new Response('proxied', { status: 200 }));
+      },
+      secrets,
+      settings: settings(),
+    });
+
+    const direct = await http.send({ method: 'GET', url: 'https://example.com/x' });
+    expect(direct.body).toBe('direct');
+    const proxied = await http.send(
+      { method: 'GET', url: 'https://example.com/x' },
+      { proxy: { protocol: 'http', hostname: 'proxy.local', port: 8080 } },
+    );
+    expect(proxied.body).toBe('proxied');
+    expect(proxiedVia).toBe('http://proxy.local:8080');
+    expect(directCalls).toBe(1);
+  });
+
+  it('fails with a coded error when a proxy is required but no proxy transport exists', async () => {
+    const http = new HttpService({
+      fetchFn: fakeFetch(() => new Response('ok')),
+      secrets,
+      settings: settings(),
+    });
+    await expect(
+      http.send(
+        { method: 'GET', url: 'https://example.com/x' },
+        { proxy: { protocol: 'http', hostname: 'proxy.local', port: 8080 } },
+      ),
+    ).rejects.toMatchObject({ code: 'PROXY_UNAVAILABLE' });
+  });
+
   it('applies bearer auth from a keychain secret (the value never leaves the main process)', async () => {
     secrets.set('token', 'SUPERSECRET');
     let auth: string | null = null;

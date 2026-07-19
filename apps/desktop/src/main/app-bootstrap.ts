@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
-import { app, dialog, type BrowserWindow } from 'electron';
+import { app, dialog, session, type BrowserWindow } from 'electron';
+import type { FolderProxyDto } from '@swaft/shared';
 import { ActionService } from './actions/ActionService';
 import { AppStore } from './app-store/AppStore';
 import { CryptoService } from './crypto/CryptoService';
@@ -120,7 +121,7 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
   const environments = new EnvironmentService(workspaceService, currentUsername);
   const host = new SeeboHost({}, { templateData, envData: environments });
   const render = new RenderService(workspaceService, templates, host, releases);
-  const apiRequest = new ApiRequestService(templates, host);
+  const apiRequest = new ApiRequestService(templates, host, organization);
   const batcher = new BatcherService(templates, releases, host);
   const actionService = new ActionService(workspaceService, {
     host,
@@ -134,8 +135,20 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
     join(app.getPath('userData'), 'secrets.json'),
     new SafeStorageCipher(),
   );
+  // Folder-propagated proxies route through a dedicated Electron session per proxy target, so the
+  // Chromium network stack handles both http and https (CONNECT tunneling) transparently.
+  const proxyFetchFn = (proxy: FolderProxyDto): typeof fetch => {
+    const rule = `${proxy.protocol}://${proxy.hostname}:${proxy.port}`;
+    const ses = session.fromPartition(`swaft-proxy:${rule}`);
+    return async (input, init) => {
+      // `<-loopback>` removes Chromium's default localhost bypass, so local targets are proxied too.
+      await ses.setProxy({ proxyRules: rule, proxyBypassRules: '<-loopback>' });
+      return ses.fetch(input instanceof URL ? input.toString() : input, init);
+    };
+  };
   const httpService = new HttpService({
     fetchFn: (...args) => fetch(...args),
+    proxyFetchFn,
     secrets: secretService,
     settings,
   });

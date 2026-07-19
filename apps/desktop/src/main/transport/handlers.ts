@@ -9,6 +9,8 @@ import {
   type ErrorEnvelope,
   type FolderCreateRequest,
   type FolderMoveRequest,
+  type FolderProxyDto,
+  type FolderUpdateRequest,
   type TemplateMoveRequest,
   type HttpSendRequest,
   type IdRequest,
@@ -150,6 +152,19 @@ export const handlers: Record<OpName, Handler> = {
       const r = p as FolderMoveRequest;
       return { tree: await getOrganizationService().moveFolder(r.folderId, r.parentFolderId) };
     }),
+  'folder.get': (p) =>
+    svc(async () => ({ folder: await getOrganizationService().getFolder((p as IdRequest).id) })),
+  'folder.update': (p) =>
+    svc(async () => {
+      const r = p as FolderUpdateRequest;
+      return {
+        folder: await getOrganizationService().updateFolderMeta(r.id, {
+          headers: r.headers,
+          proxy: r.proxy,
+          notes: r.notes,
+        }),
+      };
+    }),
   'template.move': (p) =>
     svc(async () => {
       const r = p as TemplateMoveRequest;
@@ -288,12 +303,14 @@ export const handlers: Record<OpName, Handler> = {
       // template); without a template there is no project context, so the request is sent verbatim.
       let request = r.request;
       let rendered = false;
+      let proxy: FolderProxyDto | null = null;
       if (r.templateId) {
         const resolved = await getApiRequestService().resolve(r.templateId, r.request, r.values ?? {});
         request = resolved.request;
         rendered = resolved.rendered;
+        proxy = resolved.proxy;
       }
-      const response = await getHttpService().send(request);
+      const response = await getHttpService().send(request, { proxy });
       if (r.templateId) {
         await getApiHistoryService().record(r.templateId, request.method, request.url, response.status);
       }

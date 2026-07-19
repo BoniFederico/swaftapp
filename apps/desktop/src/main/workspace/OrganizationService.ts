@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type {
+  FolderDetailDto,
   FolderDto,
+  FolderProxyDto,
   ProjectDto,
   TagDto,
   TemplateSummary,
@@ -48,6 +50,45 @@ interface FolderRow {
   name: string;
   project_id: string | null;
   parent_folder_id: string | null;
+}
+interface FolderMetaRow extends FolderRow {
+  headers: string;
+  proxy: string | null;
+  notes: string;
+}
+
+/** Tolerant JSON parse of a folder's `headers` column (a string→string object). */
+function parseFolderHeaders(raw: string): Record<string, string> {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const out: Record<string, string> = {};
+      for (const [k, v] of Object.entries(parsed)) if (typeof v === 'string') out[k] = v;
+      return out;
+    }
+  } catch {
+    /* fall through */
+  }
+  return {};
+}
+
+/** Tolerant JSON parse of a folder's `proxy` column (null = direct connection). */
+function parseFolderProxy(raw: string | null): FolderProxyDto | null {
+  if (!raw) return null;
+  try {
+    const p = JSON.parse(raw) as Partial<FolderProxyDto>;
+    if (
+      (p.protocol === 'http' || p.protocol === 'https') &&
+      typeof p.hostname === 'string' &&
+      p.hostname.length > 0 &&
+      typeof p.port === 'number'
+    ) {
+      return { protocol: p.protocol, hostname: p.hostname, port: p.port };
+    }
+  } catch {
+    /* fall through */
+  }
+  return null;
 }
 interface TagRow {
   id: string;
@@ -182,6 +223,80 @@ export class OrganizationService extends RepoBase {
       await this.softDelete('folders', folderId);
     }
     return this.commit();
+  }
+
+  /** A folder with its propagated HTTP policy + notes (the Folder view). */
+  async getFolder(id: string): Promise<FolderDetailDto> {
+    const row = await this.adapter.get<FolderMetaRow>(
+      `SELECT id, name, project_id, parent_folder_id, headers, proxy, notes
+       FROM folders WHERE id = ? AND deleted_at IS NULL`,
+      [id],
+    );
+    if (!row) throw new AppError('FOLDER_NOT_FOUND', 'not_found', 'Folder not found.');
+    return {
+      id: row.id,
+      name: row.name,
+      projectId: row.project_id ?? '',
+      parentFolderId: row.parent_folder_id,
+      headers: parseFolderHeaders(row.headers),
+      proxy: parseFolderProxy(row.proxy),
+      notes: row.notes ?? '',
+    };
+  }
+
+  /** Partially update a folder's propagated headers/proxy/notes. */
+  async updateFolderMeta(
+    id: string,
+    patch: { headers?: Record<string, string>; proxy?: FolderProxyDto | null; notes?: string },
+  ): Promise<FolderDetailDto> {
+    await this.getFolder(id); // 404 before writing
+    const set: Record<string, string | null> = {};
+    if (patch.headers !== undefined) set.headers = JSON.stringify(patch.headers);
+    if (patch.proxy !== undefined) set.proxy = patch.proxy ? JSON.stringify(patch.proxy) : null;
+    if (patch.notes !== undefined) set.notes = patch.notes;
+    if (Object.keys(set).length > 0) {
+      await this.updateEntity('folders', id, set);
+      await this.ws.save();
+    }
+    return this.getFolder(id);
+  }
+
+  /**
+   * The HTTP policy a template inherits from its folder chain: headers merged root→leaf (a nearer
+   * folder overrides an ancestor's same-name header) and the nearest configured proxy. Root-level
+   * templates (no folder) inherit nothing.
+   */
+  async folderPolicyOf(
+    templateId: string,
+  ): Promise<{ headers: Record<string, string>; proxy: FolderProxyDto | null }> {
+    const tpl = await this.adapter.get<{ folder_id: string }>(
+      `SELECT folder_id FROM templates WHERE id = ? AND deleted_at IS NULL`,
+      [templateId],
+    );
+    // Leaf → root chain (cycle-guarded), then folded root → leaf so nearer folders win.
+    const chain: { parent_folder_id: string | null; headers: string; proxy: string | null }[] = [];
+    const seen = new Set<string>();
+    let cursor = tpl?.folder_id || null;
+    while (cursor && !seen.has(cursor)) {
+      seen.add(cursor);
+      const row = await this.adapter.get<{
+        parent_folder_id: string | null;
+        headers: string;
+        proxy: string | null;
+      }>(`SELECT parent_folder_id, headers, proxy FROM folders WHERE id = ? AND deleted_at IS NULL`, [
+        cursor,
+      ]);
+      if (!row) break;
+      chain.push(row);
+      cursor = row.parent_folder_id;
+    }
+    const headers: Record<string, string> = {};
+    let proxy: FolderProxyDto | null = null;
+    for (const row of chain.reverse()) {
+      Object.assign(headers, parseFolderHeaders(row.headers));
+      proxy = parseFolderProxy(row.proxy) ?? proxy;
+    }
+    return { headers, proxy };
   }
 
   /** Move a folder under a new parent (or to the project root when `parentFolderId` is null). */

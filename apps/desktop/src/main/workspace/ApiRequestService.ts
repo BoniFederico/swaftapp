@@ -1,4 +1,10 @@
-import { DATA_CAPABILITIES, type DiagnosticDto, type HttpRequestModel, type RequirementDto } from '@swaft/shared';
+import {
+  DATA_CAPABILITIES,
+  type DiagnosticDto,
+  type FolderProxyDto,
+  type HttpRequestModel,
+  type RequirementDto,
+} from '@swaft/shared';
 import { AppError } from '../errors';
 import { toDiagnosticDto, toRequirementDto } from '../seebo/map';
 import type { SeeboHost, SeeboRenderContext } from '../seebo/SeeboHost';
@@ -18,6 +24,13 @@ const ACTIONS_NOT_ALLOWED: DiagnosticDto = {
   position: null,
 };
 
+/** The HTTP policy a template inherits from its folder chain (see OrganizationService). */
+export interface FolderPolicyProvider {
+  folderPolicyOf(
+    templateId: string,
+  ): Promise<{ headers: Record<string, string>; proxy: FolderProxyDto | null }>;
+}
+
 export interface ApiAnalysis {
   /** Input widgets the request needs (data capabilities like `template` are auto-resolved, excluded). */
   requirements: RequirementDto[];
@@ -35,7 +48,17 @@ export class ApiRequestService {
   constructor(
     private readonly templates: TemplateService,
     private readonly host: SeeboHost,
+    private readonly folders?: FolderPolicyProvider,
   ) {}
+
+  private async policyOf(templateId: string) {
+    return (
+      (await this.folders?.folderPolicyOf(templateId)) ?? {
+        headers: {} as Record<string, string>,
+        proxy: null,
+      }
+    );
+  }
 
 
   private async ctx(templateId: string): Promise<SeeboRenderContext> {
@@ -64,11 +87,18 @@ export class ApiRequestService {
     values: Record<string, unknown> = {},
   ): Promise<ApiAnalysis> {
     const ctx = await this.ctx(templateId);
+    // Folder-propagated header values (and the proxy hostname) are rendered alongside the request's
+    // own fields, so any inputs they `need(...)` surface as widgets too.
+    const policy = await this.policyOf(templateId);
+    const folderHeaderValues = [
+      ...Object.values(policy.headers),
+      ...(policy.proxy ? [policy.proxy.hostname] : []),
+    ];
     const byId = new Map<string, RequirementDto>(); // the static universe of input requirements
     const pendingById = new Map<string, RequirementDto>(); // render-resolved (dynamic options/candidates)
     const reached = new Set<string>();
     const diagnostics: DiagnosticDto[] = [];
-    for (const src of ApiRequestService.sources(req)) {
+    for (const src of [...ApiRequestService.sources(req), ...folderHeaderValues]) {
       if (!hasFormula(src)) continue;
       const analysis = await this.host.analyze(src, undefined, ctx);
       if (analysis.actions && analysis.actions.length > 0) diagnostics.push(ACTIONS_NOT_ALLOWED);
@@ -110,9 +140,11 @@ export class ApiRequestService {
     templateId: string,
     req: HttpRequestModel,
     values: Record<string, unknown>,
-  ): Promise<{ request: HttpRequestModel; rendered: boolean }> {
+  ): Promise<{ request: HttpRequestModel; rendered: boolean; proxy: FolderProxyDto | null }> {
     const ctx = await this.ctx(templateId);
-    const rendered = ApiRequestService.sources(req).some(hasFormula);
+    const policy = await this.policyOf(templateId);
+    const rendered =
+      ApiRequestService.sources(req).some(hasFormula) || Object.keys(policy.headers).length > 0;
     const pending = new Map<string, RequirementDto>();
     const diagnostics: DiagnosticDto[] = [];
 
@@ -135,9 +167,21 @@ export class ApiRequestService {
     };
 
     const url = await render(req.url);
-    const headers = await mapValues(req.headers, render);
+    // Folder-propagated headers are rendered too (they may carry formulas) and merged as defaults:
+    // the request's own header of the same name wins; workspace enforced headers still win over all.
+    const folderHeaders = await mapValues(policy.headers, render);
+    const ownHeaders = await mapValues(req.headers, render);
+    const headers =
+      folderHeaders && Object.keys(folderHeaders).length > 0
+        ? { ...folderHeaders, ...(ownHeaders ?? {}) }
+        : ownHeaders;
     const query = await mapValues(req.query, render);
     const body = req.body != null ? await render(req.body) : req.body;
+    // The proxy hostname may carry formulas too (e.g. `${ env('proxy_host') }`) — rendered before the
+    // pending/diagnostic checks so its unfilled inputs also surface as INPUT_REQUIRED.
+    const proxy = policy.proxy
+      ? { ...policy.proxy, hostname: await render(policy.proxy.hostname) }
+      : null;
 
     if (diagnostics.length > 0) {
       throw new AppError('REQUEST_RESOLVE_FAILED', 'validation', diagnostics[0]!.message, {
@@ -149,7 +193,7 @@ export class ApiRequestService {
         pending: [...pending.values()],
       });
     }
-    return { request: { ...req, url, headers, query, body }, rendered };
+    return { request: { ...req, url, headers, query, body }, rendered, proxy };
   }
 }
 

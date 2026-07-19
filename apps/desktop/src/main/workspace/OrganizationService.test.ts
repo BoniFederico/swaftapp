@@ -216,4 +216,36 @@ describe('OrganizationService', () => {
     await ws.close();
     await expect(org.getTree()).rejects.toMatchObject({ code: 'WORKSPACE_REQUIRED' });
   });
+
+  it('stores folder headers/proxy/notes and persists them across reopen', async () => {
+    const { ws, org } = await setup();
+    let tree = await org.createProject({ name: 'P' });
+    tree = await org.createFolder({ name: 'F', projectId: tree.projects[0]!.id });
+    const folderId = tree.folders[0]!.id;
+
+    // Defaults: empty policy, no notes.
+    const fresh = await org.getFolder(folderId);
+    expect(fresh.headers).toEqual({});
+    expect(fresh.proxy).toBeNull();
+    expect(fresh.notes).toBe('');
+
+    await org.updateFolderMeta(folderId, {
+      headers: { 'X-Env': 'test' },
+      proxy: { protocol: 'https', hostname: 'proxy.local', port: 3128 },
+      notes: '# Docs',
+    });
+    await ws.close();
+    await ws.open({ path: 'mem://o.swaft' });
+
+    const reloaded = await org.getFolder(folderId);
+    expect(reloaded.headers).toEqual({ 'X-Env': 'test' });
+    expect(reloaded.proxy).toEqual({ protocol: 'https', hostname: 'proxy.local', port: 3128 });
+    expect(reloaded.notes).toBe('# Docs');
+
+    // Clearing the proxy stores NULL again.
+    await org.updateFolderMeta(folderId, { proxy: null });
+    expect((await org.getFolder(folderId)).proxy).toBeNull();
+
+    await expect(org.getFolder('nope')).rejects.toMatchObject({ code: 'FOLDER_NOT_FOUND' });
+  });
 });

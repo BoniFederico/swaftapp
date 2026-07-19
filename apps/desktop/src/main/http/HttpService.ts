@@ -1,4 +1,4 @@
-import type { HttpAuth, HttpRequestModel, HttpResponseDto } from '@swaft/shared';
+import type { FolderProxyDto, HttpAuth, HttpRequestModel, HttpResponseDto } from '@swaft/shared';
 import { AppError } from '../errors';
 import type { SecretService } from '../secret/SecretService';
 import type { SettingsService } from '../workspace/SettingsService';
@@ -11,14 +11,25 @@ const MAX_REDIRECTS = 5;
  * anchored host match (empty list = everything allowed), re-validates the host on every redirect hop
  * (SSRF hardening), force-applies the workspace **enforced headers** over the request's own, and
  * resolves auth secrets from the OS keychain so the renderer only ever holds `secretRef`s. See
- * SWAFT_SECURITY_MODEL §9.
+ * SWAFT_SECURITY_MODEL §9. A folder-propagated proxy routes the request through `proxyFetchFn`
+ * (an Electron proxied session in production).
  */
 export class HttpService {
   constructor(
-    private readonly deps: { fetchFn: FetchFn; secrets: SecretService; settings: SettingsService },
+    private readonly deps: {
+      fetchFn: FetchFn;
+      /** A fetch routed through the given proxy; required for requests carrying a folder proxy. */
+      proxyFetchFn?: (proxy: FolderProxyDto) => FetchFn;
+      secrets: SecretService;
+      settings: SettingsService;
+    },
   ) {}
 
-  async send(req: HttpRequestModel): Promise<HttpResponseDto> {
+  async send(
+    req: HttpRequestModel,
+    opts: { proxy?: FolderProxyDto | null } = {},
+  ): Promise<HttpResponseDto> {
+    const fetchFn = this.pickFetch(opts.proxy ?? null);
     const { blockedDomains, enforcedHeaders } = await this.deps.settings.getSettings();
     let current = this.buildUrl(req.url, req.query);
     this.assertNotBlocked(current, blockedDomains);
@@ -32,7 +43,7 @@ export class HttpService {
     let redirects = 0;
     let res: Response;
     for (;;) {
-      res = await this.deps.fetchFn(current.toString(), {
+      res = await fetchFn(current.toString(), {
         method: req.method,
         headers,
         body: req.method === 'GET' || req.method === 'HEAD' ? undefined : (req.body ?? undefined),
@@ -59,6 +70,15 @@ export class HttpService {
       body,
       durationMs: Date.now() - start,
     };
+  }
+
+  /** The transport for this request: direct, or through the folder-propagated proxy. */
+  private pickFetch(proxy: FolderProxyDto | null): FetchFn {
+    if (!proxy) return this.deps.fetchFn;
+    if (!this.deps.proxyFetchFn) {
+      throw new AppError('PROXY_UNAVAILABLE', 'execution', 'Proxying is not available.');
+    }
+    return this.deps.proxyFetchFn(proxy);
   }
 
   private buildUrl(raw: string, query?: Record<string, string>): URL {

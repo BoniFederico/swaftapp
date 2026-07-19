@@ -34,7 +34,7 @@ async function setup() {
   const releases = new ReleaseService(ws, templates, changelog);
   const templateData = new TemplateDataProvider(ws, releases);
   const host = new SeeboHost({}, { templateData });
-  const apiRequest = new ApiRequestService(templates, host);
+  const apiRequest = new ApiRequestService(templates, host, org);
 
   let tree = await org.createProject({ name: 'P' });
   const projectId = tree.projects[0]!.id;
@@ -60,7 +60,7 @@ async function setup() {
     return t.templates.find((x) => x.name === name)!.id;
   }
 
-  return { apiRequest, newTemplate, projectId, otherProjectId };
+  return { apiRequest, newTemplate, org, folderId, projectId, otherProjectId };
 }
 
 const GET = (over: Partial<HttpRequestModel>): HttpRequestModel => ({
@@ -175,6 +175,58 @@ describe('ApiRequestService — formula fields (Fase 1)', () => {
     await expect(apiRequest.resolve(id, req, {})).rejects.toMatchObject({
       code: 'REQUEST_RESOLVE_FAILED',
     });
+  });
+
+  it('propagates folder-chain headers (nearest folder wins, request wins) and the nearest proxy', async () => {
+    const { apiRequest, newTemplate, org, folderId, projectId } = await setup();
+    await org.updateFolderMeta(folderId, {
+      headers: { 'X-Root': 'root', 'X-Shared': 'root' },
+    });
+    const tree = await org.createFolder({ name: 'Sub', projectId, parentFolderId: folderId });
+    const subId = tree.folders.find((f) => f.name === 'Sub')!.id;
+    await org.updateFolderMeta(subId, {
+      headers: { 'X-Shared': 'sub' },
+      proxy: { protocol: 'http', hostname: 'proxy.local', port: 8080 },
+    });
+    const id = await newTemplate('Call', 'x', { type: 'api', subtype: 'json', folderId: subId });
+
+    const out = await apiRequest.resolve(
+      id,
+      GET({ headers: { 'X-Own': 'own', 'X-Root': 'req' } }),
+      {},
+    );
+    expect(out.request.headers).toEqual({ 'X-Root': 'req', 'X-Shared': 'sub', 'X-Own': 'own' });
+    expect(out.proxy).toEqual({ protocol: 'http', hostname: 'proxy.local', port: 8080 });
+    expect(out.rendered).toBe(true); // folder headers changed the request → show the render overview
+  });
+
+  it('renders Seebo formulas in folder header values and surfaces their inputs', async () => {
+    const { apiRequest, newTemplate, org, folderId } = await setup();
+    await org.updateFolderMeta(folderId, {
+      headers: { 'X-Token': "${ textbox({ id:'tok', type:string() }) }" },
+    });
+    const id = await newTemplate('Call', 'x', { type: 'api', subtype: 'json' });
+    const req = GET({});
+
+    expect((await apiRequest.analyze(id, req, {})).requirements.map((r) => r.id)).toEqual(['tok']);
+    await expect(apiRequest.resolve(id, req, {})).rejects.toMatchObject({ code: 'INPUT_REQUIRED' });
+    const out = await apiRequest.resolve(id, req, { tok: 'abc' });
+    expect(out.request.headers).toEqual({ 'X-Token': 'abc' });
+  });
+
+  it('renders Seebo formulas in the proxy hostname (and surfaces their inputs)', async () => {
+    const { apiRequest, newTemplate, org, folderId } = await setup();
+    await org.updateFolderMeta(folderId, {
+      proxy: { protocol: 'http', hostname: "${ textbox({ id:'ph', type:string() }) }", port: 8080 },
+    });
+    const id = await newTemplate('Call', 'x', { type: 'api', subtype: 'json' });
+
+    expect((await apiRequest.analyze(id, GET({}), {})).requirements.map((r) => r.id)).toEqual(['ph']);
+    await expect(apiRequest.resolve(id, GET({}), {})).rejects.toMatchObject({
+      code: 'INPUT_REQUIRED',
+    });
+    const out = await apiRequest.resolve(id, GET({}), { ph: 'proxy.local' });
+    expect(out.proxy).toEqual({ protocol: 'http', hostname: 'proxy.local', port: 8080 });
   });
 
   it('fails to resolve a `template` ref outside the same project', async () => {
