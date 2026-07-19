@@ -2,16 +2,36 @@ import { useEffect, useState } from 'react';
 import type { WorkspaceSettingsDto, WorkspaceSettingsUpdate } from '@swaft/shared';
 import { ApiClient, ApiError } from '../../api-client/client';
 import { useI18n } from '../../i18n/I18nProvider';
-import { Button, Select, TextField } from '../../ui';
+import { Button, IconButton, Select, TextField, TrashIcon, useToast } from '../../ui';
 import { ChipListEditor } from '../ChipListEditor';
 
-/** RESTRICTIONS: execution mode (dev-gated), allowed types/subtypes/capabilities/actions/domains, proxy + export root. */
+interface HeaderRow {
+  key: string;
+  value: string;
+}
+
+function toRows(headers: Record<string, string>): HeaderRow[] {
+  return Object.entries(headers).map(([key, value]) => ({ key, value }));
+}
+function fromRows(rows: HeaderRow[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const { key, value } of rows) {
+    const k = key.trim();
+    if (k) out[k] = value;
+  }
+  return out;
+}
+
+/** RESTRICTIONS: execution mode (dev-gated) + the outgoing-HTTP policy — blocked domains,
+ * enforced proxy and enforced headers (all applied by the HTTP client in the main process). */
 export function RestrictionsSettings({ client }: { client: ApiClient }) {
   const { t } = useI18n();
+  const toast = useToast();
   const [s, setS] = useState<WorkspaceSettingsDto | null>(null);
   const [pendingDev, setPendingDev] = useState(false);
   const [proxy, setProxy] = useState('');
-  const [exportRoot, setExportRoot] = useState('');
+  const [rows, setRows] = useState<HeaderRow[]>([]);
+  const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -19,7 +39,7 @@ export function RestrictionsSettings({ client }: { client: ApiClient }) {
         const res = await client.call('settings.get');
         setS(res.settings);
         setProxy(res.settings.proxyUrl ?? '');
-        setExportRoot(res.settings.fileExportRoot ?? '');
+        setRows(toRows(res.settings.enforcedHeaders));
       } catch {
         /* best-effort */
       }
@@ -46,18 +66,24 @@ export function RestrictionsSettings({ client }: { client: ApiClient }) {
     }
   }
 
+  function edit(fn: () => void) {
+    fn();
+    setDirty(true);
+  }
+
+  async function saveHttp() {
+    try {
+      await patch({ proxyUrl: proxy.trim() || null, enforcedHeaders: fromRows(rows) });
+      setDirty(false);
+    } catch (err) {
+      toast.show(err instanceof ApiError ? err.swaft.message : String(err), 'error');
+    }
+  }
+
   if (!s) return null;
 
-  const lists: { key: keyof WorkspaceSettingsDto & string; label: string; placeholder?: string }[] = [
-    { key: 'allowedTypes', label: t('wsset.types') },
-    { key: 'allowedSubtypes', label: t('wsset.subtypes') },
-    { key: 'allowedCapabilities', label: t('wsset.capabilities') },
-    { key: 'allowedActions', label: t('wsset.actions') },
-    { key: 'allowedDomains', label: t('wsset.allowedDomains'), placeholder: t('wsset.domainPlaceholder') },
-  ];
-
   return (
-    <div className="col" style={{ gap: 'var(--space-5)', maxWidth: 560 }}>
+    <div className="settings-form">
       <div className="col" style={{ gap: 'var(--space-2)' }}>
         <Select
           label={t('wsset.executionMode')}
@@ -73,46 +99,87 @@ export function RestrictionsSettings({ client }: { client: ApiClient }) {
             <div className="auth-error" role="alert">
               {t('wsset.devWarning')}
             </div>
-            <Button variant="danger" onClick={() => void patch({ executionMode: 'dev', confirmDev: true }).then(() => setPendingDev(false))}>
+            <Button
+              variant="danger"
+              onClick={() =>
+                void patch({ executionMode: 'dev', confirmDev: true }).then(() => setPendingDev(false))
+              }
+            >
               {t('wsset.devConfirm')}
             </Button>
           </div>
         )}
       </div>
 
-      {lists.map((l) => {
-        const values = s[l.key] as string[];
-        return (
-          <ChipListEditor
-            key={l.key}
-            label={l.label}
-            placeholder={l.placeholder}
-            values={values}
-            onAdd={(v) => void patch({ [l.key]: [...values, v] } as WorkspaceSettingsUpdate)}
-            onRemove={(v) =>
-              void patch({ [l.key]: values.filter((x) => x !== v) } as WorkspaceSettingsUpdate)
-            }
-          />
-        );
-      })}
-
-      <div className="col" style={{ gap: 'var(--space-3)' }}>
-        <TextField label={t('wsset.proxy')} value={proxy} onChange={(e) => setProxy(e.target.value)} />
-        <TextField
-          label={t('wsset.exportRoot')}
-          value={exportRoot}
-          onChange={(e) => setExportRoot(e.target.value)}
+      <div className="ui-field">
+        <ChipListEditor
+          label={t('wsset.blockedDomains')}
+          placeholder={t('wsset.domainPlaceholder')}
+          values={s.blockedDomains}
+          onAdd={(v) => void patch({ blockedDomains: [...s.blockedDomains, v] })}
+          onRemove={(v) => void patch({ blockedDomains: s.blockedDomains.filter((x) => x !== v) })}
         />
-        <div className="row">
-          <Button
-            variant="secondary"
-            onClick={() =>
-              void patch({ proxyUrl: proxy.trim() || null, fileExportRoot: exportRoot.trim() || null })
-            }
-          >
-            {t('wsset.save')}
-          </Button>
+        <span className="field-hint">{t('wsset.blockedDomainsHint')}</span>
+      </div>
+
+      <TextField
+        label={t('wsset.proxy')}
+        value={proxy}
+        onChange={(e) => edit(() => setProxy(e.target.value))}
+      />
+
+      <div className="ui-field">
+        <span className="ui-field__label">{t('wsset.enforcedHeaders')}</span>
+        <div className="env-vars">
+          <div className="env-vars__headrow" aria-hidden="true">
+            <span className="env-vars__colhead env-vars__key">{t('env.settings.varKey')}</span>
+            <span className="env-vars__colhead env-vars__value">{t('env.settings.varValue')}</span>
+            <span className="env-vars__delcol" />
+          </div>
+          {rows.length === 0 && <p className="env-vars__empty">{t('wsset.empty')}</p>}
+          {rows.map((row, i) => (
+            <div key={i} className="env-vars__row">
+              <input
+                className="env-vars__input env-vars__key"
+                aria-label={t('env.settings.varKey')}
+                placeholder={t('env.settings.varKey')}
+                value={row.key}
+                spellCheck={false}
+                onChange={(e) =>
+                  edit(() => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, key: e.target.value } : r))))
+                }
+              />
+              <input
+                className="env-vars__input env-vars__value"
+                aria-label={t('env.settings.varValue')}
+                placeholder={t('env.settings.varValue')}
+                value={row.value}
+                spellCheck={false}
+                onChange={(e) =>
+                  edit(() => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, value: e.target.value } : r))))
+                }
+              />
+              <IconButton
+                label={t('wsset.remove')}
+                onClick={() => edit(() => setRows((rs) => rs.filter((_, j) => j !== i)))}
+              >
+                <TrashIcon />
+              </IconButton>
+            </div>
+          ))}
+          <div className="env-vars__foot">
+            <Button variant="ghost" onClick={() => edit(() => setRows((rs) => [...rs, { key: '', value: '' }]))}>
+              {t('wsset.add')}
+            </Button>
+          </div>
         </div>
+        <span className="field-hint">{t('wsset.enforcedHeadersHint')}</span>
+      </div>
+
+      <div className="settings-form__actions">
+        <Button variant="primary" disabled={!dirty} onClick={() => void saveHttp()}>
+          {t('wsset.save')}
+        </Button>
       </div>
     </div>
   );

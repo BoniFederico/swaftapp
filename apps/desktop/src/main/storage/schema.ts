@@ -11,7 +11,7 @@
  * reshaped to flat collections) + workspace settings + restrictions.
  */
 
-export const SCHEMA_VERSION = 19;
+export const SCHEMA_VERSION = 20;
 
 /** Sync-metadata columns present on every 🟢 synchronized entity. */
 export const SYNC_META_COLUMNS = [
@@ -29,7 +29,6 @@ export const SYNCHRONIZED_TABLES = [
   'folders',
   'tags',
   'workspace_settings',
-  'restrictions',
   'templates',
   'releases',
   'changelog',
@@ -64,23 +63,13 @@ const FOLDERS_DDL = `CREATE TABLE folders (
   ${SYNC_META_DDL}
 );`;
 
+// v20: outgoing-HTTP restrictions only — blocked domains, enforced proxy and enforced headers.
 const SETTINGS_DDL = `CREATE TABLE workspace_settings (
   id TEXT PRIMARY KEY,
   execution_mode TEXT NOT NULL,
-  allowed_types TEXT NOT NULL DEFAULT '[]',
-  allowed_subtypes TEXT NOT NULL DEFAULT '[]',
-  allowed_capabilities TEXT NOT NULL,
-  allowed_actions TEXT NOT NULL,
-  allowed_domains TEXT NOT NULL,
+  blocked_domains TEXT NOT NULL DEFAULT '[]',
   proxy_url TEXT,
-  file_export_root TEXT,
-  ${SYNC_META_DDL}
-);`;
-
-const RESTRICTIONS_DDL = `CREATE TABLE restrictions (
-  id TEXT PRIMARY KEY,
-  kind TEXT NOT NULL,
-  value TEXT NOT NULL,
+  enforced_headers TEXT NOT NULL DEFAULT '{}',
   ${SYNC_META_DDL}
 );`;
 
@@ -207,8 +196,6 @@ CREATE TABLE tags (
 
 ${SETTINGS_DDL}
 
-${RESTRICTIONS_DDL}
-
 ${TEMPLATES_DDL}
 
 ${RELEASES_DDL}
@@ -262,7 +249,12 @@ export const MIGRATIONS: { to: number; sql: string }[] = [
         file_export_root TEXT,
         ${SYNC_META_DDL}
       );
-      ${RESTRICTIONS_DDL}
+      CREATE TABLE restrictions (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        value TEXT NOT NULL,
+        ${SYNC_META_DDL}
+      );
     `,
   },
   {
@@ -395,6 +387,24 @@ export const MIGRATIONS: { to: number; sql: string }[] = [
     sql: `
       DROP TABLE IF EXISTS db_history;
       UPDATE templates SET type = 'document' WHERE type = 'database';
+    `,
+  },
+  {
+    to: 20,
+    // v20 narrows restrictions to outgoing-HTTP policy only: drops the type/subtype/capability/
+    // action allow-lists, the export root and the restrictions table; the domains list becomes a
+    // BLOCK-list (semantics inverted, so the old allow-list values are dropped, not carried over)
+    // and enforced request headers are added.
+    sql: `
+      ALTER TABLE workspace_settings DROP COLUMN allowed_types;
+      ALTER TABLE workspace_settings DROP COLUMN allowed_subtypes;
+      ALTER TABLE workspace_settings DROP COLUMN allowed_capabilities;
+      ALTER TABLE workspace_settings DROP COLUMN allowed_actions;
+      ALTER TABLE workspace_settings DROP COLUMN allowed_domains;
+      ALTER TABLE workspace_settings DROP COLUMN file_export_root;
+      ALTER TABLE workspace_settings ADD COLUMN blocked_domains TEXT NOT NULL DEFAULT '[]';
+      ALTER TABLE workspace_settings ADD COLUMN enforced_headers TEXT NOT NULL DEFAULT '{}';
+      DROP TABLE IF EXISTS restrictions;
     `,
   },
 ];

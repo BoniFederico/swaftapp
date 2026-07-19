@@ -7,7 +7,6 @@ import { ApiRequestService } from './ApiRequestService';
 import { ChangelogService } from './ChangelogService';
 import { OrganizationService } from './OrganizationService';
 import { ReleaseService } from './ReleaseService';
-import { SettingsService } from './SettingsService';
 import { TemplateDataProvider } from './TemplateDataProvider';
 import { TemplateService } from './TemplateService';
 import { WorkspaceService, type WorkspaceFs } from './WorkspaceService';
@@ -30,13 +29,12 @@ async function setup() {
   await ws.create({ name: 'WS', location: 'mem://api.swaft', encrypt: false });
 
   const org = new OrganizationService(ws);
-  const settings = new SettingsService(ws);
   const changelog = new ChangelogService(ws);
   const templates = new TemplateService(ws, org, changelog);
   const releases = new ReleaseService(ws, templates, changelog);
   const templateData = new TemplateDataProvider(ws, releases);
   const host = new SeeboHost({}, { templateData });
-  const apiRequest = new ApiRequestService(templates, settings, host);
+  const apiRequest = new ApiRequestService(templates, host);
 
   let tree = await org.createProject({ name: 'P' });
   const projectId = tree.projects[0]!.id;
@@ -62,7 +60,7 @@ async function setup() {
     return t.templates.find((x) => x.name === name)!.id;
   }
 
-  return { apiRequest, settings, newTemplate, projectId, otherProjectId };
+  return { apiRequest, newTemplate, projectId, otherProjectId };
 }
 
 const GET = (over: Partial<HttpRequestModel>): HttpRequestModel => ({

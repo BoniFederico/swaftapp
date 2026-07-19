@@ -1,9 +1,8 @@
 import type { RenderResultDto, RequirementDto } from '@swaft/shared';
 import { AppError } from '../errors';
 import { toRenderResult, toRequirementDto } from '../seebo/map';
-import type { RenderPolicy, SeeboHost } from '../seebo/SeeboHost';
+import type { SeeboHost } from '../seebo/SeeboHost';
 import type { ReleaseService } from './ReleaseService';
-import type { SettingsService } from './SettingsService';
 import type { TemplateService } from './TemplateService';
 
 /**
@@ -16,14 +15,8 @@ export class BatcherService {
   constructor(
     private readonly templates: TemplateService,
     private readonly releases: ReleaseService,
-    private readonly settings: SettingsService,
     private readonly host: SeeboHost,
   ) {}
-
-  private async policy(): Promise<RenderPolicy> {
-    const s = await this.settings.getSettings();
-    return { allowedCapabilities: s.allowedCapabilities, allowedTypes: s.allowedTypes };
-  }
 
   /** Resolve each id to its effective source, rejecting non-document templates (fail-closed). */
   private async sources(templateIds: string[]): Promise<string[]> {
@@ -48,10 +41,9 @@ export class BatcherService {
   /** The union of widget requirements across the batch (deduped by id — shared inputs once). */
   async analyze(templateIds: string[]): Promise<RequirementDto[]> {
     const sources = await this.sources(templateIds);
-    const policy = await this.policy();
     const seen = new Map<string, RequirementDto>();
     for (const source of sources) {
-      const analysis = await this.host.analyze(source, policy);
+      const analysis = await this.host.analyze(source);
       for (const req of analysis.requirements) {
         const dto = toRequirementDto(req);
         if (!seen.has(dto.id)) seen.set(dto.id, dto);
@@ -65,7 +57,7 @@ export class BatcherService {
     const sources = await this.sources(templateIds);
     const template = sources.map((_, i) => `@{ABSORB('t${i}')}`).join('\n');
     const templatesMap = Object.fromEntries(sources.map((s, i) => [`t${i}`, s]));
-    const state = await this.host.renderComposite(template, templatesMap, values, await this.policy());
+    const state = await this.host.renderComposite(template, templatesMap, values);
     return toRenderResult(state);
   }
 }

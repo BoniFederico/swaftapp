@@ -1,9 +1,8 @@
 import type { DiagnosticDto, RenderResultDto, RequirementDto } from '@swaft/shared';
 import { toDiagnosticDto, toRenderResult, toRequirementDto } from '../seebo/map';
-import type { RenderPolicy, SeeboHost, SeeboRenderContext } from '../seebo/SeeboHost';
+import type { SeeboHost, SeeboRenderContext } from '../seebo/SeeboHost';
 import { RepoBase } from './RepoBase';
 import type { ReleaseService } from './ReleaseService';
-import type { SettingsService } from './SettingsService';
 import type { TemplateService } from './TemplateService';
 import type { WorkspaceService } from './WorkspaceService';
 
@@ -17,17 +16,12 @@ export class RenderService extends RepoBase {
   constructor(
     ws: WorkspaceService,
     private readonly templates: TemplateService,
-    private readonly settings: SettingsService,
     private readonly host: SeeboHost,
     private readonly releases: ReleaseService,
   ) {
     super(ws);
   }
 
-  private async policy(): Promise<RenderPolicy> {
-    const s = await this.settings.getSettings();
-    return { allowedCapabilities: s.allowedCapabilities, allowedTypes: s.allowedTypes };
-  }
 
   /** Render context so data capabilities (e.g. `template`) can scope their lookups to the project. */
   private async renderCtx(templateId: string): Promise<SeeboRenderContext> {
@@ -38,7 +32,7 @@ export class RenderService extends RepoBase {
   async analyze(templateId: string): Promise<RequirementDto[]> {
     const { source } = await this.releases.resolveSource(templateId);
     const ctx = await this.renderCtx(templateId);
-    return (await this.host.analyze(source, await this.policy(), ctx)).requirements.map(
+    return (await this.host.analyze(source, undefined, ctx)).requirements.map(
       toRequirementDto,
     );
   }
@@ -49,23 +43,23 @@ export class RenderService extends RepoBase {
     await this.setInputState(templateId, values);
     const { source } = await this.releases.resolveSource(templateId);
     const ctx = await this.renderCtx(templateId);
-    const state = await this.host.render(source, values, await this.policy(), ctx);
+    const state = await this.host.render(source, values, undefined, ctx);
     return toRenderResult(state);
   }
 
   /** Analyze arbitrary source (Template Editor live feedback). */
   async analyzeSource(source: string): Promise<RequirementDto[]> {
-    return (await this.host.analyze(source, await this.policy())).requirements.map(toRequirementDto);
+    return (await this.host.analyze(source)).requirements.map(toRequirementDto);
   }
 
   /** Render arbitrary (possibly unsaved) source — the Template Editor's view/render preview. */
   async renderSource(source: string, values: Record<string, unknown>): Promise<RenderResultDto> {
-    return toRenderResult(await this.host.render(source, values, await this.policy()));
+    return toRenderResult(await this.host.render(source, values));
   }
 
   /** Static diagnostics for arbitrary source (Template Editor live feedback). */
   async validateSource(source: string): Promise<DiagnosticDto[]> {
-    return (await this.host.validate(source, await this.policy())).map(toDiagnosticDto);
+    return (await this.host.validate(source)).map(toDiagnosticDto);
   }
 
   async getInputState(templateId: string): Promise<Record<string, unknown>> {

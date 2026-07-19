@@ -25,7 +25,6 @@ import {
   type ReleaseUpdateRequest,
   type ReleaseDeleteRequest,
   type RenameRequest,
-  type RestrictionCreateRequest,
   type ReleaseSelectionSetRequest,
   type SignInRequest,
   type SignUpRequest,
@@ -178,23 +177,11 @@ export const handlers: Record<OpName, Handler> = {
       return { tags: await getOrganizationService().removeTemplateTag(r.templateId, r.tagId) };
     }),
 
-  // Settings + restrictions (M5)
-  'settings.get': () =>
-    svc(async () => ({
-      settings: await getSettingsService().getSettings(),
-      restrictions: await getSettingsService().listRestrictions(),
-    })),
+  // Settings (M5)
+  'settings.get': () => svc(async () => ({ settings: await getSettingsService().getSettings() })),
   'settings.update': (p) =>
     svc(async () => ({
       settings: await getSettingsService().updateSettings(p as WorkspaceSettingsUpdate),
-    })),
-  'restriction.create': (p) =>
-    svc(async () => ({
-      restrictions: await getSettingsService().createRestriction(p as RestrictionCreateRequest),
-    })),
-  'restriction.delete': (p) =>
-    svc(async () => ({
-      restrictions: await getSettingsService().deleteRestriction((p as IdRequest).id),
     })),
 
   // Templates + Seebo rendering (M6)

@@ -10,7 +10,6 @@ import { dispatch } from '../../../main/transport/dispatch';
 import { setSessionGate } from '../../../main/transport/session';
 import { setAuthService } from '../../../main/auth/registry';
 import { makeTestAuthService } from '../../../main/auth/testing';
-import { getSettingsService } from '../../../main/services';
 import {
   installTestWorkspaceBackend,
   resetTestWorkspaceBackend,
@@ -104,9 +103,6 @@ describe('API View (M8)', () => {
     });
     renderApp();
     await signUpToWorkspaceApiTemplate();
-
-    // Allow the domain (the Settings UI is covered elsewhere).
-    await getSettingsService().updateSettings({ allowedDomains: ['example.com'] });
 
     setUrl('https://example.com/x');
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));

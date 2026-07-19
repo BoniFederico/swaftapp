@@ -7,10 +7,11 @@ type FetchFn = typeof fetch;
 const MAX_REDIRECTS = 5;
 
 /**
- * Structured HTTP client (never cURL). Enforces the workspace **allowed-domains** allow-list with an
- * anchored host match, re-validates the host on every redirect hop (SSRF hardening), and resolves
- * auth secrets from the OS keychain so the renderer only ever holds `secretRef`s. See
- * SWAFT_SECURITY_MODEL §9. (An **empty** allow-list blocks everything — domains must be allow-listed.)
+ * Structured HTTP client (never cURL). Enforces the workspace **blocked-domains** block-list with an
+ * anchored host match (empty list = everything allowed), re-validates the host on every redirect hop
+ * (SSRF hardening), force-applies the workspace **enforced headers** over the request's own, and
+ * resolves auth secrets from the OS keychain so the renderer only ever holds `secretRef`s. See
+ * SWAFT_SECURITY_MODEL §9.
  */
 export class HttpService {
   constructor(
@@ -18,12 +19,14 @@ export class HttpService {
   ) {}
 
   async send(req: HttpRequestModel): Promise<HttpResponseDto> {
-    const { allowedDomains } = await this.deps.settings.getSettings();
+    const { blockedDomains, enforcedHeaders } = await this.deps.settings.getSettings();
     let current = this.buildUrl(req.url, req.query);
-    this.assertAllowed(current, allowedDomains);
+    this.assertNotBlocked(current, blockedDomains);
 
     const headers = new Headers(req.headers ?? {});
     this.applyAuth(headers, req.auth);
+    // Enforced headers win over both the request's own headers and its auth.
+    for (const [name, value] of Object.entries(enforcedHeaders)) headers.set(name, value);
 
     const start = Date.now();
     let redirects = 0;
@@ -41,7 +44,7 @@ export class HttpService {
         throw new AppError('TOO_MANY_REDIRECTS', 'execution', 'Too many redirects.');
       }
       current = new URL(location, current);
-      this.assertAllowed(current, allowedDomains); // re-validate the redirect target
+      this.assertNotBlocked(current, blockedDomains); // re-validate the redirect target
     }
 
     const body = await res.text();
@@ -69,17 +72,17 @@ export class HttpService {
     return url;
   }
 
-  private assertAllowed(url: URL, allowed: string[]): void {
+  private assertNotBlocked(url: URL, blocked: string[]): void {
     if (url.protocol !== 'http:' && url.protocol !== 'https:') {
       throw new AppError('DOMAIN_NOT_ALLOWED', 'policy', `Protocol not allowed: ${url.protocol}`);
     }
     const host = url.hostname.toLowerCase();
-    const ok = allowed.some((d) => {
+    const hit = blocked.some((d) => {
       const dom = d.trim().toLowerCase();
       return dom.length > 0 && (host === dom || host.endsWith(`.${dom}`));
     });
-    if (!ok) {
-      throw new AppError('DOMAIN_NOT_ALLOWED', 'policy', `Domain not allowed: ${host}`, { host });
+    if (hit) {
+      throw new AppError('DOMAIN_NOT_ALLOWED', 'policy', `Domain is blocked: ${host}`, { host });
     }
   }
 

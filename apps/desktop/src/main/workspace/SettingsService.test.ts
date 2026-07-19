@@ -29,24 +29,26 @@ describe('SettingsService', () => {
     const { settings } = await setup();
     const s = await settings.getSettings();
     expect(s.executionMode).toBe('sandbox');
-    expect(s.allowedDomains).toEqual([]);
+    expect(s.blockedDomains).toEqual([]);
     expect(s.proxyUrl).toBeNull();
-    expect(s.fileExportRoot).toBeNull();
+    expect(s.enforcedHeaders).toEqual({});
   });
 
-  it('updates allowed domains + proxy and persists across reopen', async () => {
+  it('updates blocked domains + proxy + enforced headers and persists across reopen', async () => {
     const { ws, settings } = await setup();
     await settings.updateSettings({
-      allowedDomains: ['api.example.com'],
+      blockedDomains: ['evil.example.com'],
       proxyUrl: 'http://proxy:8080',
+      enforcedHeaders: { 'X-Tenant': 'acme' },
     });
 
     await ws.close();
     await ws.open({ path: 'mem://s.swaft' });
 
     const s = await settings.getSettings();
-    expect(s.allowedDomains).toEqual(['api.example.com']);
+    expect(s.blockedDomains).toEqual(['evil.example.com']);
     expect(s.proxyUrl).toBe('http://proxy:8080');
+    expect(s.enforcedHeaders).toEqual({ 'X-Tenant': 'acme' });
   });
 
   it('gates the dev execution mode behind explicit confirmation', async () => {
@@ -60,13 +62,4 @@ describe('SettingsService', () => {
     expect(s.executionMode).toBe('dev');
   });
 
-  it('manages restrictions (create/list/delete)', async () => {
-    const { settings } = await setup();
-    let list = await settings.createRestriction({ kind: 'capability', value: 'jsonInput' });
-    expect(list.map((r) => r.value)).toEqual(['jsonInput']);
-
-    const id = list[0]!.id;
-    list = await settings.deleteRestriction(id);
-    expect(list).toHaveLength(0);
-  });
 });

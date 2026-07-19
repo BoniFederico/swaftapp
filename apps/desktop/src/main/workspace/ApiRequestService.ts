@@ -1,8 +1,7 @@
 import { DATA_CAPABILITIES, type DiagnosticDto, type HttpRequestModel, type RequirementDto } from '@swaft/shared';
 import { AppError } from '../errors';
 import { toDiagnosticDto, toRequirementDto } from '../seebo/map';
-import type { RenderPolicy, SeeboHost, SeeboRenderContext } from '../seebo/SeeboHost';
-import type { SettingsService } from './SettingsService';
+import type { SeeboHost, SeeboRenderContext } from '../seebo/SeeboHost';
 import type { TemplateService } from './TemplateService';
 
 const DATA_CAPABILITY_SET: ReadonlySet<string> = new Set(DATA_CAPABILITIES);
@@ -35,14 +34,9 @@ export interface ApiAnalysis {
 export class ApiRequestService {
   constructor(
     private readonly templates: TemplateService,
-    private readonly settings: SettingsService,
     private readonly host: SeeboHost,
   ) {}
 
-  private async policy(): Promise<RenderPolicy> {
-    const s = await this.settings.getSettings();
-    return { allowedCapabilities: s.allowedCapabilities, allowedTypes: s.allowedTypes };
-  }
 
   private async ctx(templateId: string): Promise<SeeboRenderContext> {
     return { projectId: await this.templates.projectIdOf(templateId), templateId };
@@ -69,7 +63,6 @@ export class ApiRequestService {
     req: HttpRequestModel,
     values: Record<string, unknown> = {},
   ): Promise<ApiAnalysis> {
-    const policy = await this.policy();
     const ctx = await this.ctx(templateId);
     const byId = new Map<string, RequirementDto>(); // the static universe of input requirements
     const pendingById = new Map<string, RequirementDto>(); // render-resolved (dynamic options/candidates)
@@ -77,7 +70,7 @@ export class ApiRequestService {
     const diagnostics: DiagnosticDto[] = [];
     for (const src of ApiRequestService.sources(req)) {
       if (!hasFormula(src)) continue;
-      const analysis = await this.host.analyze(src, policy, ctx);
+      const analysis = await this.host.analyze(src, undefined, ctx);
       if (analysis.actions && analysis.actions.length > 0) diagnostics.push(ACTIONS_NOT_ALLOWED);
       for (const r of analysis.requirements) {
         const dto = toRequirementDto(r);
@@ -85,10 +78,10 @@ export class ApiRequestService {
         if (DATA_CAPABILITY_SET.has(dto.capability)) continue;
         byId.set(dto.id, dto);
       }
-      for (const d of await this.host.validate(src, policy)) diagnostics.push(toDiagnosticDto(d));
+      for (const d of await this.host.validate(src)) diagnostics.push(toDiagnosticDto(d));
       // Reachability: render the field with the current values. The render resolves dynamic options
       // (a capability's `args.candidates`), so its `pending` requirements are preferred for the panel.
-      const state = await this.host.render(src, values, policy, ctx);
+      const state = await this.host.render(src, values, undefined, ctx);
       if (state.status === 'failed') {
         // Conservative on a broken field: keep its inputs visible so they can be fixed.
         for (const r of analysis.requirements) reached.add(String(r.id));
@@ -118,7 +111,6 @@ export class ApiRequestService {
     req: HttpRequestModel,
     values: Record<string, unknown>,
   ): Promise<{ request: HttpRequestModel; rendered: boolean }> {
-    const policy = await this.policy();
     const ctx = await this.ctx(templateId);
     const rendered = ApiRequestService.sources(req).some(hasFormula);
     const pending = new Map<string, RequirementDto>();
@@ -126,7 +118,7 @@ export class ApiRequestService {
 
     const render = async (src: string): Promise<string> => {
       if (!hasFormula(src)) return src;
-      const state = await this.host.render(src, values, policy, ctx);
+      const state = await this.host.render(src, values, undefined, ctx);
       if (state.actions && state.actions.length > 0) diagnostics.push(ACTIONS_NOT_ALLOWED);
       if (state.status === 'waiting') {
         for (const r of state.pending ?? []) {

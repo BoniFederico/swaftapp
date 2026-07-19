@@ -5,31 +5,21 @@ import { useI18n } from '../i18n/I18nProvider';
 import type { TranslationKey } from '../i18n/catalogs';
 import { EnvironmentsSettings } from './sections/EnvironmentsSettings';
 import { GeneralSettings } from './sections/GeneralSettings';
-import { PlaceholderSettings } from './sections/PlaceholderSettings';
 import { PreferencesSettings } from './sections/PreferencesSettings';
 import { RestrictionsSettings } from './sections/RestrictionsSettings';
 
-export type SettingsSectionId =
-  | 'general'
-  | 'restrictions'
-  | 'environments'
-  | 'users'
-  | 'groups'
-  | 'preferences';
+export type SettingsSectionId = 'general' | 'restrictions' | 'environments' | 'preferences';
 
 const NAV: { id: SettingsSectionId; label: TranslationKey }[] = [
   { id: 'general', label: 'set.general' },
   { id: 'restrictions', label: 'set.restrictions' },
   { id: 'environments', label: 'set.environments' },
-  { id: 'users', label: 'set.users' },
-  { id: 'groups', label: 'set.groups' },
   { id: 'preferences', label: 'set.preferences' },
 ];
 
 /**
  * Workspace Settings, presented as an overlay modal (over the workspace, not inside it). Left nav
- * selects a section; the right pane shows it. GENERAL / RESTRICTIONS / PREFERENCES are functional;
- * USERS and GROUPS & PERMISSIONS are placeholders pending collaboration/server mode (post-MVP).
+ * selects a section; the right pane shows it.
  */
 export function SettingsModal({
   open,
@@ -93,12 +83,6 @@ export function SettingsModal({
             {section === 'general' && <GeneralSettings />}
             {section === 'restrictions' && <RestrictionsSettings client={client} />}
             {section === 'environments' && <EnvironmentsSettings client={client} />}
-            {section === 'users' && (
-              <PlaceholderSettings titleKey="set.users" hintKey="set.usersHint" />
-            )}
-            {section === 'groups' && (
-              <PlaceholderSettings titleKey="set.groups" hintKey="set.groupsHint" />
-            )}
             {section === 'preferences' && <PreferencesSettings />}
           </div>
         </div>

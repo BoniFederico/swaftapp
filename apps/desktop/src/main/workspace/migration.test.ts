@@ -37,7 +37,7 @@ async function makeV1File(): Promise<Uint8Array> {
 }
 
 describe('schema migration v1 → v2', () => {
-  it('upgrades a v1 workspace on open: keeps data, adds settings/restrictions', async () => {
+  it('upgrades a v1 workspace on open: keeps data, adds the newer tables', async () => {
     const files = new Map<string, Uint8Array>([['mem://v1.swaft', await makeV1File()]]);
     const fs: WorkspaceFs = {
       read: (p) => Promise.resolve(files.get(p) ?? null),

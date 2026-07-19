@@ -7,7 +7,6 @@ import { ApiRequestService } from './ApiRequestService';
 import { ChangelogService } from './ChangelogService';
 import { EnvironmentService } from './EnvironmentService';
 import { OrganizationService } from './OrganizationService';
-import { SettingsService } from './SettingsService';
 import { TemplateService } from './TemplateService';
 import { WorkspaceService, type WorkspaceFs } from './WorkspaceService';
 
@@ -29,12 +28,11 @@ async function setup(username: string | null = 'alice') {
   await ws.create({ name: 'WS', location: 'mem://env.swaft', encrypt: false });
 
   const org = new OrganizationService(ws);
-  const settings = new SettingsService(ws);
   const changelog = new ChangelogService(ws);
   const templates = new TemplateService(ws, org, changelog);
   const environments = new EnvironmentService(ws, () => username);
   const host = new SeeboHost({}, { envData: environments });
-  const apiRequest = new ApiRequestService(templates, settings, host);
+  const apiRequest = new ApiRequestService(templates, host);
 
   const tree = await org.createProject({ name: 'P' });
   const projectId = tree.projects[0]!.id;

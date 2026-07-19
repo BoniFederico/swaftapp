@@ -7,8 +7,13 @@ import { IdentityCipher } from '../auth/testing';
 import { SecretService } from '../secret/SecretService';
 import { HttpService } from './HttpService';
 
-function settings(allowedDomains: string[]): SettingsService {
-  return { getSettings: () => Promise.resolve({ allowedDomains }) } as unknown as SettingsService;
+function settings(
+  blockedDomains: string[] = [],
+  enforcedHeaders: Record<string, string> = {},
+): SettingsService {
+  return {
+    getSettings: () => Promise.resolve({ blockedDomains, enforcedHeaders }),
+  } as unknown as SettingsService;
 }
 
 const fakeFetch = (
@@ -27,18 +32,21 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 describe('HttpService', () => {
-  it('blocks a non-allow-listed domain with a coded error', async () => {
+  it('blocks a block-listed domain (incl. subdomains) with a coded error', async () => {
     const http = new HttpService({
       fetchFn: fakeFetch(() => new Response('ok')),
       secrets,
-      settings: settings(['example.com']),
+      settings: settings(['evil.com']),
     });
     await expect(http.send({ method: 'GET', url: 'https://evil.com/x' })).rejects.toMatchObject({
       code: 'DOMAIN_NOT_ALLOWED',
     });
+    await expect(http.send({ method: 'GET', url: 'https://api.evil.com/x' })).rejects.toMatchObject({
+      code: 'DOMAIN_NOT_ALLOWED',
+    });
   });
 
-  it('allows an allow-listed host (incl. subdomains) and returns the response + query', async () => {
+  it('allows any non-blocked host (empty block-list = allow all) and returns the response + query', async () => {
     let calledUrl = '';
     const http = new HttpService({
       fetchFn: fakeFetch((url) => {
@@ -46,7 +54,7 @@ describe('HttpService', () => {
         return new Response('hello', { status: 200, statusText: 'OK' });
       }),
       secrets,
-      settings: settings(['example.com']),
+      settings: settings(),
     });
     const res = await http.send({
       method: 'GET',
@@ -58,7 +66,7 @@ describe('HttpService', () => {
     expect(calledUrl).toContain('a=1');
   });
 
-  it('re-validates redirects and blocks a redirect to a non-allowed host', async () => {
+  it('re-validates redirects and blocks a redirect into a blocked host', async () => {
     const http = new HttpService({
       fetchFn: fakeFetch((url) =>
         url.includes('example.com')
@@ -66,11 +74,31 @@ describe('HttpService', () => {
           : new Response('reached', { status: 200 }),
       ),
       secrets,
-      settings: settings(['example.com']),
+      settings: settings(['evil.com']),
     });
     await expect(http.send({ method: 'GET', url: 'https://example.com/x' })).rejects.toMatchObject({
       code: 'DOMAIN_NOT_ALLOWED',
     });
+  });
+
+  it('force-applies enforced headers over the request own headers', async () => {
+    let seen: Headers | null = null;
+    const http = new HttpService({
+      fetchFn: fakeFetch((_url, init) => {
+        seen = init.headers;
+        return new Response('ok', { status: 200 });
+      }),
+      secrets,
+      settings: settings([], { 'X-Tenant': 'acme', 'User-Agent': 'swaft' }),
+    });
+    await http.send({
+      method: 'GET',
+      url: 'https://example.com/x',
+      headers: { 'X-Tenant': 'other', Accept: 'application/json' },
+    });
+    expect(seen!.get('x-tenant')).toBe('acme');
+    expect(seen!.get('user-agent')).toBe('swaft');
+    expect(seen!.get('accept')).toBe('application/json');
   });
 
   it('applies bearer auth from a keychain secret (the value never leaves the main process)', async () => {
@@ -82,7 +110,7 @@ describe('HttpService', () => {
         return new Response('ok', { status: 200 });
       }),
       secrets,
-      settings: settings(['example.com']),
+      settings: settings(),
     });
     await http.send({
       method: 'GET',

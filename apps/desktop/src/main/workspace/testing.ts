@@ -87,9 +87,9 @@ export function installTestWorkspaceBackend(
   const templateData = new TemplateDataProvider(workspace, releases);
   const environments = new EnvironmentService(workspace, currentUsername);
   const host = new SeeboHost({}, { templateData, envData: environments });
-  const render = new RenderService(workspace, templates, settings, host, releases);
-  const apiRequest = new ApiRequestService(templates, settings, host);
-  const batcher = new BatcherService(templates, releases, settings, host);
+  const render = new RenderService(workspace, templates, host, releases);
+  const apiRequest = new ApiRequestService(templates, host);
+  const batcher = new BatcherService(templates, releases, host);
   const actions = new ActionService(workspace, {
     host,
     releases,

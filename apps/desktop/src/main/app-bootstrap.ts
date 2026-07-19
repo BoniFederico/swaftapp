@@ -119,9 +119,9 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
   // The `env` data capability reads the active environment's variables (no user input needed).
   const environments = new EnvironmentService(workspaceService, currentUsername);
   const host = new SeeboHost({}, { templateData, envData: environments });
-  const render = new RenderService(workspaceService, templates, settings, host, releases);
-  const apiRequest = new ApiRequestService(templates, settings, host);
-  const batcher = new BatcherService(templates, releases, settings, host);
+  const render = new RenderService(workspaceService, templates, host, releases);
+  const apiRequest = new ApiRequestService(templates, host);
+  const batcher = new BatcherService(templates, releases, host);
   const actionService = new ActionService(workspaceService, {
     host,
     releases,

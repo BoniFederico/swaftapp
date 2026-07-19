@@ -124,25 +124,25 @@ export const renameRequestSchema = z
   .strict();
 export const idRequestSchema = z.object({ id: z.string().min(1) }).strict();
 
+/** An outgoing-HTTP header name (RFC 7230 token). */
+const headerNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(128)
+  .regex(/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/, 'Invalid header name.');
+
 export const settingsUpdateSchema = z
   .object({
     executionMode: executionModeSchema.optional(),
-    allowedTypes: z.array(z.string()).optional(),
-    allowedSubtypes: z.array(z.string()).optional(),
-    allowedCapabilities: z.array(z.string()).optional(),
-    allowedActions: z.array(z.string()).optional(),
-    allowedDomains: z.array(z.string()).optional(),
+    /** Hosts outgoing HTTP requests may NOT target (anchored host match, empty = allow all). */
+    blockedDomains: z.array(z.string().trim().min(1).max(253)).optional(),
+    /** Proxy every outgoing HTTP request through this URL (null = direct). */
     proxyUrl: z.string().nullable().optional(),
-    fileExportRoot: z.string().nullable().optional(),
+    /** Headers force-applied to every outgoing HTTP request (override the request's own). */
+    enforcedHeaders: z.record(headerNameSchema, z.string().max(4096)).optional(),
     /** Required to switch execution mode to `dev` (a guarded action). */
     confirmDev: z.boolean().optional(),
-  })
-  .strict();
-
-export const restrictionCreateRequestSchema = z
-  .object({
-    kind: z.string().trim().min(1).max(64),
-    value: z.string().trim().min(1).max(512),
   })
   .strict();
 
@@ -350,8 +350,6 @@ export const OP_NAMES = [
   'tag.delete',
   'settings.get',
   'settings.update',
-  'restriction.create',
-  'restriction.delete',
   'template.create',
   'template.rename',
   'template.delete',
@@ -430,8 +428,6 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'tag.delete': idRequestSchema,
   'settings.get': emptyRequestSchema,
   'settings.update': settingsUpdateSchema,
-  'restriction.create': restrictionCreateRequestSchema,
-  'restriction.delete': idRequestSchema,
   'template.create': templateCreateRequestSchema,
   'template.rename': renameRequestSchema,
   'template.delete': idRequestSchema,
@@ -816,21 +812,14 @@ export interface ReceiptDto {
 
 export interface WorkspaceSettingsDto {
   executionMode: ExecutionMode;
-  allowedTypes: string[];
-  allowedSubtypes: string[];
-  allowedCapabilities: string[];
-  allowedActions: string[];
-  allowedDomains: string[];
+  /** Hosts outgoing HTTP requests may NOT target (anchored host match, empty = allow all). */
+  blockedDomains: string[];
+  /** Proxy every outgoing HTTP request through this URL (null = direct). */
   proxyUrl: string | null;
-  fileExportRoot: string | null;
+  /** Headers force-applied to every outgoing HTTP request (override the request's own). */
+  enforcedHeaders: Record<string, string>;
 }
 export type WorkspaceSettingsUpdate = z.infer<typeof settingsUpdateSchema>;
-
-export interface RestrictionDto {
-  id: string;
-  kind: string;
-  value: string;
-}
 
 // --- Environment DTOs -------------------------------------------------------
 
@@ -881,7 +870,6 @@ export interface TagsResponse {
 }
 export type RenameRequest = z.infer<typeof renameRequestSchema>;
 export type IdRequest = z.infer<typeof idRequestSchema>;
-export type RestrictionCreateRequest = z.infer<typeof restrictionCreateRequestSchema>;
 export type TemplateCreateRequest = z.infer<typeof templateCreateRequestSchema>;
 export type TemplateUpdateSourceRequest = z.infer<typeof templateUpdateSourceRequestSchema>;
 export type TemplateRenderRequest = z.infer<typeof templateRenderRequestSchema>;
@@ -959,15 +947,8 @@ export interface ReceiptsResponse {
 export interface TreeResponse {
   tree: WorkspaceTree;
 }
-export interface SettingsSnapshotResponse {
-  settings: WorkspaceSettingsDto;
-  restrictions: RestrictionDto[];
-}
 export interface SettingsResponse {
   settings: WorkspaceSettingsDto;
-}
-export interface RestrictionsResponse {
-  restrictions: RestrictionDto[];
 }
 
 export interface OpContracts {
@@ -1004,10 +985,8 @@ export interface OpContracts {
   'template.tags.remove': { request: TemplateTagRemoveRequest; response: TagsResponse };
   'tag.create': { request: NameColorRequest; response: TreeResponse };
   'tag.delete': { request: IdRequest; response: TreeResponse };
-  'settings.get': { request: EmptyRequest; response: SettingsSnapshotResponse };
+  'settings.get': { request: EmptyRequest; response: SettingsResponse };
   'settings.update': { request: WorkspaceSettingsUpdate; response: SettingsResponse };
-  'restriction.create': { request: RestrictionCreateRequest; response: RestrictionsResponse };
-  'restriction.delete': { request: IdRequest; response: RestrictionsResponse };
   'template.create': { request: TemplateCreateRequest; response: TreeResponse };
   'template.rename': { request: RenameRequest; response: TreeResponse };
   'template.delete': { request: IdRequest; response: TreeResponse };

@@ -36,8 +36,8 @@ async function setup() {
   const templates = new TemplateService(ws, org, changelog);
   const releases = new ReleaseService(ws, templates, changelog);
   const host = new SeeboHost();
-  const render = new RenderService(ws, templates, settings, host, releases);
-  const batcher = new BatcherService(templates, releases, settings, host);
+  const render = new RenderService(ws, templates, host, releases);
+  const batcher = new BatcherService(templates, releases, host);
   const actions = new ActionService(ws, {
     host,
     releases,
@@ -59,7 +59,7 @@ async function setup() {
     return t.templates.find((x) => x.name === name)!.id;
   }
 
-  return { batcher, actions, settings, render, newTemplate };
+  return { batcher, actions, render, newTemplate };
 }
 
 /** A document declaring one confirm-gated `log` action with a literal input. */
@@ -106,14 +106,6 @@ describe('ActionService (M10, seebo/actions bridge)', () => {
 
     const ok = await actions.execute(id, { confirmedActions: ['mk'], failFast: true });
     expect(ok[0]!.status).toBe('succeeded');
-  });
-
-  it('denies action types outside a configured allow-list (fail-closed)', async () => {
-    const { actions, settings, newTemplate } = await setup();
-    await settings.updateSettings({ allowedActions: ['something.else'] });
-    const id = await newTemplate('Act', actionTpl('hi'));
-    const r = await actions.execute(id, { confirmedActions: ['mk'], failFast: true });
-    expect(r[0]!.status).toBe('skipped');
   });
 
   it('persists redacted receipts (never the action input values)', async () => {
