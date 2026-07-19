@@ -80,6 +80,18 @@ describe('SeeboHost — env-fallback sugar for bare names', () => {
     expect(state.diagnostics?.some((d) => d.code === 'UNDECLARED_NAME')).toBe(true);
   });
 
+  it('never falls back for string literals or names inside larger expressions', async () => {
+    const host = new SeeboHost({}, { envData: fakeEnvData({ ciao: 'ENVVAL', pesca: { x: 1 } }) });
+    // A string literal is a literal — even when an env var with the same name exists.
+    expect((await host.render("${ 'ciao' }", {})).output).toBe('ciao');
+    // Only the whole-slot bare form is sugar; expressions keep Seebo's own diagnostics.
+    for (const src of ['${ pesca.x }', "${ ciao + 'y' }"]) {
+      const state = await host.render(src, {});
+      expect(state.status, src).toBe('failed');
+      expect(state.diagnostics?.some((d) => d.code === 'UNDECLARED_NAME'), src).toBe(true);
+    }
+  });
+
   it('explicit input values win over the environment fallback', async () => {
     const host = new SeeboHost({}, { envData: fakeEnvData({ pesca: 'trota' }) });
     const state = await host.render('${ pesca }', { pesca: 'salmone' });
@@ -90,6 +102,8 @@ describe('SeeboHost — env-fallback sugar for bare names', () => {
     const host = new SeeboHost({}, { envData: fakeEnvData({ pesca: 'trota' }) });
     const diags = await host.validate('${ pesca } ${ ignota }');
     expect(diags.map((d) => d.data?.name)).toEqual(['ignota']);
+    // A covered name used inside an expression is NOT eligible → still flagged.
+    expect((await host.validate('${ pesca + 1 }')).map((d) => d.data?.name)).toEqual(['pesca']);
   });
 
   it('is inert without an env provider (pure engines keep the failure)', async () => {

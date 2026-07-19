@@ -132,6 +132,20 @@ function envKey(req: SeeboRequirement): string {
   return typeof req.id === 'string' ? req.id : String(req.id ?? '');
 }
 
+/**
+ * The names appearing as a **whole-slot bare identifier** — `${ name }` (also `#{`/`@{`). Only
+ * these are eligible for the env-fallback sugar; anything else inside a slot (literals, member
+ * access, operators, calls) keeps Seebo's own semantics and diagnostics.
+ */
+const BARE_SLOT = /[$#@]\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}/g;
+function bareSlotNames(sources: string[]): Set<string> {
+  const names = new Set<string>();
+  for (const src of sources) {
+    for (const m of src.matchAll(BARE_SLOT)) names.add(m[1]!);
+  }
+  return names;
+}
+
 export class SeeboHost {
   private modulePromise?: Promise<SeeboModule>;
   private actionsPromise?: Promise<SeeboActionsModule>;
@@ -227,13 +241,15 @@ export class SeeboHost {
   /** Static diagnostics (never throws) for live editor feedback. */
   async validate(source: string, policy?: RenderPolicy): Promise<SeeboDiagnostic[]> {
     const diagnostics = (await this.engine(policy)).validate(source);
-    // Env-fallback sugar (see render): don't flag `${ name }` when `name` is an env variable.
+    // Env-fallback sugar (see render): don't flag a whole-slot `${ name }` when `name` is an env
+    // variable. Names used inside larger expressions are NOT eligible and stay flagged.
     const { envData } = this.deps;
     if (!envData || !diagnostics.some((d) => d.code === 'UNDECLARED_NAME')) return diagnostics;
+    const eligible = bareSlotNames([source]);
     const kept: SeeboDiagnostic[] = [];
     for (const d of diagnostics) {
       const name = d.code === 'UNDECLARED_NAME' ? d.data?.name : undefined;
-      if (typeof name === 'string') {
+      if (typeof name === 'string' && eligible.has(name)) {
         try {
           await envData.resolve(name);
           continue; // resolvable from the active environment → the sugar will cover it
@@ -254,7 +270,11 @@ export class SeeboHost {
     ctx?: SeeboRenderContext,
   ): Promise<SeeboState> {
     const engine = await this.engine(policy, ctx);
-    return this.withEnvFallback((v) => engine.stebo({ template: source, values: v }), values);
+    return this.withEnvFallback(
+      (v) => engine.stebo({ template: source, values: v }),
+      values,
+      bareSlotNames([source]),
+    );
   }
 
   /** Render a composite template (Batcher) with named sub-templates (ABSORB/MERGE merge macros). */
@@ -265,7 +285,11 @@ export class SeeboHost {
     policy?: RenderPolicy,
   ): Promise<SeeboState> {
     const engine = await this.engine(policy);
-    return this.withEnvFallback((v) => engine.stebo({ template, templates, values: v }), values);
+    return this.withEnvFallback(
+      (v) => engine.stebo({ template, templates, values: v }),
+      values,
+      bareSlotNames([template, ...Object.values(templates)]),
+    );
   }
 
   /** The distinct names a failed state flags as `UNDECLARED_NAME`. */
@@ -278,21 +302,27 @@ export class SeeboHost {
   }
 
   /**
-   * Env-fallback sugar: a bare `${ name }` Seebo does not recognize (`UNDECLARED_NAME`) is retried
-   * as the active environment's variable of the same name — `${ pesca }` behaves like
-   * `${ env('pesca') }` when `pesca` exists in the environment. Names the environment cannot resolve
-   * keep their original diagnostic. Bounded loop: each pass must resolve at least one NEW name.
+   * Env-fallback sugar: a **whole-slot bare** `${ name }` Seebo does not recognize
+   * (`UNDECLARED_NAME`) is retried as the active environment's variable of the same name —
+   * `${ pesca }` behaves like `${ env('pesca') }` when `pesca` exists in the environment. Only
+   * names in `eligible` (extracted as `${ name }` slots from the source) are tried: string
+   * literals and names inside larger expressions (`${ name.x }`, `${ name + 1 }`) never fall
+   * back. Unresolvable names keep their original diagnostic. Bounded loop: each pass must
+   * resolve at least one NEW name.
    */
   private async withEnvFallback(
     run: (values: Record<string, unknown>) => Promise<SeeboState>,
     values: Record<string, unknown>,
+    eligible: Set<string>,
   ): Promise<SeeboState> {
     let state = await run(values);
     const { envData } = this.deps;
-    if (!envData) return state;
+    if (!envData || eligible.size === 0) return state;
     let current = values;
     for (let pass = 0; pass < 5 && state.status === 'failed'; pass++) {
-      const names = SeeboHost.undeclaredNames(state).filter((n) => !(n in current));
+      const names = SeeboHost.undeclaredNames(state).filter(
+        (n) => eligible.has(n) && !(n in current),
+      );
       if (names.length === 0) break;
       const resolved: Record<string, unknown> = {};
       for (const name of names) {

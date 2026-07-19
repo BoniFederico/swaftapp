@@ -22,8 +22,12 @@ const NUM = mark('cm-sb-num');
 const PROP = mark('cm-sb-prop');
 const KW = mark('cm-sb-kw');
 const PUNC = mark('cm-sb-punc');
+/** A whole-slot bare identifier (`${ name }`) — the env-fallback sugar reads it as an env var. */
+const ENVREF = mark('cm-sb-envref');
 
 const KEYWORDS = new Set(['true', 'false', 'null']);
+/** Matches a slot whose entire content is one bare identifier (captures its offsets via index). */
+const BARE_INNER = /^(\s*)([A-Za-z_][A-Za-z0-9_]*)\s*$/;
 const TOKEN = /('(?:[^'\\]|\\.)*')|(\d+(?:\.\d+)?)|([A-Za-z_$][\w$]*)|([{}()[\],:.])/g;
 
 type Item = { from: number; to: number; deco: Decoration };
@@ -68,7 +72,16 @@ function buildDecorations(view: EditorView): DecorationSet {
           }
           i++;
         }
-        tokenize(text.slice(innerStart, i), from + innerStart, items);
+        const inner = text.slice(innerStart, i);
+        // A whole-slot bare identifier is the env-var sugar (`${ pesca }` ≈ `${ env('pesca') }`):
+        // give it its own color so the special meaning reads at a glance.
+        const bare = BARE_INNER.exec(inner);
+        if (bare && !KEYWORDS.has(bare[2]!)) {
+          const start = from + innerStart + bare[1]!.length;
+          items.push({ from: start, to: start + bare[2]!.length, deco: ENVREF });
+        } else {
+          tokenize(inner, from + innerStart, items);
+        }
         if (text[i] === '}') {
           items.push({ from: from + i, to: from + i + 1, deco: DELIM });
           i++;

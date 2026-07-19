@@ -2693,6 +2693,11 @@ body {
 .cm-sb-punc {
   color: var(--text-muted);
 }
+/* Whole-slot bare identifier: the env-variable sugar (`${ name }` ≈ `${ env('name') }`). */
+.cm-sb-envref {
+  color: #0184bc;
+  font-style: italic;
+}
 .cm-host--dark .cm-sb-delim,
 .cm-host--dark .cm-sb-kw {
   color: #c678dd;
@@ -2708,6 +2713,9 @@ body {
 }
 .cm-host--dark .cm-sb-prop {
   color: #e06c75;
+}
+.cm-host--dark .cm-sb-envref {
+  color: #56b6c2;
 }
 .cm-host .cm-selectionBackground,
 .cm-host .cm-content ::selection,
