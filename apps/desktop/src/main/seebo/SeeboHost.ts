@@ -226,7 +226,24 @@ export class SeeboHost {
 
   /** Static diagnostics (never throws) for live editor feedback. */
   async validate(source: string, policy?: RenderPolicy): Promise<SeeboDiagnostic[]> {
-    return (await this.engine(policy)).validate(source);
+    const diagnostics = (await this.engine(policy)).validate(source);
+    // Env-fallback sugar (see render): don't flag `${ name }` when `name` is an env variable.
+    const { envData } = this.deps;
+    if (!envData || !diagnostics.some((d) => d.code === 'UNDECLARED_NAME')) return diagnostics;
+    const kept: SeeboDiagnostic[] = [];
+    for (const d of diagnostics) {
+      const name = d.code === 'UNDECLARED_NAME' ? d.data?.name : undefined;
+      if (typeof name === 'string') {
+        try {
+          await envData.resolve(name);
+          continue; // resolvable from the active environment → the sugar will cover it
+        } catch {
+          /* not an env var → keep the diagnostic */
+        }
+      }
+      kept.push(d);
+    }
+    return kept;
   }
 
   /** Render a template with the provided input values. May return waiting/failed states. */
@@ -236,7 +253,8 @@ export class SeeboHost {
     policy?: RenderPolicy,
     ctx?: SeeboRenderContext,
   ): Promise<SeeboState> {
-    return (await this.engine(policy, ctx)).stebo({ template: source, values });
+    const engine = await this.engine(policy, ctx);
+    return this.withEnvFallback((v) => engine.stebo({ template: source, values: v }), values);
   }
 
   /** Render a composite template (Batcher) with named sub-templates (ABSORB/MERGE merge macros). */
@@ -246,7 +264,49 @@ export class SeeboHost {
     values: Record<string, unknown>,
     policy?: RenderPolicy,
   ): Promise<SeeboState> {
-    return (await this.engine(policy)).stebo({ template, templates, values });
+    const engine = await this.engine(policy);
+    return this.withEnvFallback((v) => engine.stebo({ template, templates, values: v }), values);
+  }
+
+  /** The distinct names a failed state flags as `UNDECLARED_NAME`. */
+  private static undeclaredNames(state: SeeboState): string[] {
+    const names = (state.diagnostics ?? [])
+      .filter((d) => d.code === 'UNDECLARED_NAME')
+      .map((d) => d.data?.name)
+      .filter((n): n is string => typeof n === 'string');
+    return [...new Set(names)];
+  }
+
+  /**
+   * Env-fallback sugar: a bare `${ name }` Seebo does not recognize (`UNDECLARED_NAME`) is retried
+   * as the active environment's variable of the same name — `${ pesca }` behaves like
+   * `${ env('pesca') }` when `pesca` exists in the environment. Names the environment cannot resolve
+   * keep their original diagnostic. Bounded loop: each pass must resolve at least one NEW name.
+   */
+  private async withEnvFallback(
+    run: (values: Record<string, unknown>) => Promise<SeeboState>,
+    values: Record<string, unknown>,
+  ): Promise<SeeboState> {
+    let state = await run(values);
+    const { envData } = this.deps;
+    if (!envData) return state;
+    let current = values;
+    for (let pass = 0; pass < 5 && state.status === 'failed'; pass++) {
+      const names = SeeboHost.undeclaredNames(state).filter((n) => !(n in current));
+      if (names.length === 0) break;
+      const resolved: Record<string, unknown> = {};
+      for (const name of names) {
+        try {
+          resolved[name] = await envData.resolve(name);
+        } catch {
+          /* not an env var → the original diagnostic stands */
+        }
+      }
+      if (Object.keys(resolved).length === 0) break;
+      current = { ...current, ...resolved };
+      state = await run(current);
+    }
+    return state;
   }
 
   /**
