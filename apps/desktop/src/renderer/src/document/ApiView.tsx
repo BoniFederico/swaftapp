@@ -287,6 +287,30 @@ export function ApiView({
     setSavedSource(source);
     notifyTreeChanged();
   }
+  /** Explicit save (button / Ctrl+S) — confirms with a toast; `send()` saves silently. */
+  async function saveRequest() {
+    try {
+      await save();
+      toast.show(t('toast.saved'), 'success');
+    } catch (e) {
+      toast.show(e instanceof ApiError ? e.swaft.message : String(e), 'error');
+    }
+  }
+  // Ctrl/Cmd+S saves the request — only for the visible API view (tabs stay mounted hidden).
+  const saveShortcutRef = useRef(() => {});
+  saveShortcutRef.current = () => void saveRequest();
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key.toLowerCase() !== 's' || !(e.ctrlKey || e.metaKey)) return;
+      if (rootRef.current?.offsetParent == null) return; // not the active tab
+      if (document.querySelector('[aria-modal="true"]')) return; // a modal owns the shortcut
+      e.preventDefault();
+      saveShortcutRef.current();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   async function send() {
     setBusy(true);
     setError(null);
@@ -326,7 +350,7 @@ export function ApiView({
   const auth = req.auth ?? { kind: 'none' as const };
 
   return (
-    <div className="api">
+    <div className="api" ref={rootRef}>
       {/* method + URL */}
       <div className="api__bar">
         <div className="api__method" data-method={req.method}>
@@ -348,7 +372,7 @@ export function ApiView({
         <Button onClick={() => void send()} disabled={busy || !req.url}>
           {busy ? t('api.sending') : t('api.send')}
         </Button>
-        <IconButton label={t('api.save')} className="api__save" onClick={() => void save()}>
+        <IconButton label={t('api.save')} className="api__save" onClick={() => void saveRequest()}>
           <SaveIcon />
         </IconButton>
       </div>

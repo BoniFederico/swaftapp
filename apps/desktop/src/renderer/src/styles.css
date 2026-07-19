@@ -287,7 +287,9 @@ body {
 }
 .ws-tab__name {
   overflow: hidden;
-  max-width: 150px;
+  max-width: 160px;
+  /* Breathing room so the last glyph (esp. italic preview names) is never clipped. */
+  padding-right: 3px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -743,8 +745,9 @@ body {
 .api__method .ui-select {
   min-width: 0;
   width: 104px;
+  height: 32px;
   gap: var(--space-1);
-  padding: var(--space-2);
+  padding: 0 var(--space-2);
   font-weight: 600;
   font-size: var(--fs-md);
   letter-spacing: 0.03em;
@@ -780,9 +783,14 @@ body {
   display: flex;
   min-width: 0;
 }
+/* The URL field matches the method listbox height exactly (CodeMirror padding removed). */
 .api__url .seebo-field {
   flex: 1;
+  height: 32px;
   font-size: var(--fs-md);
+}
+.api__url .seebo-field .cm-content {
+  padding: 0;
 }
 .api__cols {
   flex: 1;
@@ -901,18 +909,10 @@ body {
   flex-direction: column;
   gap: var(--space-2);
 }
-.kv__row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-.kv__row .ui-input {
-  flex: 1;
-  min-width: 0;
-}
-.kv__spacer {
-  width: 34px;
-  flex: 0 0 auto;
+/* Table mode reuses the shared `env-vars` IDE grid; the trailing (empty) row has no delete button
+   and no closing border (the grid container draws the outer one). */
+.kv .env-vars__row:last-child {
+  border-bottom: none;
 }
 /* Wraps read-only headers so the copy overlay can sit top-right. */
 .kv-readonly-wrap {
@@ -945,9 +945,8 @@ body {
   align-items: center;
   justify-content: flex-end;
   gap: var(--space-2);
-  /* Align the button's right edge with the value column (clearing the trailing delete/spacer column),
-     leaving a little horizontal breathing room from it. */
-  padding-right: calc(34px + var(--space-3));
+  /* Sits under the table, flush with its right edge. */
+  padding-right: 0;
 }
 .kv__toolbar .ui-icon-btn {
   width: 28px;
@@ -2279,7 +2278,9 @@ body {
      up across the Input and Output cards. */
   min-height: 44px;
   margin: calc(-1 * var(--space-5)) calc(-1 * var(--space-5)) var(--space-4);
-  padding: var(--space-2) var(--space-5);
+  /* Lighter right padding: the 28px action buttons carry ~6px of internal padding, so this puts
+     their glyphs optically flush with the card's right content edge (e.g. the Input save icon). */
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-5);
   border-bottom: 1px solid var(--border);
 }
 .ui-card__title {
@@ -3074,6 +3075,24 @@ body {
   flex: 0 0 auto;
   width: calc(24px + 2 * var(--space-1));
 }
+/* A grid cell hosting a SeeboField (formula-highlighted value): borderless, like the plain inputs. */
+.env-vars__seebo {
+  display: flex;
+  align-self: stretch;
+}
+.env-vars__seebo .seebo-field {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+.env-vars__seebo .seebo-field:focus-within {
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+.env-vars__seebo .seebo-field .cm-scroller {
+  padding: 0 var(--space-3);
+}
 .env-vars__row .ui-icon-btn {
   width: 24px;
   height: 24px;
@@ -3106,4 +3125,176 @@ body {
 }
 .env-vars__foot .ui-btn:hover:not(:disabled) {
   color: var(--text);
+}
+
+/* ---------- Folder view (Content / Headers / Proxy / Notes) ---------- */
+.folder-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+.folder-view__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4) 0;
+}
+.folder-view__glyph {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  color: #94a3b8;
+}
+.folder-view__name {
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+.folder-view__count {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+.folder-view__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.folder-view .api__tabs {
+  border-bottom: 1px solid var(--border);
+  padding: var(--space-2) var(--space-3) 0;
+}
+/* Content gallery: cards for subfolders + templates. */
+.fold-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-3);
+  align-content: start;
+}
+.fold-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  min-height: 84px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.fold-card:hover {
+  border-color: var(--primary);
+  background: var(--surface-2, var(--surface));
+}
+.fold-card__icon {
+  width: 18px;
+  height: 18px;
+}
+.fold-card__icon--folder {
+  color: #94a3b8;
+}
+.fold-card__icon--document {
+  color: var(--primary);
+}
+.fold-card__icon--api {
+  color: #4f8a63;
+}
+.fold-card__name {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.fold-card__meta {
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+}
+.fold-card__badge {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  line-height: 1;
+  padding: 2px 6px;
+  border: 1px solid;
+  border-radius: var(--radius-sm);
+}
+/* Headers / Proxy tabs share the settings-form rhythm. */
+.folder-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 560px;
+}
+.folder-form > .field-hint {
+  margin: 0;
+}
+.folder-proxy {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) 90px;
+  gap: var(--space-3);
+  align-items: end;
+}
+/* The protocol listbox fits its column instead of the Select's default 160px minimum. */
+.folder-proxy .ui-select {
+  min-width: 0;
+  width: 100%;
+}
+/* Notes tab: markdown editor + preview. */
+.folder-notes {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.folder-notes__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+/* The Edit/Preview segmented control stays compact (`.seg` is full-width by default). */
+.folder-notes__bar .seg {
+  width: auto;
+}
+.folder-notes__bar .seg__btn {
+  flex: 0 0 auto;
+  padding: var(--space-1) var(--space-3);
+}
+.folder-notes__editor {
+  flex: 1;
+  min-height: 240px;
+  resize: none;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+.folder-notes__editor:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+.folder-notes .render-frame {
+  flex: 1;
+  min-height: 240px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+/* Folder tab glyph in the tab strip. */
+.ws-tab__type--folder {
+  color: #94a3b8;
 }

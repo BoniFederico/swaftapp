@@ -75,6 +75,7 @@ export function RestrictionsSettings({ client }: { client: ApiClient }) {
     try {
       await patch({ proxyUrl: proxy.trim() || null, enforcedHeaders: fromRows(rows) });
       setDirty(false);
+      toast.show(t('toast.saved'), 'success');
     } catch (err) {
       toast.show(err instanceof ApiError ? err.swaft.message : String(err), 'error');
     }

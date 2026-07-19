@@ -18,7 +18,8 @@ export function ThemeControls() {
   ];
 
   return (
-    <div className="row" style={{ alignItems: 'flex-end', gap: 'var(--space-5)' }}>
+    // One setting per row (the swatch strip stays inline within its own field).
+    <div className="col" style={{ gap: 'var(--space-4)' }}>
       <Select
         label={t('settings.theme')}
         value={mode}

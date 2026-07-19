@@ -83,7 +83,7 @@ export function SettingsModal({
             {section === 'general' && <GeneralSettings />}
             {section === 'restrictions' && <RestrictionsSettings client={client} />}
             {section === 'environments' && <EnvironmentsSettings client={client} />}
-            {section === 'preferences' && <PreferencesSettings />}
+            {section === 'preferences' && <PreferencesSettings client={client} />}
           </div>
         </div>
       </div>

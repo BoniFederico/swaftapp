@@ -17,25 +17,31 @@ import {
   CloseIcon,
   DocumentIcon,
   EmptyState,
+  FolderIcon,
   IconButton,
   LockIcon,
   LogoutIcon,
   SettingsIcon,
 } from '../ui';
+import { FolderView } from './FolderView';
 import { WorkingTree } from './WorkingTree';
 import { useWorkspace } from './WorkspaceProvider';
 
 const MIN_SIDE = 220;
 const MAX_SIDE = 560;
 
-/** An open template tab. `preview` (italic) tabs are replaced by the next single-clicked template;
- * double-clicking a tab pins it. `dirty` marks unsaved edits (the API/Document views report it up). */
-type Tab = { id: string; type: TemplateType; name: string; preview: boolean; dirty: boolean };
+/** What an open tab shows: a template view, or the folder detail view. */
+type TabKind = TemplateType | 'folder';
+
+/** An open tab. `preview` (italic) tabs are replaced by the next single-clicked item;
+ * double-clicking a tab pins it. `dirty` marks unsaved edits (the views report it up). */
+type Tab = { id: string; type: TabKind; name: string; preview: boolean; dirty: boolean };
 
 /** The colored type glyph shown at the head of a tab. */
-function TabIcon({ type }: { type: TemplateType }) {
+function TabIcon({ type }: { type: TabKind }) {
   const className = `ws-tab__type ws-tab__type--${type}`;
   if (type === 'api') return <ApiIcon className={className} />;
+  if (type === 'folder') return <FolderIcon className={className} />;
   return <DocumentIcon className={className} />;
 }
 
@@ -58,9 +64,9 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
   const [sideWidth, setSideWidth] = useState(280);
   const resize = useRef<{ startX: number; startW: number } | null>(null);
 
-  // Open a template in a tab. A single click opens (or reuses) a *preview* tab — at most one exists,
-  // and the next single-clicked template replaces it. An already-open template is just re-activated.
-  function openTemplate(id: string, type: TemplateType, name: string) {
+  // Open an item in a tab. A single click opens (or reuses) a *preview* tab — at most one exists,
+  // and the next single-clicked item replaces it. An already-open item is just re-activated.
+  function openTab(id: string, type: TabKind, name: string) {
     setBatch(null);
     setActiveId(id);
     setTabs((prev) => {
@@ -73,6 +79,8 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
       return next;
     });
   }
+  const openTemplate = (id: string, type: TemplateType, name: string) => openTab(id, type, name);
+  const openFolder = (id: string, name: string) => openTab(id, 'folder', name);
   function activateTab(id: string) {
     setBatch(null);
     setActiveId(id);
@@ -182,12 +190,15 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
             client={client}
             openTemplateId={activeId}
             onOpenTemplate={(id, mode = 'view', type = 'document', name = '') => {
+              if (!id) return;
               if (mode === 'edit') {
-                if (id) setEditing(id);
+                setEditing(id);
                 return;
               }
-              if (id) openTemplate(id, type, name);
+              openTemplate(id, type, name);
+              if (mode === 'pin') pinTab(id); // preference: double-click consolidates the tab
             }}
+            onOpenFolder={(folder) => openFolder(folder.id, folder.name)}
             onCloseTemplate={closeTab}
             onCollapse={() => setSideCollapsed(true)}
           />
@@ -255,7 +266,20 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
               };
               return (
                 <div key={tb.id} className="ws-pane" hidden={!visible}>
-                  {tb.type === 'api' ? <ApiView {...shared} /> : <DocumentView {...shared} />}
+                  {tb.type === 'folder' ? (
+                    <FolderView
+                      client={client}
+                      folderId={tb.id}
+                      onOpenTemplate={openTemplate}
+                      onOpenFolder={openFolder}
+                      onDirtyChange={shared.onDirtyChange}
+                      onTitleChange={shared.onTitleChange}
+                    />
+                  ) : tb.type === 'api' ? (
+                    <ApiView {...shared} />
+                  ) : (
+                    <DocumentView {...shared} />
+                  )}
                 </div>
               );
             })}
