@@ -280,7 +280,6 @@ export const en = {
   'gen.name': 'Workspace name',
   'gen.icon': 'Icon',
   'gen.iconPlaceholder': 'e.g. 🔧',
-  'gen.tags': 'Tags',
 
   'env.picker.label': 'Active environment',
   'env.picker.placeholder': 'Select environment',
@@ -651,7 +650,6 @@ export const it: Partial<Record<TranslationKey, string>> = {
   'gen.name': 'Nome workspace',
   'gen.icon': 'Icona',
   'gen.iconPlaceholder': 'es. 🔧',
-  'gen.tags': 'Tag',
 
   'env.picker.label': 'Ambiente attivo',
   'env.picker.placeholder': 'Seleziona ambiente',

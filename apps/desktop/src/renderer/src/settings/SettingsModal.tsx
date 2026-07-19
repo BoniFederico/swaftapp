@@ -90,7 +90,7 @@ export function SettingsModal({
             ))}
           </nav>
           <div className="settings-content">
-            {section === 'general' && <GeneralSettings client={client} />}
+            {section === 'general' && <GeneralSettings />}
             {section === 'restrictions' && <RestrictionsSettings client={client} />}
             {section === 'environments' && <EnvironmentsSettings client={client} />}
             {section === 'users' && (
