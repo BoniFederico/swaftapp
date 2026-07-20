@@ -267,6 +267,23 @@ export const releaseDeleteRequestSchema = z.object({ releaseId: z.string().min(1
 
 export const httpMethodSchema = z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
 export const bodyTypeSchema = z.enum(['none', 'json', 'form', 'text', 'xml']);
+/**
+ * An action attached to a request, run around the HTTP call. `pre` may return a patch merged into
+ * the request (signing it, refreshing a token); `post` sees the response (extracting values,
+ * asserting). Declaring `action(...)` inside a *field* stays forbidden — effects live here, not in
+ * the formulas (analisi_codice_utente.md §5.6).
+ */
+export const requestActionSchema = z
+  .object({
+    /** Name of the `action` template to run. */
+    ref: z.string().trim().min(1).max(120),
+    trigger: z.enum(['pre', 'post']),
+    /** Values passed as `input`; may carry Seebo `${ … }` formulas. */
+    input: z.record(z.string().max(4096)).optional(),
+    enabled: z.boolean().optional(),
+  })
+  .strict();
+
 export const httpRequestSchema = z
   .object({
     method: httpMethodSchema,
@@ -279,6 +296,8 @@ export const httpRequestSchema = z
     /** Free-text Markdown documentation for the request (the "Information" tab). */
     info: z.string().max(100_000).optional(),
     auth: httpAuthSchema.optional(),
+    /** Actions run before/after the call (see {@link requestActionSchema}). */
+    actions: z.array(requestActionSchema).max(16).optional(),
   })
   .strict();
 export const httpSendRequestSchema = z
@@ -867,6 +886,7 @@ export type HttpMethod = z.infer<typeof httpMethodSchema>;
 export type HttpAuth = z.infer<typeof httpAuthSchema>;
 export type HttpBodyType = z.infer<typeof bodyTypeSchema>;
 export type HttpRequestModel = z.infer<typeof httpRequestSchema>;
+export type RequestAction = z.infer<typeof requestActionSchema>;
 
 export interface HttpResponseDto {
   status: number;
@@ -1020,6 +1040,8 @@ export interface HttpSendResponse {
   rendered?: boolean;
   /** The concrete (rendered) request that was actually sent — present only when `rendered`. */
   request?: HttpRequestModel;
+  /** What the request's attached actions did, in run order (pre first, then post). */
+  actions?: RequestActionOutcomeDto[];
 }
 /** Input widgets a request's formula fields need, plus any static diagnostics (live editor feedback). */
 export interface ApiAnalyzeResponse {
@@ -1028,6 +1050,21 @@ export interface ApiAnalyzeResponse {
 }
 export interface ApiHistoryResponse {
   items: ApiHistoryItem[];
+}
+
+/** What one request-attached action did, surfaced in the response panel after a send. */
+export interface RequestActionOutcomeDto {
+  ref: string;
+  trigger: 'pre' | 'post';
+  status: 'succeeded' | 'failed' | 'skipped';
+  /** Whatever the action returned (its receipt payload), or null. */
+  output: unknown;
+  /** Lines it logged. */
+  logs: string[];
+  /** Names of the environment variables it wrote. */
+  envWrites: string[];
+  /** Present when it failed. */
+  error: string | null;
 }
 
 /** Template kinds whose source is user-authored JavaScript rather than a Seebo template. */

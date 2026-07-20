@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   ApiHistoryItem,
+  RequestActionOutcomeDto,
   DiagnosticDto,
   HttpAuth,
   HttpBodyType,
@@ -30,11 +31,12 @@ import { AuthEditor } from './AuthEditor';
 import { InputPanel } from './InputPanel';
 import { compactValues } from './inputValidation';
 import { KeyValueEditor } from './KeyValueEditor';
+import { RequestActionsEditor } from './RequestActionsEditor';
 import { RenderPreview } from './RenderPreview';
 import { useDocLayout } from './useDocLayout';
 
 const METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
-type ReqTab = 'params' | 'headers' | 'body' | 'auth' | 'info' | 'input';
+type ReqTab = 'params' | 'headers' | 'body' | 'auth' | 'actions' | 'info' | 'input';
 type ResTab = 'render' | 'body' | 'headers' | 'history';
 
 const CONTENT_TYPE: Record<HttpBodyType, string | null> = {
@@ -144,6 +146,8 @@ export function ApiView({
   const [inheritedAuth, setInheritedAuth] = useState<HttpAuth | null>(null);
   const [busy, setBusy] = useState(false);
   const [reqTab, setReqTab] = useState<ReqTab>('params');
+  const [availableActions, setAvailableActions] = useState<string[]>([]);
+  const [actionOutcomes, setActionOutcomes] = useState<RequestActionOutcomeDto[]>([]);
   const [resTab, setResTab] = useState<ResTab>('body');
   const [projectId, setProjectId] = useState<string | null>(null);
   // The input widgets the request's `${ … }` formulas need (live `api.analyze`) + their last values.
@@ -264,6 +268,22 @@ export function ApiView({
   }
 
   // Unsaved edits: the in-memory request no longer matches the last-persisted one.
+  // The action templates a request may attach. Re-read with the tree, so a newly written action
+  // shows up in the picker without reopening the tab.
+  useEffect(() => {
+    const refresh = () =>
+      void client
+        .call('tree.get')
+        .then((res) =>
+          setAvailableActions(
+            res.tree.templates.filter((tpl) => tpl.type === 'action').map((tpl) => tpl.name),
+          ),
+        )
+        .catch(() => setAvailableActions([]));
+    refresh();
+    return subscribeTreeChanged(refresh);
+  }, [client]);
+
   const dirty = savedSource !== null && JSON.stringify(req) !== savedSource;
   useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
 
@@ -341,6 +361,7 @@ export function ApiView({
       await client.call('inputState.set', { templateId, values: vals });
       const res = await client.call('http.send', { templateId, request: req, values: vals });
       setResponse(res.response);
+      setActionOutcomes(res.actions ?? []);
       // A "Request render" tab is offered only when formulas were actually rendered.
       setRenderedReq(res.rendered && res.request ? res.request : null);
       setResTab('body');
@@ -349,6 +370,9 @@ export function ApiView({
       setResponse(null);
       if (e instanceof ApiError) {
         setError(e.swaft.message);
+        // A pre-request action that failed carries what ran before it gave up.
+        const failed = e.swaft.details?.actions;
+        setActionOutcomes(Array.isArray(failed) ? (failed as RequestActionOutcomeDto[]) : []);
         // Missing inputs → jump to the Input tab so the user can fill the required widgets.
         if (e.swaft.code === 'INPUT_REQUIRED') setReqTab('input');
       } else {
@@ -426,6 +450,12 @@ export function ApiView({
               ['headers', t('api.headers')],
               ['body', t('api.body')],
               ['auth', t('api.auth')],
+              [
+                'actions',
+                (req.actions ?? []).length
+                  ? `${t('api.actions')} (${(req.actions ?? []).length})`
+                  : t('api.actions'),
+              ],
               ['info', t('api.info')],
               ['input', requirements.length ? `${t('api.input')} (${requirements.length})` : t('api.input')],
             ]}
@@ -480,6 +510,14 @@ export function ApiView({
                 )}
               </div>
             )}
+            {reqTab === 'actions' && (
+              <RequestActionsEditor
+                actions={req.actions ?? []}
+                available={availableActions}
+                onChange={(actions) => patch({ actions })}
+                preview={previewFormula}
+              />
+            )}
             {reqTab === 'auth' && (
               <AuthEditor
                 auth={auth}
@@ -526,7 +564,10 @@ export function ApiView({
                 {error}
               </div>
             ) : resTab === 'render' && renderedReq ? (
-              <RequestRender request={renderedReq} />
+              <div className="col" style={{ gap: 'var(--space-4)' }}>
+                <ActionOutcomes outcomes={actionOutcomes} />
+                <RequestRender request={renderedReq} />
+              </div>
             ) : resTab === 'history' ? (
               <HistoryView history={history} onOpen={setDetail} onClear={() => void clearHistory()} />
             ) : !response ? (
@@ -854,6 +895,37 @@ function Tabs({
           {label}
         </button>
       ))}
+    </div>
+  );
+}
+
+
+/** What the request's attached actions did, shown in the Request render tab after a send. */
+function ActionOutcomes({ outcomes }: { outcomes: RequestActionOutcomeDto[] }) {
+  const { t } = useI18n();
+  if (outcomes.length === 0) return null;
+  return (
+    <div className="ui-field">
+      <span className="ui-field__label">{t('api.actions.ran')}</span>
+      <ul className="act-outcomes">
+        {outcomes.map((o, i) => (
+          <li key={i} className={`act-outcome act-outcome--${o.status}`}>
+            <div className="act-outcome__head">
+              <code>{o.ref}</code>
+              <span className="ui-badge">{t(o.trigger === 'pre' ? 'api.actions.pre' : 'api.actions.post')}</span>
+              <span className="act-outcome__spacer" />
+              {o.envWrites.length > 0 && (
+                <span className="muted">{t('api.actions.wrote', { names: o.envWrites.join(', ') })}</span>
+              )}
+            </div>
+            {o.error && <div className="act-outcome__error">{o.error}</div>}
+            {o.logs.length > 0 && <pre className="act-outcome__logs">{o.logs.join('\n')}</pre>}
+            {o.output != null && (
+              <pre className="act-outcome__logs">{JSON.stringify(o.output, null, 2)}</pre>
+            )}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

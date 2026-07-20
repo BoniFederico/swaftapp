@@ -9,7 +9,6 @@ import {
   type ErrorEnvelope,
   type FolderCreateRequest,
   type FolderMoveRequest,
-  type FolderProxyDto,
   type FolderUpdateRequest,
   type TemplateMoveRequest,
   type HttpSendRequest,
@@ -53,12 +52,12 @@ import {
   getActionService,
   getApiHistoryService,
   getApiRequestService,
+  getApiRunService,
   getUserCodeRegistry,
   getAppStore,
   getBatcherService,
   getChangelogService,
   getEnvironmentService,
-  getHttpService,
   getOrganizationService,
   getPlatformDialogs,
   getReleaseService,
@@ -301,25 +300,10 @@ export const handlers: Record<OpName, Handler> = {
 
   // API templates + HTTP client (M8) + formula resolution (API-view automation, Fase 1)
   'http.send': (p) =>
-    svc(async () => {
+    svc(() => {
       const r = p as HttpSendRequest;
-      // Resolve `${ … }` formulas in the request fields against the supplied inputs (when bound to a
-      // template); without a template there is no project context, so the request is sent verbatim.
-      let request = r.request;
-      let rendered = false;
-      let proxy: FolderProxyDto | null = null;
-      if (r.templateId) {
-        const resolved = await getApiRequestService().resolve(r.templateId, r.request, r.values ?? {});
-        request = resolved.request;
-        rendered = resolved.rendered;
-        proxy = resolved.proxy;
-      }
-      const response = await getHttpService().send(request, { proxy });
-      if (r.templateId) {
-        await getApiHistoryService().record(r.templateId, request.method, request.url, response.status);
-      }
-      // Surface the rendered request so the UI can show a "Request render" overview when formulas ran.
-      return { response, rendered, request: rendered ? request : undefined };
+      // Resolve formulas, run the attached pre/post actions around the call, record the history.
+      return getApiRunService().send(r.templateId, r.request, r.values ?? {});
     }),
   'api.analyze': (p) =>
     svc(async () => {

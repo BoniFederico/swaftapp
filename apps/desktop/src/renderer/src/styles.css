@@ -3457,3 +3457,65 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Actions attached to a request (Fase C). */
+.req-action {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.req-action__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.req-action__spacer {
+  flex: 1;
+}
+.act-outcomes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.act-outcome {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--ok, #4caf50);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+}
+.act-outcome--failed {
+  border-left-color: var(--danger);
+}
+.act-outcome--skipped {
+  border-left-color: var(--border);
+}
+.act-outcome__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.act-outcome__spacer {
+  flex: 1;
+}
+.act-outcome__error {
+  margin-top: var(--space-1);
+  color: var(--danger);
+}
+.act-outcome__logs {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2);
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+}

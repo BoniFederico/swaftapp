@@ -17,6 +17,7 @@ import {
   setActionService,
   setApiHistoryService,
   setApiRequestService,
+  setApiRunService,
   setAppStore,
   setBatcherService,
   setChangelogService,
@@ -36,6 +37,7 @@ import {
 import { createDbBackend } from './storage/worker-db-backend';
 import { ApiHistoryService } from './workspace/ApiHistoryService';
 import { ApiRequestService } from './workspace/ApiRequestService';
+import { ApiRunService } from './workspace/ApiRunService';
 import { BatcherService } from './workspace/BatcherService';
 import { ChangelogService } from './workspace/ChangelogService';
 import { EnvironmentService } from './workspace/EnvironmentService';
@@ -185,6 +187,9 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
   setHttpService(httpService);
   setApiHistoryService(apiHistory);
   setApiRequestService(apiRequest);
+  setApiRunService(
+    new ApiRunService({ requests: apiRequest, http: httpService, history: apiHistory, code: userCapabilities }),
+  );
   setUserCodeRegistry(userCapabilities);
   setBatcherService(batcher);
   setActionService(actionService);

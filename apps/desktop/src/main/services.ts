@@ -5,6 +5,7 @@ import type { SecretService } from './secret/SecretService';
 import type { UserCodeRegistry } from './usercode/UserCodeRegistry';
 import type { ApiHistoryService } from './workspace/ApiHistoryService';
 import type { ApiRequestService } from './workspace/ApiRequestService';
+import type { ApiRunService } from './workspace/ApiRunService';
 import type { BatcherService } from './workspace/BatcherService';
 import type { ChangelogService } from './workspace/ChangelogService';
 import type { EnvironmentService } from './workspace/EnvironmentService';
@@ -150,6 +151,16 @@ export function setApiRequestService(value: ApiRequestService | null): void {
 export function getApiRequestService(): ApiRequestService {
   if (!apiRequest) throw new Error('ApiRequestService not initialized');
   return apiRequest;
+}
+
+let apiRun: ApiRunService | null = null;
+
+export function setApiRunService(value: ApiRunService | null): void {
+  apiRun = value;
+}
+export function getApiRunService(): ApiRunService {
+  if (!apiRun) throw new Error('ApiRunService not initialized');
+  return apiRun;
 }
 
 let userCapabilities: UserCodeRegistry | null = null;
