@@ -214,6 +214,7 @@ export const en = {
   'tpl.api': 'API',
   'tpl.capability': 'Capability',
   'tpl.action': 'Action',
+  'tpl.codeNameHint': 'The name is how formulas and action plans reference it, so use letters, digits and _ (not starting with a digit).',
 
   'cap.title': 'Capability',
   'cap.registeredAs': 'Called from formulas as',
@@ -665,6 +666,7 @@ export const it: Partial<Record<TranslationKey, string>> = {
   'tpl.api': 'API',
   'tpl.capability': 'Capability',
   'tpl.action': 'Action',
+  'tpl.codeNameHint': 'Il nome è ciò con cui formule e action plan la richiamano: usa lettere, cifre e _ (non iniziare con una cifra).',
 
   'cap.title': 'Capability',
   'cap.registeredAs': 'Richiamabile dalle formule come',

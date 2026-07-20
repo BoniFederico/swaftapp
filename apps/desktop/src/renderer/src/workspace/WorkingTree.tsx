@@ -236,6 +236,18 @@ export function WorkingTree({
     }
   }
 
+  /**
+   * Run a tree mutation whose callers `void` the promise, surfacing any failure as a toast instead
+   * of a silent no-op — e.g. creating an action with a name that is not a valid identifier.
+   */
+  async function guarded(fn: () => Promise<void>): Promise<void> {
+    try {
+      await fn();
+    } catch (e) {
+      toast.show(e instanceof ApiError ? e.swaft.message : String(e), 'error');
+    }
+  }
+
   async function createProject(name: string, description: string) {
     setProjectOpen(false);
     const before = new Set(tree.projects.map((p) => p.id));
@@ -715,7 +727,7 @@ export function WorkingTree({
       <CreateProjectDialog
         open={projectOpen}
         busy={busy}
-        onSubmit={(name, description) => void createProject(name, description)}
+        onSubmit={(name, description) => void guarded(() => createProject(name, description))}
         onClose={() => setProjectOpen(false)}
       />
 
@@ -725,14 +737,14 @@ export function WorkingTree({
         submitLabel={dialog?.mode.startsWith('rename') ? t('name.save') : t('name.create')}
         initialValue={dialog && 'value' in dialog ? dialog.value : ''}
         busy={busy}
-        onSubmit={submitDialog}
+        onSubmit={(name) => void guarded(() => submitDialog(name))}
         onClose={() => setDialog(null)}
       />
 
       <CreateTemplateDialog
         open={createTpl !== null}
         busy={busy}
-        onSubmit={(name, type) => void createTemplate(name, type)}
+        onSubmit={(name, type) => void guarded(() => createTemplate(name, type))}
         onClose={() => setCreateTpl(null)}
       />
 

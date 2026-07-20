@@ -2456,6 +2456,9 @@ body {
   font-size: var(--fs-sm);
   color: var(--text-muted);
 }
+.field-hint--error {
+  color: var(--danger);
+}
 .ui-input {
   font-family: inherit;
   font-size: var(--fs-sm);

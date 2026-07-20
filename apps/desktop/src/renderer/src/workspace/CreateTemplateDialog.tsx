@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
-import type { TemplateType } from '@swaft/shared';
+import { isCodeTemplateType, type TemplateType } from '@swaft/shared';
 import { useI18n } from '../i18n/I18nProvider';
 import { Button, Dialog, Select, TextField } from '../ui';
 
-/** Create-template dialog: name + type (document / render / API). */
+/** Capability/action names are referenced like a function, so they must be JS identifiers. */
+const IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
+
+/** Create-template dialog: name + type (document / API / capability / action). */
 export function CreateTemplateDialog({
   open,
   busy,
@@ -26,10 +29,16 @@ export function CreateTemplateDialog({
     }
   }, [open]);
 
+  // Code kinds are called by their name, so it must be a valid identifier — checked live rather than
+  // letting the create fail server-side (which used to look like nothing happening).
+  const trimmed = name.trim();
+  const needsIdentifier = isCodeTemplateType(type);
+  const badName = needsIdentifier && trimmed.length > 0 && !IDENTIFIER.test(trimmed);
+  const canSubmit = trimmed.length > 0 && !badName;
+
   function submit(e: { preventDefault: () => void }) {
     e.preventDefault();
-    const n = name.trim();
-    if (n) onSubmit(n, type);
+    if (canSubmit) onSubmit(trimmed, type);
   }
 
   return (
@@ -42,14 +51,21 @@ export function CreateTemplateDialog({
           <Button variant="ghost" onClick={onClose}>
             {t('name.cancel')}
           </Button>
-          <Button variant="primary" disabled={busy || !name.trim()} onClick={submit}>
+          <Button variant="primary" disabled={busy || !canSubmit} onClick={submit}>
             {t('name.create')}
           </Button>
         </>
       }
     >
       <form className="col" style={{ gap: 'var(--space-4)' }} onSubmit={submit}>
-        <TextField label={t('name.label')} value={name} autoFocus onChange={(e) => setName(e.target.value)} />
+        <div className="col" style={{ gap: 'var(--space-1)' }}>
+          <TextField label={t('name.label')} value={name} autoFocus onChange={(e) => setName(e.target.value)} />
+          {needsIdentifier && (
+            <span className={badName ? 'field-hint field-hint--error' : 'field-hint'}>
+              {t('tpl.codeNameHint')}
+            </span>
+          )}
+        </div>
         <Select
           label={t('tpl.type')}
           value={type}
