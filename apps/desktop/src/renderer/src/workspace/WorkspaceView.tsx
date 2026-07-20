@@ -113,14 +113,21 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
     });
   }
   function setTabFlag(id: string, patch: Partial<Tab>) {
-    setTabs((prev) =>
-      prev.map((tb) => {
+    setTabs((prev) => {
+      let changed = false;
+      const next = prev.map((tb) => {
         if (tb.id !== id) return tb;
         const merged = { ...tb, ...patch };
-        // Avoid needless re-renders when nothing actually changed.
-        return tb.dirty === merged.dirty && tb.name === merged.name ? tb : merged;
-      }),
-    );
+        if (tb.dirty === merged.dirty && tb.name === merged.name) return tb;
+        changed = true;
+        return merged;
+      });
+      // Returning `prev` unchanged is what actually stops the re-render: `map` always builds a new
+      // array, so a no-op patch would still count as new state. Views report their dirty flag from an
+      // effect, and each re-render here hands them freshly-created callbacks — which would re-trigger
+      // that effect and loop.
+      return changed ? next : prev;
+    });
   }
 
   function openSettings(section: SettingsSectionId) {

@@ -32,6 +32,13 @@ export function CapabilityView({
   const toast = useToast();
   const [source, setSource] = useState('');
   const [savedSource, setSavedSource] = useState<string | null>(null);
+  // The parent rebuilds these callbacks on every render; holding them in refs keeps their identity
+  // out of the effect dependencies, so a re-render can never restart the load and wipe the editor.
+  const onDirtyRef = useRef(onDirtyChange);
+  onDirtyRef.current = onDirtyChange;
+  const onTitleRef = useRef(onTitleChange);
+  onTitleRef.current = onTitleChange;
+  const savedSourceRef = useRef<string | null>(null);
   const [capability, setCapability] = useState<UserCapabilityDto | null>(null);
   const [args, setArgs] = useState(DEFAULT_ARGS);
   const [result, setResult] = useState<{ value: unknown; durationMs: number } | null>(null);
@@ -46,22 +53,33 @@ export function CapabilityView({
   }, [client, templateId]);
 
   useEffect(() => {
+    let cancelled = false;
     void client.call('template.get', { id: templateId }).then((res) => {
+      if (cancelled) return;
+      onTitleRef.current?.(res.template.name);
+      // Only adopt the stored source when it is genuinely different from what we last saved —
+      // never overwrite edits in progress (e.g. after an external save of the same template).
+      if (res.template.source === savedSourceRef.current) return;
+      savedSourceRef.current = res.template.source;
       setSource(res.template.source);
       setSavedSource(res.template.source);
-      onTitleChange?.(res.template.name);
     });
     describe();
     // A rename changes the capability's name, so re-read the header when the tree moves.
-    return subscribeTreeChanged(describe);
-  }, [client, templateId, describe, onTitleChange]);
+    const unsubscribe = subscribeTreeChanged(describe);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [client, templateId, describe]);
 
   const dirty = savedSource !== null && source !== savedSource;
-  useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
+  useEffect(() => onDirtyRef.current?.(dirty), [dirty]);
 
   const save = useCallback(async () => {
     try {
       await client.call('template.updateSource', { id: templateId, source });
+      savedSourceRef.current = source;
       setSavedSource(source);
       notifyTreeChanged();
       describe();
