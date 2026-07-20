@@ -1,27 +1,37 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ApiClient } from '../../api-client/client';
 import { useI18n } from '../../i18n/I18nProvider';
-import { useTheme } from '../../theme/ThemeProvider';
+import type { LanguageCode } from '../../i18n/catalogs';
+import type { FontOption, PrimaryColor } from '../../theme/palette';
+import { useTheme, type ThemeMode } from '../../theme/ThemeProvider';
 import { Button, Select, useToast } from '../../ui';
 import { ThemeControls } from '../ThemeControls';
 
 type TreeDoubleClick = 'edit' | 'pin';
 
+interface Snapshot {
+  mode: ThemeMode;
+  primaryColor: PrimaryColor;
+  font: FontOption;
+  language: LanguageCode;
+  dblClick: TreeDoubleClick;
+}
+
 /**
- * PREFERENCES: theme, primary color, font, language + Working Tree behavior (app-level). Appearance
- * changes apply live (the providers are app-wide); Save consolidates everything — including the
- * Working Tree double-click choice, which only takes effect once saved — and confirms with a toast.
+ * PREFERENCES: theme, primary color, font, language + Working Tree behavior (app-level).
+ *
+ * Appearance changes apply live because the providers are app-wide, but that is only a *preview* —
+ * nothing is persisted until Save. Cancel puts the previewed controls back to the stored state.
  */
 export function PreferencesSettings({ client }: { client: ApiClient }) {
-  const { t, language } = useI18n();
+  const { t, language, setLanguage } = useI18n();
   const toast = useToast();
-  const { mode, primaryColor, font } = useTheme();
+  const { mode, setMode, primaryColor, setPrimaryColor, font, setFont } = useTheme();
   const [dblClick, setDblClick] = useState<TreeDoubleClick>('edit');
-  // Snapshot of the last-persisted state, so Save enables only when something actually changed.
-  const [saved, setSaved] = useState<string | null>(null);
-  const seeded = useRef(false);
+  // The last-persisted state, so Save enables only when something actually changed.
+  const [saved, setSaved] = useState<Snapshot | null>(null);
 
-  const current = JSON.stringify([mode, primaryColor.key, font.key, language, dblClick]);
+  const current: Snapshot = { mode, primaryColor, font, language, dblClick };
 
   useEffect(() => {
     void client
@@ -29,17 +39,12 @@ export function PreferencesSettings({ client }: { client: ApiClient }) {
       .then(({ preferences }) => {
         const dbl: TreeDoubleClick = preferences.treeDoubleClick === 'pin' ? 'pin' : 'edit';
         setDblClick(dbl);
-        seeded.current = true;
+        // Seed from the live providers (already hydrated app-wide) plus the stored double-click.
+        setSaved({ mode, primaryColor, font, language, dblClick: dbl });
       })
-      .catch(() => {
-        seeded.current = true;
-      });
+      .catch(() => setSaved({ mode, primaryColor, font, language, dblClick: 'edit' }));
+    // Seed once per client: re-running on a previewed change would defeat the dirty check.
   }, [client]);
-
-  // Seed the "saved" snapshot once the stored double-click preference has been applied.
-  useEffect(() => {
-    if (seeded.current && saved === null) setSaved(current);
-  }, [current, saved]);
 
   async function save() {
     try {
@@ -57,7 +62,22 @@ export function PreferencesSettings({ client }: { client: ApiClient }) {
     }
   }
 
-  const dirty = saved !== null && saved !== current;
+  function cancel() {
+    if (!saved) return;
+    setMode(saved.mode);
+    setPrimaryColor(saved.primaryColor);
+    setFont(saved.font);
+    setLanguage(saved.language);
+    setDblClick(saved.dblClick);
+  }
+
+  const dirty =
+    saved !== null &&
+    (saved.mode !== mode ||
+      saved.primaryColor.key !== primaryColor.key ||
+      saved.font.key !== font.key ||
+      saved.language !== language ||
+      saved.dblClick !== dblClick);
 
   return (
     <div className="settings-form">
@@ -75,6 +95,9 @@ export function PreferencesSettings({ client }: { client: ApiClient }) {
         <span className="field-hint">{t('settings.treeDoubleClickHint')}</span>
       </div>
       <div className="settings-form__actions">
+        <Button variant="ghost" disabled={!dirty} onClick={cancel}>
+          {t('name.cancel')}
+        </Button>
         <Button variant="primary" disabled={!dirty} onClick={() => void save()}>
           {t('name.save')}
         </Button>

@@ -33,6 +33,16 @@ export function GeneralSettings() {
         onChange={(e) => setIcon(e.target.value)}
       />
       <div className="settings-form__actions">
+        <Button
+          variant="ghost"
+          disabled={!dirty}
+          onClick={() => {
+            setName(current?.name ?? '');
+            setIcon(current?.icon ?? '');
+          }}
+        >
+          {t('name.cancel')}
+        </Button>
         <Button variant="primary" disabled={!name.trim() || !dirty} onClick={() => void save()}>
           {t('wsset.save')}
         </Button>
