@@ -1,22 +1,24 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import type { ApiClient } from '../api-client/client';
 import { useI18n } from '../i18n/I18nProvider';
 import type { LanguageCode } from '../i18n/catalogs';
 import { useTheme, type ThemeMode } from '../theme/ThemeProvider';
 
 /**
- * Persist the M2 preferences (theme mode, primary color, language) to the app-level store via the
- * API client, and hydrate them once after sign-in. Main is the source of truth post-M4; the
- * localStorage stand-in from M2 remains as an instant pre-paint default. Best-effort: persistence
- * failures (e.g. before the backend is ready) are ignored. See SWAFT_STORAGE_SYNC_MODEL.md §2.4.
+ * Hydrate the M2 preferences (theme mode, primary color, font, language) from the app-level store
+ * once after sign-in. Main is the source of truth post-M4; the localStorage stand-in from M2 remains
+ * as an instant pre-paint default. See SWAFT_STORAGE_SYNC_MODEL.md §2.4.
+ *
+ * Hydration only: changing a control applies live app-wide but is a *preview*. Persistence happens
+ * exclusively when the user presses Save (Settings → Preferences, or the homepage dialog), so every
+ * settings screen follows the same "nothing is stored until Save" contract.
  */
 const THEME_MODES: ThemeMode[] = ['light', 'dark', 'system'];
 const LANGUAGES: LanguageCode[] = ['en', 'it'];
 
 export function usePreferencesSync(client: ApiClient): void {
-  const { mode, setMode, primaryColor, setPrimaryColor, colors, font, setFont, fonts } = useTheme();
-  const { language, setLanguage } = useI18n();
-  const hydrated = useRef(false);
+  const { setMode, setPrimaryColor, colors, setFont, fonts } = useTheme();
+  const { setLanguage } = useI18n();
 
   // Hydrate once from the app-level store.
   useEffect(() => {
@@ -41,25 +43,10 @@ export function usePreferencesSync(client: ApiClient): void {
         }
       } catch {
         /* best-effort hydration */
-      } finally {
-        hydrated.current = true;
       }
     })();
     return () => {
       cancelled = true;
     };
   }, [client]);
-
-  // Persist on change (after hydration, to avoid echoing the hydrated values back).
-  useEffect(() => {
-    if (!hydrated.current) return;
-    void client
-      .call('prefs.set', {
-        themeMode: mode,
-        primaryColor: primaryColor.key,
-        font: font.key,
-        language,
-      })
-      .catch(() => undefined);
-  }, [client, mode, primaryColor, font, language]);
 }

@@ -47,6 +47,8 @@ export const preferencesSchema = z
     primaryColor: z.string().max(32).optional(),
     font: z.string().max(32).optional(),
     language: z.string().max(8).optional(),
+    /** Double-clicking a Working Tree template: pin its tab (classic) or open the editor. */
+    treeDoubleClick: z.enum(['pin', 'edit']).optional(),
   })
   .strict();
 
@@ -124,33 +126,84 @@ export const renameRequestSchema = z
   .strict();
 export const idRequestSchema = z.object({ id: z.string().min(1) }).strict();
 
-export const settingsUpdateSchema = z
+/** An outgoing-HTTP header name (RFC 7230 token). */
+const headerNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(128)
+  .regex(/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/, 'Invalid header name.');
+
+/** Where an API-key auth goes on the outgoing request. */
+export const authPlacementSchema = z.enum(['header', 'query']);
+/**
+ * Request/folder authentication (M8, reworked). `inherit` resolves to the nearest folder-defined
+ * auth up the chain at send time. String fields (username/password/token/key/value) may carry Seebo
+ * `${ … }` formulas. `secretRef`/`headerName` are the legacy keychain-backed shape, still honored by
+ * the HTTP client.
+ */
+export const httpAuthSchema = z
   .object({
-    executionMode: executionModeSchema.optional(),
-    allowedTypes: z.array(z.string()).optional(),
-    allowedSubtypes: z.array(z.string()).optional(),
-    allowedCapabilities: z.array(z.string()).optional(),
-    allowedActions: z.array(z.string()).optional(),
-    allowedDomains: z.array(z.string()).optional(),
-    proxyUrl: z.string().nullable().optional(),
-    fileExportRoot: z.string().nullable().optional(),
-    /** Required to switch execution mode to `dev` (a guarded action). */
-    confirmDev: z.boolean().optional(),
+    kind: z.enum(['none', 'inherit', 'bearer', 'basic', 'apikey']),
+    username: z.string().max(1024).optional(),
+    password: z.string().max(4096).optional(),
+    token: z.string().max(4096).optional(),
+    /** API-key name (header name or query-param name, per `placement`). */
+    key: z.string().max(256).optional(),
+    value: z.string().max(4096).optional(),
+    placement: authPlacementSchema.optional(),
+    /** Legacy: reference into the OS keychain — the renderer never sees the secret value. */
+    secretRef: z.string().max(64).optional(),
+    /** Legacy alias of `key` for header API keys. */
+    headerName: z.string().max(64).optional(),
   })
   .strict();
 
-export const restrictionCreateRequestSchema = z
+/** A folder's propagated proxy for the API calls beneath it (null/absent = direct connection).
+ * The hostname may carry Seebo `${ … }` formulas, rendered when the request is resolved. */
+export const folderProxySchema = z
   .object({
-    kind: z.string().trim().min(1).max(64),
-    value: z.string().trim().min(1).max(512),
+    protocol: z.enum(['http', 'https']),
+    hostname: z.string().trim().min(1).max(1024),
+    port: z.number().int().min(1).max(65535),
+  })
+  .strict();
+
+/** Partial update of a folder's propagated HTTP policy + notes (the Folder view tabs). */
+export const folderUpdateRequestSchema = z
+  .object({
+    id: z.string().min(1),
+    /** Headers propagated to every API call in the folder; values may carry Seebo formulas. */
+    headers: z.record(headerNameSchema, z.string().max(4096)).optional(),
+    proxy: folderProxySchema.nullable().optional(),
+    /** Auth propagated to every API call in the folder (null = inherit from the parent chain). */
+    auth: httpAuthSchema.nullable().optional(),
+    /** Markdown documentation for the folder. */
+    notes: z.string().max(200_000).optional(),
+  })
+  .strict();
+
+export const settingsUpdateSchema = z
+  .object({
+    executionMode: executionModeSchema.optional(),
+    /** Show the Batcher panel under the Working Tree (false hides the whole section). */
+    batcherEnabled: z.boolean().optional(),
+    /** Hosts outgoing HTTP requests may NOT target (anchored host match, empty = allow all). */
+    blockedDomains: z.array(z.string().trim().min(1).max(253)).optional(),
+    /** Proxy every outgoing HTTP request through this URL (null = direct). */
+    proxyUrl: z.string().nullable().optional(),
+    /** Headers force-applied to every outgoing HTTP request (override the request's own). */
+    enforcedHeaders: z.record(headerNameSchema, z.string().max(4096)).optional(),
+    /** Required to switch execution mode to `dev` (a guarded action). */
+    confirmDev: z.boolean().optional(),
   })
   .strict();
 
 // --- M6: templates + Seebo rendering ----------------------------------------
 
 // Template kinds. `render` was folded into `document` (its subtypes — mermaid/swagger/echarts — are
-// now document subtypes that render in the output). `database` is reserved (the DB client is a tool).
-export const templateTypeSchema = z.enum(['document', 'api', 'database']);
+// now document subtypes that render in the output).
+export const templateTypeSchema = z.enum(['document', 'api']);
 
 export const templateCreateRequestSchema = z
   .object({
@@ -212,15 +265,6 @@ export const releaseDeleteRequestSchema = z.object({ releaseId: z.string().min(1
 // --- M8: API templates + HTTP client ----------------------------------------
 
 export const httpMethodSchema = z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
-export const httpAuthSchema = z
-  .object({
-    kind: z.enum(['none', 'bearer', 'basic', 'apikey']),
-    /** Reference into the OS keychain — the renderer never sees the secret value. */
-    secretRef: z.string().max(64).optional(),
-    username: z.string().max(256).optional(),
-    headerName: z.string().max(64).optional(),
-  })
-  .strict();
 export const bodyTypeSchema = z.enum(['none', 'json', 'form', 'text', 'xml']);
 export const httpRequestSchema = z
   .object({
@@ -257,25 +301,6 @@ export const secretSetRequestSchema = z
   .object({ ref: z.string().trim().min(1).max(64), value: z.string().max(4096) })
   .strict();
 
-// --- M9: read-only database client ------------------------------------------
-
-export const dbEngineSchema = z.enum(['sqlite', 'postgres']);
-export const dbQueryRequestSchema = z
-  .object({
-    engine: dbEngineSchema,
-    file: z.string().optional(),
-    sql: z.string().min(1).max(100_000),
-  })
-  .strict();
-export const dbExportRequestSchema = z
-  .object({
-    format: z.enum(['csv', 'json']),
-    columns: z.array(z.string()),
-    rows: z.array(z.array(z.unknown())),
-    defaultName: z.string().max(120).optional(),
-  })
-  .strict();
-
 // --- M10: batcher + actions -------------------------------------------------
 
 export const batchAnalyzeRequestSchema = z
@@ -299,8 +324,8 @@ export const actionExecuteRequestSchema = z
 
 // --- Environments (variable sets read by the `env(...)` capability) ----------
 
-/** Who an environment belongs to: the current user (personal), the workspace, or a project. */
-export const environmentOwnerKindSchema = z.enum(['user', 'workspace', 'project']);
+/** Who an environment belongs to: the current user (personal) or the whole workspace. */
+export const environmentOwnerKindSchema = z.enum(['user', 'workspace']);
 
 /** A single environment variable's key (identifier-like, so it maps cleanly to `env('KEY')`). */
 const envVarKeySchema = z
@@ -316,14 +341,8 @@ export const envCreateRequestSchema = z
     name: entityNameSchema,
     description: z.string().trim().max(2000).optional(),
     ownerKind: environmentOwnerKindSchema,
-    /** Required when `ownerKind === 'project'` (the owning project); ignored otherwise. */
-    projectId: z.string().min(1).optional(),
   })
-  .strict()
-  .refine((v) => v.ownerKind !== 'project' || !!v.projectId, {
-    message: 'A project environment requires a projectId.',
-    path: ['projectId'],
-  });
+  .strict();
 
 export const envUpdateRequestSchema = z
   .object({
@@ -366,6 +385,8 @@ export const OP_NAMES = [
   'folder.rename',
   'folder.delete',
   'folder.move',
+  'folder.get',
+  'folder.update',
   'template.move',
   'tag.list',
   'template.tags.list',
@@ -375,8 +396,6 @@ export const OP_NAMES = [
   'tag.delete',
   'settings.get',
   'settings.update',
-  'restriction.create',
-  'restriction.delete',
   'template.create',
   'template.rename',
   'template.delete',
@@ -404,11 +423,6 @@ export const OP_NAMES = [
   'api.history.delete',
   'secret.set',
   'secret.list',
-  'db.query',
-  'db.history.list',
-  'db.history.clear',
-  'db.export',
-  'db.pickFile',
   'batch.analyze',
   'batch.render',
   'action.execute',
@@ -451,6 +465,8 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'folder.rename': renameRequestSchema,
   'folder.delete': idRequestSchema,
   'folder.move': folderMoveRequestSchema,
+  'folder.get': idRequestSchema,
+  'folder.update': folderUpdateRequestSchema,
   'template.move': templateMoveRequestSchema,
   'tag.list': emptyRequestSchema,
   'template.tags.list': templateRefRequestSchema,
@@ -460,8 +476,6 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'tag.delete': idRequestSchema,
   'settings.get': emptyRequestSchema,
   'settings.update': settingsUpdateSchema,
-  'restriction.create': restrictionCreateRequestSchema,
-  'restriction.delete': idRequestSchema,
   'template.create': templateCreateRequestSchema,
   'template.rename': renameRequestSchema,
   'template.delete': idRequestSchema,
@@ -489,11 +503,6 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'api.history.delete': idRequestSchema,
   'secret.set': secretSetRequestSchema,
   'secret.list': emptyRequestSchema,
-  'db.query': dbQueryRequestSchema,
-  'db.history.list': emptyRequestSchema,
-  'db.history.clear': emptyRequestSchema,
-  'db.export': dbExportRequestSchema,
-  'db.pickFile': emptyRequestSchema,
   'batch.analyze': batchAnalyzeRequestSchema,
   'batch.render': batchRenderRequestSchema,
   'action.execute': actionExecuteRequestSchema,
@@ -634,6 +643,21 @@ export interface FolderDto {
   name: string;
   projectId: string;
   parentFolderId: string | null;
+}
+export type FolderProxyDto = z.infer<typeof folderProxySchema>;
+export type AuthPlacement = z.infer<typeof authPlacementSchema>;
+/** Full folder incl. its propagated HTTP policy + markdown notes (the Folder view). */
+export interface FolderDetailDto extends FolderDto {
+  /** Headers propagated to every API call in the folder (values may carry Seebo formulas). */
+  headers: Record<string, string>;
+  /** Proxy propagated to every API call in the folder (null = direct connection). */
+  proxy: FolderProxyDto | null;
+  /** Auth propagated to every API call in the folder (null = inherit from the parent chain). */
+  auth: HttpAuth | null;
+  /** The concrete auth this folder would inherit from its ancestors (for `inherit` previews). */
+  inheritedAuth: HttpAuth | null;
+  /** Markdown documentation for the folder. */
+  notes: string;
 }
 export interface TagDto {
   id: string;
@@ -777,13 +801,11 @@ export const SUBTYPES: Record<TemplateType, string[]> = {
     'yaml',
   ],
   api: ['json'],
-  database: [],
 };
 /** Default subtype assigned to a new template (and used to group subtype-less ones in the tree). */
 export const DEFAULT_SUBTYPE: Record<TemplateType, string> = {
   document: 'text',
   api: 'json',
-  database: 'text',
 };
 /** Subtypes the Document output shows rendered (not as code). */
 export const RENDERABLE_SUBTYPES = new Set(['html', 'markdown', 'eml', 'mermaid', 'swagger', 'echarts']);
@@ -836,25 +858,6 @@ export interface ApiHistoryItem {
   createdAt: string;
 }
 
-// --- M9 DTOs ----------------------------------------------------------------
-
-export type DbEngine = z.infer<typeof dbEngineSchema>;
-
-export interface DbResultDto {
-  columns: string[];
-  rows: unknown[][];
-  rowCount: number;
-}
-
-/** 🔵 local-only, metadata-only query history (never result rows). */
-export interface DbHistoryItem {
-  id: string;
-  engine: string;
-  sql: string;
-  status: string;
-  createdAt: string;
-}
-
 // --- M10 DTOs ---------------------------------------------------------------
 
 
@@ -872,21 +875,16 @@ export interface ReceiptDto {
 
 export interface WorkspaceSettingsDto {
   executionMode: ExecutionMode;
-  allowedTypes: string[];
-  allowedSubtypes: string[];
-  allowedCapabilities: string[];
-  allowedActions: string[];
-  allowedDomains: string[];
+  /** Whether the Batcher panel is shown under the Working Tree. */
+  batcherEnabled: boolean;
+  /** Hosts outgoing HTTP requests may NOT target (anchored host match, empty = allow all). */
+  blockedDomains: string[];
+  /** Proxy every outgoing HTTP request through this URL (null = direct). */
   proxyUrl: string | null;
-  fileExportRoot: string | null;
+  /** Headers force-applied to every outgoing HTTP request (override the request's own). */
+  enforcedHeaders: Record<string, string>;
 }
 export type WorkspaceSettingsUpdate = z.infer<typeof settingsUpdateSchema>;
-
-export interface RestrictionDto {
-  id: string;
-  kind: string;
-  value: string;
-}
 
 // --- Environment DTOs -------------------------------------------------------
 
@@ -898,10 +896,8 @@ export interface EnvironmentSummaryDto {
   name: string;
   description: string | null;
   ownerKind: EnvironmentOwnerKind;
-  /** Username (user), null (workspace), or project id (project). */
+  /** Username for personal (user) environments, null for workspace ones. */
   ownerId: string | null;
-  /** Human label for the owner: the project name (project envs) or username (user envs), else null. */
-  ownerName: string | null;
   /** Number of variables (so the list can show a count without shipping every value). */
   varCount: number;
 }
@@ -930,6 +926,11 @@ export type NameColorRequest = z.infer<typeof nameColorRequestSchema>;
 export type ProjectCreateRequest = z.infer<typeof projectCreateRequestSchema>;
 export type FolderCreateRequest = z.infer<typeof folderCreateRequestSchema>;
 export type FolderMoveRequest = z.infer<typeof folderMoveRequestSchema>;
+export type FolderUpdateRequest = z.infer<typeof folderUpdateRequestSchema>;
+
+export interface FolderResponse {
+  folder: FolderDetailDto;
+}
 export type TemplateMoveRequest = z.infer<typeof templateMoveRequestSchema>;
 export type TemplateTagAddRequest = z.infer<typeof templateTagAddRequestSchema>;
 export type TemplateTagRemoveRequest = z.infer<typeof templateTagRemoveRequestSchema>;
@@ -939,7 +940,6 @@ export interface TagsResponse {
 }
 export type RenameRequest = z.infer<typeof renameRequestSchema>;
 export type IdRequest = z.infer<typeof idRequestSchema>;
-export type RestrictionCreateRequest = z.infer<typeof restrictionCreateRequestSchema>;
 export type TemplateCreateRequest = z.infer<typeof templateCreateRequestSchema>;
 export type TemplateUpdateSourceRequest = z.infer<typeof templateUpdateSourceRequestSchema>;
 export type TemplateRenderRequest = z.infer<typeof templateRenderRequestSchema>;
@@ -1006,16 +1006,6 @@ export interface OkResponse {
   ok: true;
 }
 
-export type DbQueryRequest = z.infer<typeof dbQueryRequestSchema>;
-export type DbExportRequest = z.infer<typeof dbExportRequestSchema>;
-
-export interface DbResultResponse {
-  result: DbResultDto;
-}
-export interface DbHistoryResponse {
-  items: DbHistoryItem[];
-}
-
 export type BatchAnalyzeRequest = z.infer<typeof batchAnalyzeRequestSchema>;
 export type BatchRenderRequest = z.infer<typeof batchRenderRequestSchema>;
 export type ActionExecuteRequest = z.infer<typeof actionExecuteRequestSchema>;
@@ -1027,15 +1017,8 @@ export interface ReceiptsResponse {
 export interface TreeResponse {
   tree: WorkspaceTree;
 }
-export interface SettingsSnapshotResponse {
-  settings: WorkspaceSettingsDto;
-  restrictions: RestrictionDto[];
-}
 export interface SettingsResponse {
   settings: WorkspaceSettingsDto;
-}
-export interface RestrictionsResponse {
-  restrictions: RestrictionDto[];
 }
 
 export interface OpContracts {
@@ -1065,6 +1048,8 @@ export interface OpContracts {
   'folder.rename': { request: RenameRequest; response: TreeResponse };
   'folder.delete': { request: IdRequest; response: TreeResponse };
   'folder.move': { request: FolderMoveRequest; response: TreeResponse };
+  'folder.get': { request: IdRequest; response: FolderResponse };
+  'folder.update': { request: FolderUpdateRequest; response: FolderResponse };
   'template.move': { request: TemplateMoveRequest; response: TreeResponse };
   'tag.list': { request: EmptyRequest; response: TagsResponse };
   'template.tags.list': { request: TemplateRefRequest; response: TagsResponse };
@@ -1072,10 +1057,8 @@ export interface OpContracts {
   'template.tags.remove': { request: TemplateTagRemoveRequest; response: TagsResponse };
   'tag.create': { request: NameColorRequest; response: TreeResponse };
   'tag.delete': { request: IdRequest; response: TreeResponse };
-  'settings.get': { request: EmptyRequest; response: SettingsSnapshotResponse };
+  'settings.get': { request: EmptyRequest; response: SettingsResponse };
   'settings.update': { request: WorkspaceSettingsUpdate; response: SettingsResponse };
-  'restriction.create': { request: RestrictionCreateRequest; response: RestrictionsResponse };
-  'restriction.delete': { request: IdRequest; response: RestrictionsResponse };
   'template.create': { request: TemplateCreateRequest; response: TreeResponse };
   'template.rename': { request: RenameRequest; response: TreeResponse };
   'template.delete': { request: IdRequest; response: TreeResponse };
@@ -1103,11 +1086,6 @@ export interface OpContracts {
   'api.history.delete': { request: IdRequest; response: OkResponse };
   'secret.set': { request: SecretSetRequest; response: SecretsResponse };
   'secret.list': { request: EmptyRequest; response: SecretsResponse };
-  'db.query': { request: DbQueryRequest; response: DbResultResponse };
-  'db.history.list': { request: EmptyRequest; response: DbHistoryResponse };
-  'db.history.clear': { request: EmptyRequest; response: DbHistoryResponse };
-  'db.export': { request: DbExportRequest; response: DialogPathResponse };
-  'db.pickFile': { request: EmptyRequest; response: DialogPathResponse };
   'batch.analyze': { request: BatchAnalyzeRequest; response: RequirementsResponse };
   'batch.render': { request: BatchRenderRequest; response: RenderResponse };
   'action.execute': { request: ActionExecuteRequest; response: ReceiptsResponse };

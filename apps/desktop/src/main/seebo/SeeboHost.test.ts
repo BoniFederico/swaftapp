@@ -56,3 +56,58 @@ describe('SeeboHost — template data capability', () => {
     expect(state.output).toBe('42');
   });
 });
+
+/** A fake `env(...)` provider over a fixed variable set (throws on a missing key, like the real one). */
+function fakeEnvData(vars: Record<string, unknown>) {
+  return {
+    resolve: (key: string) =>
+      key in vars ? Promise.resolve(vars[key]) : Promise.reject(new Error(`no env var ${key}`)),
+  };
+}
+
+describe('SeeboHost — env-fallback sugar for bare names', () => {
+  it('resolves an undeclared bare name from the active environment (${ pesca } ≈ ${ env(pesca) })', async () => {
+    const host = new SeeboHost({}, { envData: fakeEnvData({ pesca: 'trota', base: 'api.local' }) });
+    const state = await host.render('GET https://${ base }/fish/${ pesca }', {});
+    expect(state.status).toBe('completed');
+    expect(state.output).toBe('GET https://api.local/fish/trota');
+  });
+
+  it('keeps the original UNDECLARED_NAME diagnostic when the environment cannot resolve it', async () => {
+    const host = new SeeboHost({}, { envData: fakeEnvData({ pesca: 'trota' }) });
+    const state = await host.render('${ ignota }', {});
+    expect(state.status).toBe('failed');
+    expect(state.diagnostics?.some((d) => d.code === 'UNDECLARED_NAME')).toBe(true);
+  });
+
+  it('never falls back for string literals or names inside larger expressions', async () => {
+    const host = new SeeboHost({}, { envData: fakeEnvData({ ciao: 'ENVVAL', pesca: { x: 1 } }) });
+    // A string literal is a literal — even when an env var with the same name exists.
+    expect((await host.render("${ 'ciao' }", {})).output).toBe('ciao');
+    // Only the whole-slot bare form is sugar; expressions keep Seebo's own diagnostics.
+    for (const src of ['${ pesca.x }', "${ ciao + 'y' }"]) {
+      const state = await host.render(src, {});
+      expect(state.status, src).toBe('failed');
+      expect(state.diagnostics?.some((d) => d.code === 'UNDECLARED_NAME'), src).toBe(true);
+    }
+  });
+
+  it('explicit input values win over the environment fallback', async () => {
+    const host = new SeeboHost({}, { envData: fakeEnvData({ pesca: 'trota' }) });
+    const state = await host.render('${ pesca }', { pesca: 'salmone' });
+    expect(state.output).toBe('salmone');
+  });
+
+  it('validate() drops the diagnostic for names the environment covers (editor feedback)', async () => {
+    const host = new SeeboHost({}, { envData: fakeEnvData({ pesca: 'trota' }) });
+    const diags = await host.validate('${ pesca } ${ ignota }');
+    expect(diags.map((d) => d.data?.name)).toEqual(['ignota']);
+    // A covered name used inside an expression is NOT eligible → still flagged.
+    expect((await host.validate('${ pesca + 1 }')).map((d) => d.data?.name)).toEqual(['pesca']);
+  });
+
+  it('is inert without an env provider (pure engines keep the failure)', async () => {
+    const state = await new SeeboHost().render('${ pesca }', {});
+    expect(state.status).toBe('failed');
+  });
+});

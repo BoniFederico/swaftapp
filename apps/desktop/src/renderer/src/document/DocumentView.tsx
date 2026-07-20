@@ -157,6 +157,21 @@ export function DocumentView({
     toast.show(t('doc.inputsSaved'), 'success');
   }
 
+  // Ctrl/Cmd+S saves the input config — only for the visible document view (tabs stay mounted hidden).
+  const saveShortcutRef = useRef(() => {});
+  saveShortcutRef.current = () => void saveInputs();
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key.toLowerCase() !== 's' || !(e.ctrlKey || e.metaKey)) return;
+      if (docRef.current?.offsetParent == null) return; // not the active tab
+      if (document.querySelector('[aria-modal="true"]')) return; // a modal owns the shortcut
+      e.preventDefault();
+      saveShortcutRef.current();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   // Render automatically (debounced) whenever the inputs/version change and inputs are valid. The
   // server renders the active selection (kept in sync via selectVersion), so prepared actions apply.
   useEffect(() => {

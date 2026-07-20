@@ -1,13 +1,11 @@
 import type { ActionService } from './actions/ActionService';
 import type { AppStore } from './app-store/AppStore';
-import type { DatabaseService } from './db/DatabaseService';
 import type { HttpService } from './http/HttpService';
 import type { SecretService } from './secret/SecretService';
 import type { ApiHistoryService } from './workspace/ApiHistoryService';
 import type { ApiRequestService } from './workspace/ApiRequestService';
 import type { BatcherService } from './workspace/BatcherService';
 import type { ChangelogService } from './workspace/ChangelogService';
-import type { DbHistoryService } from './workspace/DbHistoryService';
 import type { EnvironmentService } from './workspace/EnvironmentService';
 import type { OrganizationService } from './workspace/OrganizationService';
 import type { ReleaseService } from './workspace/ReleaseService';
@@ -26,8 +24,6 @@ export interface PlatformDialogs {
   pickCreateTarget(defaultName?: string): Promise<string | null>;
   /** Native "open" for an existing `.swaft`; returns the chosen path or null if cancelled. */
   pickOpenTarget(): Promise<string | null>;
-  /** Native "open" for a SQLite database file. */
-  pickDatabaseFile(): Promise<string | null>;
   /** Native "save as" for an arbitrary export file. */
   pickSaveTarget(defaultName: string): Promise<string | null>;
 }
@@ -153,25 +149,6 @@ export function setApiRequestService(value: ApiRequestService | null): void {
 export function getApiRequestService(): ApiRequestService {
   if (!apiRequest) throw new Error('ApiRequestService not initialized');
   return apiRequest;
-}
-
-let database: DatabaseService | null = null;
-let dbHistory: DbHistoryService | null = null;
-
-export function setDatabaseService(value: DatabaseService | null): void {
-  database = value;
-}
-export function getDatabaseService(): DatabaseService {
-  if (!database) throw new Error('DatabaseService not initialized');
-  return database;
-}
-
-export function setDbHistoryService(value: DbHistoryService | null): void {
-  dbHistory = value;
-}
-export function getDbHistoryService(): DbHistoryService {
-  if (!dbHistory) throw new Error('DbHistoryService not initialized');
-  return dbHistory;
 }
 
 let batcher: BatcherService | null = null;

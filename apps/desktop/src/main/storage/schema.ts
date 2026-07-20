@@ -11,7 +11,7 @@
  * reshaped to flat collections) + workspace settings + restrictions.
  */
 
-export const SCHEMA_VERSION = 18;
+export const SCHEMA_VERSION = 22;
 
 /** Sync-metadata columns present on every 🟢 synchronized entity. */
 export const SYNC_META_COLUMNS = [
@@ -29,7 +29,6 @@ export const SYNCHRONIZED_TABLES = [
   'folders',
   'tags',
   'workspace_settings',
-  'restrictions',
   'templates',
   'releases',
   'changelog',
@@ -42,7 +41,6 @@ export const LOCAL_ONLY_TABLES = [
   'local_input_state',
   'release_selection',
   'api_history',
-  'db_history',
   'receipts',
   'environment_selection',
 ] as const;
@@ -57,31 +55,30 @@ const SYNC_META_DDL = `
 `;
 
 // Individual table DDL, reused by both the fresh schema and the migration so they never drift.
+// v21: folders carry a propagated HTTP policy (`headers` JSON object, `proxy` JSON or NULL) applied
+// to every API call beneath them, plus markdown `notes` (the Folder view). v22 adds `auth` (JSON or
+// NULL = inherit from the parent chain).
 const FOLDERS_DDL = `CREATE TABLE folders (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   project_id TEXT,
   parent_folder_id TEXT,
+  headers TEXT NOT NULL DEFAULT '{}',
+  proxy TEXT,
+  auth TEXT,
+  notes TEXT NOT NULL DEFAULT '',
   ${SYNC_META_DDL}
 );`;
 
+// v20: outgoing-HTTP restrictions only — blocked domains, enforced proxy and enforced headers.
+// v22 adds `batcher_enabled` (hide the Batcher panel when 0).
 const SETTINGS_DDL = `CREATE TABLE workspace_settings (
   id TEXT PRIMARY KEY,
   execution_mode TEXT NOT NULL,
-  allowed_types TEXT NOT NULL DEFAULT '[]',
-  allowed_subtypes TEXT NOT NULL DEFAULT '[]',
-  allowed_capabilities TEXT NOT NULL,
-  allowed_actions TEXT NOT NULL,
-  allowed_domains TEXT NOT NULL,
+  blocked_domains TEXT NOT NULL DEFAULT '[]',
   proxy_url TEXT,
-  file_export_root TEXT,
-  ${SYNC_META_DDL}
-);`;
-
-const RESTRICTIONS_DDL = `CREATE TABLE restrictions (
-  id TEXT PRIMARY KEY,
-  kind TEXT NOT NULL,
-  value TEXT NOT NULL,
+  enforced_headers TEXT NOT NULL DEFAULT '{}',
+  batcher_enabled INTEGER NOT NULL DEFAULT 1,
   ${SYNC_META_DDL}
 );`;
 
@@ -133,15 +130,6 @@ const API_HISTORY_DDL = `CREATE TABLE api_history (
   method TEXT NOT NULL,
   url TEXT NOT NULL,
   status INTEGER,
-  created_at TEXT NOT NULL
-);`;
-
-// M9: 🔵 local-only, metadata-only DB query history (never result rows).
-const DB_HISTORY_DDL = `CREATE TABLE db_history (
-  id TEXT PRIMARY KEY,
-  engine TEXT NOT NULL,
-  sql TEXT NOT NULL,
-  status TEXT NOT NULL,
   created_at TEXT NOT NULL
 );`;
 
@@ -217,8 +205,6 @@ CREATE TABLE tags (
 
 ${SETTINGS_DDL}
 
-${RESTRICTIONS_DDL}
-
 ${TEMPLATES_DDL}
 
 ${RELEASES_DDL}
@@ -235,8 +221,6 @@ CREATE TABLE local_input_state (
 ${RELEASE_SELECTION_DDL}
 
 ${API_HISTORY_DDL}
-
-${DB_HISTORY_DDL}
 
 ${RECEIPTS_DDL}
 
@@ -274,7 +258,12 @@ export const MIGRATIONS: { to: number; sql: string }[] = [
         file_export_root TEXT,
         ${SYNC_META_DDL}
       );
-      ${RESTRICTIONS_DDL}
+      CREATE TABLE restrictions (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        value TEXT NOT NULL,
+        ${SYNC_META_DDL}
+      );
     `,
   },
   {
@@ -336,8 +325,15 @@ export const MIGRATIONS: { to: number; sql: string }[] = [
   },
   {
     to: 8,
-    // v8 adds local-only, metadata-only DB query history.
-    sql: DB_HISTORY_DDL,
+    // v8 added local-only, metadata-only DB query history (frozen snapshot — the DB client and its
+    // table were removed again in v19).
+    sql: `CREATE TABLE db_history (
+      id TEXT PRIMARY KEY,
+      engine TEXT NOT NULL,
+      sql TEXT NOT NULL,
+      status TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );`,
   },
   {
     to: 9,
@@ -391,6 +387,51 @@ export const MIGRATIONS: { to: number; sql: string }[] = [
     sql: `
       ${ENVIRONMENTS_DDL}
       ${ENVIRONMENT_SELECTION_DDL}
+    `,
+  },
+  {
+    to: 19,
+    // v19 removes the read-only database client: drop its query history and fold any stray reserved
+    // `database` templates (never creatable from the UI) into `document`.
+    sql: `
+      DROP TABLE IF EXISTS db_history;
+      UPDATE templates SET type = 'document' WHERE type = 'database';
+    `,
+  },
+  {
+    to: 20,
+    // v20 narrows restrictions to outgoing-HTTP policy only: drops the type/subtype/capability/
+    // action allow-lists, the export root and the restrictions table; the domains list becomes a
+    // BLOCK-list (semantics inverted, so the old allow-list values are dropped, not carried over)
+    // and enforced request headers are added.
+    sql: `
+      ALTER TABLE workspace_settings DROP COLUMN allowed_types;
+      ALTER TABLE workspace_settings DROP COLUMN allowed_subtypes;
+      ALTER TABLE workspace_settings DROP COLUMN allowed_capabilities;
+      ALTER TABLE workspace_settings DROP COLUMN allowed_actions;
+      ALTER TABLE workspace_settings DROP COLUMN allowed_domains;
+      ALTER TABLE workspace_settings DROP COLUMN file_export_root;
+      ALTER TABLE workspace_settings ADD COLUMN blocked_domains TEXT NOT NULL DEFAULT '[]';
+      ALTER TABLE workspace_settings ADD COLUMN enforced_headers TEXT NOT NULL DEFAULT '{}';
+      DROP TABLE IF EXISTS restrictions;
+    `,
+  },
+  {
+    to: 21,
+    // v21 gives folders a propagated HTTP policy (headers + proxy for the API calls beneath them)
+    // and markdown notes, backing the Folder view.
+    sql: `
+      ALTER TABLE folders ADD COLUMN headers TEXT NOT NULL DEFAULT '{}';
+      ALTER TABLE folders ADD COLUMN proxy TEXT;
+      ALTER TABLE folders ADD COLUMN notes TEXT NOT NULL DEFAULT '';
+    `,
+  },
+  {
+    to: 22,
+    // v22 adds folder-propagated auth (NULL = inherit from the parent chain) and the Batcher toggle.
+    sql: `
+      ALTER TABLE folders ADD COLUMN auth TEXT;
+      ALTER TABLE workspace_settings ADD COLUMN batcher_enabled INTEGER NOT NULL DEFAULT 1;
     `,
   },
 ];

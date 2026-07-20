@@ -16,7 +16,6 @@ import {
   ChevronIcon,
   ChevronLeftIcon,
   ConfirmDialog,
-  DatabaseIcon,
   DocumentIcon,
   EmptyIcon,
   FolderIcon,
@@ -31,7 +30,7 @@ import { CreateProjectDialog } from './CreateProjectDialog';
 import { CreateTemplateDialog } from './CreateTemplateDialog';
 import { NameDialog } from './NameDialog';
 import { ProjectSelector } from './ProjectSelector';
-import { subscribeTreeChanged } from './treeBus';
+import { notifyTreeChanged, subscribeTreeChanged } from './treeBus';
 import { useWorkspaceOptional } from './WorkspaceProvider';
 
 /** Per-subtype / per-HTTP-method badge colors (always the same color for a given value). */
@@ -80,8 +79,6 @@ function TypeIcon({ type }: { type: TemplateType }) {
   switch (type) {
     case 'api':
       return <ApiIcon className={className} />;
-    case 'database':
-      return <DatabaseIcon className={className} />;
     default:
       return <DocumentIcon className={className} />;
   }
@@ -132,6 +129,7 @@ export function WorkingTree({
   client,
   openTemplateId,
   onOpenTemplate,
+  onOpenFolder,
   onCloseTemplate,
   onCollapse,
 }: {
@@ -139,10 +137,12 @@ export function WorkingTree({
   openTemplateId: string | null;
   onOpenTemplate: (
     id: string | null,
-    mode?: 'view' | 'edit',
+    mode?: 'view' | 'edit' | 'pin',
     type?: TemplateType,
     name?: string,
   ) => void;
+  /** Open the folder detail view (Content / Headers / Proxy / Notes) in a tab. */
+  onOpenFolder?: (folder: FolderDto) => void;
   onCloseTemplate?: (id: string) => void;
   onCollapse: () => void;
 }) {
@@ -224,6 +224,8 @@ export function WorkingTree({
       const res = await client.call(op as 'tree.get', payload as never);
       const next = (res as { tree: WorkspaceTree }).tree;
       setTree(next);
+      // Broadcast so open views over tree entities (e.g. a folder tab) reflect the mutation live.
+      notifyTreeChanged();
       return next;
     } finally {
       setBusy(false);
@@ -282,6 +284,7 @@ export function WorkingTree({
         toast.show(t('toast.projectDeleted', { name: c.name }), 'success');
       } else if (c.kind === 'folder') {
         await run('folder.delete', { id: c.id });
+        onCloseTemplate?.(c.id); // close the folder's own tab if it was open
         toast.show(t('toast.folderDeleted', { name: c.name }), 'success');
       } else {
         await run('template.delete', { id: c.id });
@@ -291,6 +294,13 @@ export function WorkingTree({
     } catch (e) {
       toast.show(e instanceof ApiError ? e.swaft.message : String(e), 'error');
     }
+  }
+
+  /** Double-click behavior is a preference: pin the tab (classic) or open the editor (default). */
+  async function openOnDoubleClick(tpl: TemplateSummary) {
+    const prefs = await client.call('prefs.get').catch(() => null);
+    const mode = prefs?.preferences.treeDoubleClick === 'pin' ? 'pin' : 'edit';
+    onOpenTemplate(tpl.id, mode, tpl.type, tpl.name);
   }
 
   function expand(id: string) {
@@ -397,7 +407,7 @@ export function WorkingTree({
           );
         }}
         onClick={() => onOpenTemplate(tpl.id, 'view', tpl.type, tpl.name)}
-        onDoubleClick={() => onOpenTemplate(tpl.id, 'edit', tpl.type, tpl.name)}
+        onDoubleClick={() => void openOnDoubleClick(tpl)}
       >
         <span className="tree-item__spacer" />
         <TypeIcon type={tpl.type} />
@@ -455,6 +465,7 @@ export function WorkingTree({
         <div
           className="tree-item tree-folder"
           style={{ paddingLeft: 4 + depth * 16 }}
+          data-active={folder.id === openTemplateId}
           data-dragover={dragOver === folder.id}
           draggable
           onDragStart={(e) => {
@@ -471,7 +482,11 @@ export function WorkingTree({
             e.stopPropagation();
             void dropOn(folder.id);
           }}
-          onClick={() => toggle(folder.id)}
+          onClick={() => {
+            // A click both expands/collapses the folder and opens its detail tab.
+            toggle(folder.id);
+            onOpenFolder?.(folder);
+          }}
         >
           {hasChildren ? (
             <span className="tree-item__twisty" aria-hidden="true">
@@ -540,7 +555,7 @@ export function WorkingTree({
   }
 
   function renderTypeView() {
-    const types: TemplateType[] = ['document', 'api', 'database'];
+    const types: TemplateType[] = ['document', 'api'];
     return types.map((type) => {
       const ofType = projectTemplates.filter((tpl) => tpl.type === type);
       if (ofType.length === 0) return null;
@@ -611,21 +626,26 @@ export function WorkingTree({
   return (
     <aside className="tree" aria-label={t('tree.title')}>
       <div className="tree__head">
-        <span className="tree__title">{t('tree.title')}</span>
+        <div className="tree__field">
+          <span className="ui-field__label">{t('tree.project')}</span>
+          <ProjectSelector
+            projects={tree.projects}
+            selectedId={selectedProject}
+            onSelect={(id) => setSelectedProject(id)}
+            onCreate={() => setProjectOpen(true)}
+            onDelete={(p) => setConfirm({ kind: 'project', id: p.id, name: p.name })}
+          />
+        </div>
         <IconButton label={t('tree.collapse')} className="tree__collapse" onClick={onCollapse}>
           <ChevronLeftIcon />
         </IconButton>
       </div>
 
-      <div className="tree__project">
-        <ProjectSelector
-          projects={tree.projects}
-          selectedId={selectedProject}
-          onSelect={(id) => setSelectedProject(id)}
-          onCreate={() => setProjectOpen(true)}
-          onDelete={(p) => setConfirm({ kind: 'project', id: p.id, name: p.name })}
-        />
-        {selected && (
+      {selected?.description && <div className="tree__project-desc">{selected.description}</div>}
+
+      {selected && (
+        <div className="tree__viewmodes">
+          <ViewModeControl mode={viewMode} onChange={setViewMode} labels={viewLabels} />
           <IconButton
             label={t(`tree.badge.${badgeMode}`)}
             className="tree__badgetoggle"
@@ -639,14 +659,6 @@ export function WorkingTree({
               <LabelIcon />
             )}
           </IconButton>
-        )}
-      </div>
-
-      {selected?.description && <div className="tree__project-desc">{selected.description}</div>}
-
-      {selected && (
-        <div className="tree__viewmodes">
-          <ViewModeControl mode={viewMode} onChange={setViewMode} labels={viewLabels} />
         </div>
       )}
 
@@ -668,6 +680,8 @@ export function WorkingTree({
           </Button>
         </div>
       )}
+
+      {selected && <div className="tree__label">{t('tree.title')}</div>}
 
       <div
         className="tree__body"

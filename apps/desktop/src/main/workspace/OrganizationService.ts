@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type {
+  FolderDetailDto,
   FolderDto,
+  FolderProxyDto,
+  HttpAuth,
   ProjectDto,
   TagDto,
   TemplateSummary,
@@ -48,6 +51,60 @@ interface FolderRow {
   name: string;
   project_id: string | null;
   parent_folder_id: string | null;
+}
+interface FolderMetaRow extends FolderRow {
+  headers: string;
+  proxy: string | null;
+  auth: string | null;
+  notes: string;
+}
+
+const AUTH_KINDS = new Set(['none', 'inherit', 'bearer', 'basic', 'apikey']);
+
+/** Tolerant JSON parse of a folder's `auth` column (null = inherit from the parent chain). */
+function parseFolderAuth(raw: string | null): HttpAuth | null {
+  if (!raw) return null;
+  try {
+    const a = JSON.parse(raw) as HttpAuth;
+    if (a && typeof a === 'object' && AUTH_KINDS.has(a.kind)) return a;
+  } catch {
+    /* fall through */
+  }
+  return null;
+}
+
+/** Tolerant JSON parse of a folder's `headers` column (a string→string object). */
+function parseFolderHeaders(raw: string): Record<string, string> {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const out: Record<string, string> = {};
+      for (const [k, v] of Object.entries(parsed)) if (typeof v === 'string') out[k] = v;
+      return out;
+    }
+  } catch {
+    /* fall through */
+  }
+  return {};
+}
+
+/** Tolerant JSON parse of a folder's `proxy` column (null = direct connection). */
+function parseFolderProxy(raw: string | null): FolderProxyDto | null {
+  if (!raw) return null;
+  try {
+    const p = JSON.parse(raw) as Partial<FolderProxyDto>;
+    if (
+      (p.protocol === 'http' || p.protocol === 'https') &&
+      typeof p.hostname === 'string' &&
+      p.hostname.length > 0 &&
+      typeof p.port === 'number'
+    ) {
+      return { protocol: p.protocol, hostname: p.hostname, port: p.port };
+    }
+  } catch {
+    /* fall through */
+  }
+  return null;
 }
 interface TagRow {
   id: string;
@@ -182,6 +239,125 @@ export class OrganizationService extends RepoBase {
       await this.softDelete('folders', folderId);
     }
     return this.commit();
+  }
+
+  /** A folder with its propagated HTTP policy + notes (the Folder view). */
+  async getFolder(id: string): Promise<FolderDetailDto> {
+    const row = await this.adapter.get<FolderMetaRow>(
+      `SELECT id, name, project_id, parent_folder_id, headers, proxy, auth, notes
+       FROM folders WHERE id = ? AND deleted_at IS NULL`,
+      [id],
+    );
+    if (!row) throw new AppError('FOLDER_NOT_FOUND', 'not_found', 'Folder not found.');
+    return {
+      id: row.id,
+      name: row.name,
+      projectId: row.project_id ?? '',
+      parentFolderId: row.parent_folder_id,
+      headers: parseFolderHeaders(row.headers),
+      proxy: parseFolderProxy(row.proxy),
+      auth: parseFolderAuth(row.auth),
+      inheritedAuth: await this.effectiveChainAuth(row.parent_folder_id),
+      notes: row.notes ?? '',
+    };
+  }
+
+  /** Partially update a folder's propagated headers/proxy/auth/notes. */
+  async updateFolderMeta(
+    id: string,
+    patch: {
+      headers?: Record<string, string>;
+      proxy?: FolderProxyDto | null;
+      auth?: HttpAuth | null;
+      notes?: string;
+    },
+  ): Promise<FolderDetailDto> {
+    await this.getFolder(id); // 404 before writing
+    const set: Record<string, string | null> = {};
+    if (patch.headers !== undefined) set.headers = JSON.stringify(patch.headers);
+    if (patch.proxy !== undefined) set.proxy = patch.proxy ? JSON.stringify(patch.proxy) : null;
+    if (patch.auth !== undefined) {
+      // An explicit `inherit` is the same as unset (null): the chain decides.
+      set.auth =
+        patch.auth && patch.auth.kind !== 'inherit' ? JSON.stringify(patch.auth) : null;
+    }
+    if (patch.notes !== undefined) set.notes = patch.notes;
+    if (Object.keys(set).length > 0) {
+      await this.updateEntity('folders', id, set);
+      await this.ws.save();
+    }
+    return this.getFolder(id);
+  }
+
+  /**
+   * The concrete auth a node inherits starting from folder `startId` and walking up: the nearest
+   * folder whose `auth` is set (kind `none` is an explicit stop meaning "no auth").
+   */
+  private async effectiveChainAuth(startId: string | null): Promise<HttpAuth | null> {
+    const seen = new Set<string>();
+    let cursor = startId;
+    while (cursor && !seen.has(cursor)) {
+      seen.add(cursor);
+      const row = await this.adapter.get<{ parent_folder_id: string | null; auth: string | null }>(
+        `SELECT parent_folder_id, auth FROM folders WHERE id = ? AND deleted_at IS NULL`,
+        [cursor],
+      );
+      if (!row) break;
+      const auth = parseFolderAuth(row.auth);
+      if (auth && auth.kind !== 'inherit') return auth;
+      cursor = row.parent_folder_id;
+    }
+    return null;
+  }
+
+  /**
+   * The HTTP policy a template inherits from its folder chain: headers merged root→leaf (a nearer
+   * folder overrides an ancestor's same-name header), the nearest configured proxy and the nearest
+   * folder-defined auth. Root-level templates (no folder) inherit nothing.
+   */
+  async folderPolicyOf(templateId: string): Promise<{
+    headers: Record<string, string>;
+    proxy: FolderProxyDto | null;
+    auth: HttpAuth | null;
+  }> {
+    const tpl = await this.adapter.get<{ folder_id: string }>(
+      `SELECT folder_id FROM templates WHERE id = ? AND deleted_at IS NULL`,
+      [templateId],
+    );
+    // Leaf → root chain (cycle-guarded), then folded root → leaf so nearer folders win.
+    const chain: {
+      parent_folder_id: string | null;
+      headers: string;
+      proxy: string | null;
+      auth: string | null;
+    }[] = [];
+    const seen = new Set<string>();
+    let cursor = tpl?.folder_id || null;
+    while (cursor && !seen.has(cursor)) {
+      seen.add(cursor);
+      const row = await this.adapter.get<{
+        parent_folder_id: string | null;
+        headers: string;
+        proxy: string | null;
+        auth: string | null;
+      }>(
+        `SELECT parent_folder_id, headers, proxy, auth FROM folders WHERE id = ? AND deleted_at IS NULL`,
+        [cursor],
+      );
+      if (!row) break;
+      chain.push(row);
+      cursor = row.parent_folder_id;
+    }
+    const headers: Record<string, string> = {};
+    let proxy: FolderProxyDto | null = null;
+    let auth: HttpAuth | null = null;
+    for (const row of chain.reverse()) {
+      Object.assign(headers, parseFolderHeaders(row.headers));
+      proxy = parseFolderProxy(row.proxy) ?? proxy;
+      const rowAuth = parseFolderAuth(row.auth);
+      if (rowAuth && rowAuth.kind !== 'inherit') auth = rowAuth;
+    }
+    return { headers, proxy, auth };
   }
 
   /** Move a folder under a new parent (or to the project root when `parentFolderId` is null). */

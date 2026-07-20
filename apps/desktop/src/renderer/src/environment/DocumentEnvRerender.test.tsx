@@ -9,8 +9,8 @@ import { EnvironmentPicker } from './EnvironmentPicker';
 import { EnvironmentProvider } from './EnvironmentProvider';
 
 const ENVS: EnvironmentSummaryDto[] = [
-  { id: 'dev', name: 'Dev', description: null, ownerKind: 'workspace', ownerId: null, ownerName: null, varCount: 1 },
-  { id: 'prod', name: 'Prod', description: null, ownerKind: 'workspace', ownerId: null, ownerName: null, varCount: 1 },
+  { id: 'dev', name: 'Dev', description: null, ownerKind: 'workspace', ownerId: null, varCount: 1 },
+  { id: 'prod', name: 'Prod', description: null, ownerKind: 'workspace', ownerId: null, varCount: 1 },
 ];
 const GREETING: Record<string, string> = { dev: 'Hi', prod: 'Ciao' };
 

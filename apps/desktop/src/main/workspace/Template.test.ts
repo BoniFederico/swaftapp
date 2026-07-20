@@ -6,7 +6,6 @@ import { ChangelogService } from './ChangelogService';
 import { OrganizationService } from './OrganizationService';
 import { ReleaseService } from './ReleaseService';
 import { RenderService } from './RenderService';
-import { SettingsService } from './SettingsService';
 import { TemplateService } from './TemplateService';
 import { WorkspaceService, type WorkspaceFs } from './WorkspaceService';
 
@@ -28,12 +27,11 @@ async function setup() {
   await ws.create({ name: 'WS', location: 'mem://t.swaft', encrypt: false });
 
   const org = new OrganizationService(ws);
-  const settings = new SettingsService(ws);
   const changelog = new ChangelogService(ws);
   const templates = new TemplateService(ws, org, changelog);
   const releases = new ReleaseService(ws, templates, changelog);
   const host = new SeeboHost({ now: () => new Date('2026-06-28T10:00:00Z') });
-  const render = new RenderService(ws, templates, settings, host, releases);
+  const render = new RenderService(ws, templates, host, releases);
 
   let tree = await org.createProject({ name: 'P' });
   const projectId = tree.projects[0]!.id;

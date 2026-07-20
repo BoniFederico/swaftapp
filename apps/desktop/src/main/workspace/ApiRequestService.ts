@@ -1,8 +1,14 @@
-import { DATA_CAPABILITIES, type DiagnosticDto, type HttpRequestModel, type RequirementDto } from '@swaft/shared';
+import {
+  DATA_CAPABILITIES,
+  type DiagnosticDto,
+  type FolderProxyDto,
+  type HttpAuth,
+  type HttpRequestModel,
+  type RequirementDto,
+} from '@swaft/shared';
 import { AppError } from '../errors';
 import { toDiagnosticDto, toRequirementDto } from '../seebo/map';
-import type { RenderPolicy, SeeboHost, SeeboRenderContext } from '../seebo/SeeboHost';
-import type { SettingsService } from './SettingsService';
+import type { SeeboHost, SeeboRenderContext } from '../seebo/SeeboHost';
 import type { TemplateService } from './TemplateService';
 
 const DATA_CAPABILITY_SET: ReadonlySet<string> = new Set(DATA_CAPABILITIES);
@@ -18,6 +24,23 @@ const ACTIONS_NOT_ALLOWED: DiagnosticDto = {
   message: 'Actions are not allowed in API request fields.',
   position: null,
 };
+
+/** The HTTP policy a template inherits from its folder chain (see OrganizationService). */
+export interface FolderPolicyProvider {
+  folderPolicyOf(templateId: string): Promise<{
+    headers: Record<string, string>;
+    proxy: FolderProxyDto | null;
+    auth: HttpAuth | null;
+  }>;
+}
+
+/** The formula-bearing string fields of an auth (rendered like header values). */
+function authSources(auth: HttpAuth | null | undefined): string[] {
+  if (!auth) return [];
+  return [auth.username, auth.password, auth.token, auth.key, auth.value].filter(
+    (s): s is string => typeof s === 'string',
+  );
+}
 
 export interface ApiAnalysis {
   /** Input widgets the request needs (data capabilities like `template` are auto-resolved, excluded). */
@@ -35,14 +58,20 @@ export interface ApiAnalysis {
 export class ApiRequestService {
   constructor(
     private readonly templates: TemplateService,
-    private readonly settings: SettingsService,
     private readonly host: SeeboHost,
+    private readonly folders?: FolderPolicyProvider,
   ) {}
 
-  private async policy(): Promise<RenderPolicy> {
-    const s = await this.settings.getSettings();
-    return { allowedCapabilities: s.allowedCapabilities, allowedTypes: s.allowedTypes };
+  private async policyOf(templateId: string) {
+    return (
+      (await this.folders?.folderPolicyOf(templateId)) ?? {
+        headers: {} as Record<string, string>,
+        proxy: null,
+        auth: null,
+      }
+    );
   }
+
 
   private async ctx(templateId: string): Promise<SeeboRenderContext> {
     return { projectId: await this.templates.projectIdOf(templateId), templateId };
@@ -69,15 +98,23 @@ export class ApiRequestService {
     req: HttpRequestModel,
     values: Record<string, unknown> = {},
   ): Promise<ApiAnalysis> {
-    const policy = await this.policy();
     const ctx = await this.ctx(templateId);
+    // Folder-propagated header values, the proxy hostname and the effective auth fields are rendered
+    // alongside the request's own fields, so any inputs they `need(...)` surface as widgets too.
+    const policy = await this.policyOf(templateId);
+    const effectiveAuth = req.auth?.kind === 'inherit' ? policy.auth : req.auth;
+    const folderHeaderValues = [
+      ...Object.values(policy.headers),
+      ...(policy.proxy ? [policy.proxy.hostname] : []),
+      ...authSources(effectiveAuth),
+    ];
     const byId = new Map<string, RequirementDto>(); // the static universe of input requirements
     const pendingById = new Map<string, RequirementDto>(); // render-resolved (dynamic options/candidates)
     const reached = new Set<string>();
     const diagnostics: DiagnosticDto[] = [];
-    for (const src of ApiRequestService.sources(req)) {
+    for (const src of [...ApiRequestService.sources(req), ...folderHeaderValues]) {
       if (!hasFormula(src)) continue;
-      const analysis = await this.host.analyze(src, policy, ctx);
+      const analysis = await this.host.analyze(src, undefined, ctx);
       if (analysis.actions && analysis.actions.length > 0) diagnostics.push(ACTIONS_NOT_ALLOWED);
       for (const r of analysis.requirements) {
         const dto = toRequirementDto(r);
@@ -85,10 +122,10 @@ export class ApiRequestService {
         if (DATA_CAPABILITY_SET.has(dto.capability)) continue;
         byId.set(dto.id, dto);
       }
-      for (const d of await this.host.validate(src, policy)) diagnostics.push(toDiagnosticDto(d));
+      for (const d of await this.host.validate(src)) diagnostics.push(toDiagnosticDto(d));
       // Reachability: render the field with the current values. The render resolves dynamic options
       // (a capability's `args.candidates`), so its `pending` requirements are preferred for the panel.
-      const state = await this.host.render(src, values, policy, ctx);
+      const state = await this.host.render(src, values, undefined, ctx);
       if (state.status === 'failed') {
         // Conservative on a broken field: keep its inputs visible so they can be fixed.
         for (const r of analysis.requirements) reached.add(String(r.id));
@@ -117,16 +154,17 @@ export class ApiRequestService {
     templateId: string,
     req: HttpRequestModel,
     values: Record<string, unknown>,
-  ): Promise<{ request: HttpRequestModel; rendered: boolean }> {
-    const policy = await this.policy();
+  ): Promise<{ request: HttpRequestModel; rendered: boolean; proxy: FolderProxyDto | null }> {
     const ctx = await this.ctx(templateId);
-    const rendered = ApiRequestService.sources(req).some(hasFormula);
+    const policy = await this.policyOf(templateId);
+    const rendered =
+      ApiRequestService.sources(req).some(hasFormula) || Object.keys(policy.headers).length > 0;
     const pending = new Map<string, RequirementDto>();
     const diagnostics: DiagnosticDto[] = [];
 
     const render = async (src: string): Promise<string> => {
       if (!hasFormula(src)) return src;
-      const state = await this.host.render(src, values, policy, ctx);
+      const state = await this.host.render(src, values, undefined, ctx);
       if (state.actions && state.actions.length > 0) diagnostics.push(ACTIONS_NOT_ALLOWED);
       if (state.status === 'waiting') {
         for (const r of state.pending ?? []) {
@@ -143,9 +181,34 @@ export class ApiRequestService {
     };
 
     const url = await render(req.url);
-    const headers = await mapValues(req.headers, render);
+    // Folder-propagated headers are rendered too (they may carry formulas) and merged as defaults:
+    // the request's own header of the same name wins; workspace enforced headers still win over all.
+    const folderHeaders = await mapValues(policy.headers, render);
+    const ownHeaders = await mapValues(req.headers, render);
+    const headers =
+      folderHeaders && Object.keys(folderHeaders).length > 0
+        ? { ...folderHeaders, ...(ownHeaders ?? {}) }
+        : ownHeaders;
     const query = await mapValues(req.query, render);
     const body = req.body != null ? await render(req.body) : req.body;
+    // The proxy hostname may carry formulas too (e.g. `${ env('proxy_host') }`) — rendered before the
+    // pending/diagnostic checks so its unfilled inputs also surface as INPUT_REQUIRED.
+    const proxy = policy.proxy
+      ? { ...policy.proxy, hostname: await render(policy.proxy.hostname) }
+      : null;
+    // Auth: `inherit` resolves to the nearest folder-defined auth; its string fields (username,
+    // password, token, key, value) may carry formulas and are rendered like header values.
+    const baseAuth = req.auth?.kind === 'inherit' ? (policy.auth ?? { kind: 'none' as const }) : req.auth;
+    const auth: HttpAuth | undefined = baseAuth
+      ? {
+          ...baseAuth,
+          username: baseAuth.username != null ? await render(baseAuth.username) : baseAuth.username,
+          password: baseAuth.password != null ? await render(baseAuth.password) : baseAuth.password,
+          token: baseAuth.token != null ? await render(baseAuth.token) : baseAuth.token,
+          key: baseAuth.key != null ? await render(baseAuth.key) : baseAuth.key,
+          value: baseAuth.value != null ? await render(baseAuth.value) : baseAuth.value,
+        }
+      : undefined;
 
     if (diagnostics.length > 0) {
       throw new AppError('REQUEST_RESOLVE_FAILED', 'validation', diagnostics[0]!.message, {
@@ -157,7 +220,7 @@ export class ApiRequestService {
         pending: [...pending.values()],
       });
     }
-    return { request: { ...req, url, headers, query, body }, rendered };
+    return { request: { ...req, url, headers, query, body, auth }, rendered, proxy };
   }
 }
 

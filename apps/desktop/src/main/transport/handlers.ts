@@ -3,14 +3,14 @@ import {
   type ApiAnalyzeRequest,
   type BatchAnalyzeRequest,
   type BatchRenderRequest,
-  type DbExportRequest,
-  type DbQueryRequest,
   type EnvCreateRequest,
   type EnvSelectionSetRequest,
   type EnvUpdateRequest,
   type ErrorEnvelope,
   type FolderCreateRequest,
   type FolderMoveRequest,
+  type FolderProxyDto,
+  type FolderUpdateRequest,
   type TemplateMoveRequest,
   type HttpSendRequest,
   type IdRequest,
@@ -27,7 +27,6 @@ import {
   type ReleaseUpdateRequest,
   type ReleaseDeleteRequest,
   type RenameRequest,
-  type RestrictionCreateRequest,
   type ReleaseSelectionSetRequest,
   type SignInRequest,
   type SignUpRequest,
@@ -48,8 +47,6 @@ import {
 } from '@swaft/shared';
 import { getAuthService } from '../auth/registry';
 import { toErrorEnvelope } from '../errors';
-import { writeFile } from 'node:fs/promises';
-import { toCsv, toJson } from '../db/export';
 import {
   getActionService,
   getApiHistoryService,
@@ -57,8 +54,6 @@ import {
   getAppStore,
   getBatcherService,
   getChangelogService,
-  getDatabaseService,
-  getDbHistoryService,
   getEnvironmentService,
   getHttpService,
   getOrganizationService,
@@ -157,6 +152,20 @@ export const handlers: Record<OpName, Handler> = {
       const r = p as FolderMoveRequest;
       return { tree: await getOrganizationService().moveFolder(r.folderId, r.parentFolderId) };
     }),
+  'folder.get': (p) =>
+    svc(async () => ({ folder: await getOrganizationService().getFolder((p as IdRequest).id) })),
+  'folder.update': (p) =>
+    svc(async () => {
+      const r = p as FolderUpdateRequest;
+      return {
+        folder: await getOrganizationService().updateFolderMeta(r.id, {
+          headers: r.headers,
+          proxy: r.proxy,
+          auth: r.auth,
+          notes: r.notes,
+        }),
+      };
+    }),
   'template.move': (p) =>
     svc(async () => {
       const r = p as TemplateMoveRequest;
@@ -184,23 +193,11 @@ export const handlers: Record<OpName, Handler> = {
       return { tags: await getOrganizationService().removeTemplateTag(r.templateId, r.tagId) };
     }),
 
-  // Settings + restrictions (M5)
-  'settings.get': () =>
-    svc(async () => ({
-      settings: await getSettingsService().getSettings(),
-      restrictions: await getSettingsService().listRestrictions(),
-    })),
+  // Settings (M5)
+  'settings.get': () => svc(async () => ({ settings: await getSettingsService().getSettings() })),
   'settings.update': (p) =>
     svc(async () => ({
       settings: await getSettingsService().updateSettings(p as WorkspaceSettingsUpdate),
-    })),
-  'restriction.create': (p) =>
-    svc(async () => ({
-      restrictions: await getSettingsService().createRestriction(p as RestrictionCreateRequest),
-    })),
-  'restriction.delete': (p) =>
-    svc(async () => ({
-      restrictions: await getSettingsService().deleteRestriction((p as IdRequest).id),
     })),
 
   // Templates + Seebo rendering (M6)
@@ -307,12 +304,14 @@ export const handlers: Record<OpName, Handler> = {
       // template); without a template there is no project context, so the request is sent verbatim.
       let request = r.request;
       let rendered = false;
+      let proxy: FolderProxyDto | null = null;
       if (r.templateId) {
         const resolved = await getApiRequestService().resolve(r.templateId, r.request, r.values ?? {});
         request = resolved.request;
         rendered = resolved.rendered;
+        proxy = resolved.proxy;
       }
-      const response = await getHttpService().send(request);
+      const response = await getHttpService().send(request, { proxy });
       if (r.templateId) {
         await getApiHistoryService().record(r.templateId, request.method, request.url, response.status);
       }
@@ -340,39 +339,6 @@ export const handlers: Record<OpName, Handler> = {
       return { refs: getSecretService().list() };
     }),
   'secret.list': () => ({ refs: getSecretService().list() }),
-
-  // Read-only database client (M9)
-  'db.query': (p) =>
-    svc(async () => {
-      const r = p as DbQueryRequest;
-      try {
-        const result = await getDatabaseService().query(r);
-        await getDbHistoryService().record(r.engine, r.sql, `ok (${result.rowCount})`);
-        return { result };
-      } catch (err) {
-        // Record blocked/failed attempts too (metadata only), then rethrow for the envelope.
-        const code = err && typeof err === 'object' && 'code' in err ? String(err.code) : 'error';
-        await getDbHistoryService()
-          .record(r.engine, r.sql, code)
-          .catch(() => undefined);
-        throw err;
-      }
-    }),
-  'db.history.list': () => svc(async () => ({ items: await getDbHistoryService().list() })),
-  'db.history.clear': () => svc(async () => ({ items: await getDbHistoryService().clear() })),
-  'db.pickFile': () => svc(async () => ({ path: await getPlatformDialogs().pickDatabaseFile() })),
-  'db.export': (p) =>
-    svc(async () => {
-      const r = p as DbExportRequest;
-      const path = await getPlatformDialogs().pickSaveTarget(
-        `${r.defaultName ?? 'export'}.${r.format}`,
-      );
-      if (path) {
-        const content = r.format === 'csv' ? toCsv(r.columns, r.rows) : toJson(r.columns, r.rows);
-        await writeFile(path, content, 'utf8');
-      }
-      return { path };
-    }),
 
   // Batcher + actions (M10)
   'batch.analyze': (p) =>

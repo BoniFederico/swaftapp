@@ -48,10 +48,10 @@ export function Homepage() {
           <p className="subtitle">{t('app.subtitle')}</p>
         </div>
         <div className="row" style={{ gap: 'var(--space-2)' }}>
+          <AccountControls />
           <IconButton label={t('prefs.open')} onClick={() => setPrefsOpen(true)}>
             <SettingsIcon />
           </IconButton>
-          <AccountControls />
         </div>
       </div>
 

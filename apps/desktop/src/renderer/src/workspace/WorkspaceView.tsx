@@ -1,10 +1,9 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { TemplateType } from '@swaft/shared';
 import type { ApiClient } from '../api-client/client';
-import { AccountControls } from '../auth/AccountControls';
+import { useAuth } from '../auth/AuthProvider';
 import { BatchDocumentView } from '../batcher/BatchDocumentView';
 import { BatcherPanel } from '../batcher/BatcherPanel';
-import { DatabaseView } from '../database/DatabaseView';
 import { ApiView } from '../document/ApiView';
 import { DocumentView } from '../document/DocumentView';
 import { TemplateEditorModal } from '../document/TemplateEditorModal';
@@ -14,29 +13,35 @@ import { useI18n } from '../i18n/I18nProvider';
 import { SettingsModal, type SettingsSectionId } from '../settings/SettingsModal';
 import {
   ApiIcon,
-  Button,
   ChevronRightIcon,
   CloseIcon,
-  DatabaseIcon,
   DocumentIcon,
   EmptyState,
+  FolderIcon,
   IconButton,
+  LockIcon,
+  LogoutIcon,
+  SettingsIcon,
 } from '../ui';
+import { FolderView } from './FolderView';
 import { WorkingTree } from './WorkingTree';
 import { useWorkspace } from './WorkspaceProvider';
 
 const MIN_SIDE = 220;
 const MAX_SIDE = 560;
 
-/** An open template tab. `preview` (italic) tabs are replaced by the next single-clicked template;
- * double-clicking a tab pins it. `dirty` marks unsaved edits (the API/Document views report it up). */
-type Tab = { id: string; type: TemplateType; name: string; preview: boolean; dirty: boolean };
+/** What an open tab shows: a template view, or the folder detail view. */
+type TabKind = TemplateType | 'folder';
+
+/** An open tab. `preview` (italic) tabs are replaced by the next single-clicked item;
+ * double-clicking a tab pins it. `dirty` marks unsaved edits (the views report it up). */
+type Tab = { id: string; type: TabKind; name: string; preview: boolean; dirty: boolean };
 
 /** The colored type glyph shown at the head of a tab. */
-function TabIcon({ type }: { type: TemplateType }) {
+function TabIcon({ type }: { type: TabKind }) {
   const className = `ws-tab__type ws-tab__type--${type}`;
   if (type === 'api') return <ApiIcon className={className} />;
-  if (type === 'database') return <DatabaseIcon className={className} />;
+  if (type === 'folder') return <FolderIcon className={className} />;
   return <DocumentIcon className={className} />;
 }
 
@@ -48,21 +53,33 @@ function TabIcon({ type }: { type: TemplateType }) {
 export function WorkspaceView({ client }: { client: ApiClient }) {
   const { t } = useI18n();
   const { current, close } = useWorkspace();
+  const { lock } = useAuth();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSectionId>('general');
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
-  const [tool, setTool] = useState<'none' | 'db'>('none');
   const [batch, setBatch] = useState<string[] | null>(null);
   const [sideCollapsed, setSideCollapsed] = useState(false);
   const [sideWidth, setSideWidth] = useState(280);
+  const [batcherEnabled, setBatcherEnabled] = useState(true);
   const resize = useRef<{ startX: number; startW: number } | null>(null);
 
-  // Open a template in a tab. A single click opens (or reuses) a *preview* tab — at most one exists,
-  // and the next single-clicked template replaces it. An already-open template is just re-activated.
-  function openTemplate(id: string, type: TemplateType, name: string) {
-    setTool('none');
+  // The Batcher panel visibility is a workspace restriction; re-read it when Settings close.
+  useEffect(() => {
+    if (settingsOpen) return;
+    void client
+      .call('settings.get')
+      .then((res) => {
+        setBatcherEnabled(res.settings.batcherEnabled);
+        if (!res.settings.batcherEnabled) setBatch(null); // drop an open batch view too
+      })
+      .catch(() => undefined);
+  }, [client, settingsOpen]);
+
+  // Open an item in a tab. A single click opens (or reuses) a *preview* tab — at most one exists,
+  // and the next single-clicked item replaces it. An already-open item is just re-activated.
+  function openTab(id: string, type: TabKind, name: string) {
     setBatch(null);
     setActiveId(id);
     setTabs((prev) => {
@@ -75,8 +92,9 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
       return next;
     });
   }
+  const openTemplate = (id: string, type: TemplateType, name: string) => openTab(id, type, name);
+  const openFolder = (id: string, name: string) => openTab(id, 'folder', name);
   function activateTab(id: string) {
-    setTool('none');
     setBatch(null);
     setActiveId(id);
   }
@@ -139,40 +157,31 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
             Swaft<span className="accent">.</span>
           </button>
           <span className="ws-sep" aria-hidden="true" />
-          <div>
-            <div className="ws-title">
-              {current?.icon ? `${current.icon} ` : ''}
-              {current?.name}
-            </div>
-            <div className="row" style={{ gap: 'var(--space-2)', marginTop: 'var(--space-1)' }}>
-              <span className="ui-badge">{t('ws.storageLocal')}</span>
-              <span className="ui-badge">
-                {t('ws.executionMode')}: {current?.executionMode}
-              </span>
-              <span className="ui-badge">
-                {current?.encrypted ? t('ws.encrypted') : t('ws.notEncrypted')}
-              </span>
-            </div>
+          <div className="ws-title">
+            {current?.icon ? `${current.icon} ` : ''}
+            {current?.name}
+          </div>
+          <div className="ws-meta">
+            <span className="ui-badge">{t('ws.storageLocal')}</span>
+            <span className="ui-badge">
+              {t('ws.executionMode')}: {current?.executionMode}
+            </span>
+            <span className="ui-badge">
+              {current?.encrypted ? t('ws.encrypted') : t('ws.notEncrypted')}
+            </span>
           </div>
         </div>
         <div className="ws-actions">
-          <Button
-            variant={tool === 'db' ? 'primary' : 'secondary'}
-            onClick={() => {
-              setTool((v) => (v === 'db' ? 'none' : 'db'));
-              setBatch(null);
-            }}
-          >
-            {t('db.menu')}
-          </Button>
           <EnvironmentPicker onManage={() => openSettings('environments')} />
-          <Button variant="secondary" onClick={() => openSettings('general')}>
-            {t('ws.settings')}
-          </Button>
-          <AccountControls />
-          <Button variant="secondary" onClick={() => void close()}>
-            {t('ws.close')}
-          </Button>
+          <IconButton label={t('ws.settings')} onClick={() => openSettings('general')}>
+            <SettingsIcon />
+          </IconButton>
+          <IconButton label={t('account.lock')} onClick={() => void lock()}>
+            <LockIcon />
+          </IconButton>
+          <IconButton label={t('ws.close')} onClick={() => void close()}>
+            <LogoutIcon />
+          </IconButton>
         </div>
       </header>
 
@@ -194,21 +203,19 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
             client={client}
             openTemplateId={activeId}
             onOpenTemplate={(id, mode = 'view', type = 'document', name = '') => {
+              if (!id) return;
               if (mode === 'edit') {
-                if (id) setEditing(id);
+                setEditing(id);
                 return;
               }
-              if (id) openTemplate(id, type, name);
+              openTemplate(id, type, name);
+              if (mode === 'pin') pinTab(id); // preference: double-click consolidates the tab
             }}
+            onOpenFolder={(folder) => openFolder(folder.id, folder.name)}
             onCloseTemplate={closeTab}
             onCollapse={() => setSideCollapsed(true)}
           />
-          <BatcherPanel
-            onLoadInputs={(ids) => {
-              setTool('none');
-              setBatch(ids);
-            }}
-          />
+          {batcherEnabled && <BatcherPanel onLoadInputs={setBatch} />}
           <div
             className="ws-side__resizer"
             onPointerDown={onSideResizeDown}
@@ -220,7 +227,7 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
           {tabs.length > 0 && (
             <div className="ws-tabs" role="tablist" aria-label={t('ws.openTabs')}>
               {tabs.map((tb) => {
-                const active = tb.id === activeId && tool === 'none' && !batch;
+                const active = tb.id === activeId && !batch;
                 return (
                   <div
                     key={tb.id}
@@ -254,9 +261,7 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
           )}
 
           <div className="ws-main__content">
-            {tool === 'db' ? (
-              <DatabaseView client={client} />
-            ) : batch ? (
+            {batch ? (
               <BatchDocumentView key={batch.join(',')} client={client} templateIds={batch} />
             ) : tabs.length === 0 ? (
               <EmptyState title={t('ws.welcome.title')} hint={t('ws.welcome.hint')} />
@@ -265,7 +270,7 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
             {/* Keep every open tab mounted (hidden when inactive) so unsaved edits — API requests and
                 Document input configs — survive switching tabs and tools. */}
             {tabs.map((tb) => {
-              const visible = tool === 'none' && !batch && tb.id === activeId;
+              const visible = !batch && tb.id === activeId;
               const shared = {
                 client,
                 templateId: tb.id,
@@ -274,7 +279,20 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
               };
               return (
                 <div key={tb.id} className="ws-pane" hidden={!visible}>
-                  {tb.type === 'api' ? <ApiView {...shared} /> : <DocumentView {...shared} />}
+                  {tb.type === 'folder' ? (
+                    <FolderView
+                      client={client}
+                      folderId={tb.id}
+                      onOpenTemplate={openTemplate}
+                      onOpenFolder={openFolder}
+                      onDirtyChange={shared.onDirtyChange}
+                      onTitleChange={shared.onTitleChange}
+                    />
+                  ) : tb.type === 'api' ? (
+                    <ApiView {...shared} />
+                  ) : (
+                    <DocumentView {...shared} />
+                  )}
                 </div>
               );
             })}

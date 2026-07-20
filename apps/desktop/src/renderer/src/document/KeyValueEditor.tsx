@@ -39,13 +39,29 @@ export function KeyValueEditor({
   value,
   onChange,
   onCopy,
+  preview,
+  plain = false,
+  keyLabel,
+  valueLabel,
 }: {
   value: Record<string, string>;
   onChange: (value: Record<string, string>) => void;
   /** Copy the entries as `key: value` lines. */
   onCopy?: (text: string) => void;
+  /** Hover preview of a value's `${ … }` formula (see SeeboField). */
+  preview?: (slot: string) => Promise<string | null>;
+  /**
+   * Values are literal text, not Seebo sources — use a plain input instead of the formula editor.
+   * Set for enforced headers and environment variables, which are never rendered.
+   */
+  plain?: boolean;
+  /** Column headers (default "Key" / "Value"). */
+  keyLabel?: string;
+  valueLabel?: string;
 }) {
   const { t } = useI18n();
+  const kLabel = keyLabel ?? t('api.key');
+  const vLabel = valueLabel ?? t('api.value');
   const [batch, setBatch] = useState(false);
   // Raw text the bulk editor shows — kept separate from `pairs` so re-parsing never fights the cursor.
   const [batchText, setBatchText] = useState('');
@@ -107,6 +123,88 @@ export function KeyValueEditor({
 
   return (
     <div className="kv">
+      {batch ? (
+        plain ? (
+          <textarea
+            className="ui-input kv__batch"
+            aria-label={t('api.batchEdit')}
+            placeholder="key: value"
+            rows={6}
+            spellCheck={false}
+            value={batchText}
+            onChange={(e) => {
+              setBatchText(e.target.value);
+              applyBatch(e.target.value);
+            }}
+          />
+        ) : (
+          // Highlights ${ … } formulas in the values, like the table-mode value editor.
+          <SeeboField
+            multiline
+            ariaLabel={t('api.batchEdit')}
+            placeholder="key: value"
+            value={batchText}
+            onChange={(text) => {
+              setBatchText(text);
+              applyBatch(text);
+            }}
+          />
+        )
+      ) : (
+        // The same IDE-table grid as the folder/environment key-value editors (shared styles).
+        <div className="env-vars">
+          <div className="env-vars__headrow" aria-hidden="true">
+            <span className="env-vars__colhead env-vars__key">{kLabel}</span>
+            <span className="env-vars__colhead env-vars__value">{vLabel}</span>
+            <span className="env-vars__delcol" />
+          </div>
+          {pairs.map((p, i) => {
+            const isTrailing = i === pairs.length - 1;
+            return (
+              <div className="env-vars__row" key={i}>
+                <input
+                  className="env-vars__input env-vars__key"
+                  aria-label={kLabel}
+                  placeholder={kLabel}
+                  value={p.k}
+                  spellCheck={false}
+                  onChange={(e) => setAt(i, { k: e.target.value })}
+                />
+                {plain ? (
+                  <input
+                    className="env-vars__input env-vars__value"
+                    aria-label={vLabel}
+                    placeholder={vLabel}
+                    value={p.v}
+                    spellCheck={false}
+                    onChange={(e) => setAt(i, { v: e.target.value })}
+                  />
+                ) : (
+                  // Values may carry Seebo formulas (`${ … }`) → a single-line editor that highlights them.
+                  <div className="env-vars__value env-vars__seebo">
+                    <SeeboField
+                      ariaLabel={vLabel}
+                      placeholder={vLabel}
+                      value={p.v}
+                      onChange={(v) => setAt(i, { v })}
+                      preview={preview}
+                    />
+                  </div>
+                )}
+                {!isTrailing ? (
+                  <IconButton label={t('menu.delete')} onClick={() => removeAt(i)}>
+                    <TrashIcon />
+                  </IconButton>
+                ) : (
+                  <span className="env-vars__delcol" />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Mode toggle + copy, under the table and aligned with its right edge. */}
       <div className="kv__toolbar">
         <button type="button" className="kv__mode" onClick={toggleBatch}>
           {batch ? t('api.tableEdit') : t('api.batchEdit')}
@@ -117,49 +215,6 @@ export function KeyValueEditor({
           </IconButton>
         )}
       </div>
-
-      {batch ? (
-        // Highlights ${ … } formulas in the values, like the table-mode value editor.
-        <SeeboField
-          multiline
-          ariaLabel={t('api.batchEdit')}
-          placeholder="key: value"
-          value={batchText}
-          onChange={(text) => {
-            setBatchText(text);
-            applyBatch(text);
-          }}
-        />
-      ) : (
-        pairs.map((p, i) => {
-          const isTrailing = i === pairs.length - 1;
-          return (
-            <div className="kv__row" key={i}>
-              <input
-                className="ui-input"
-                aria-label={t('api.key')}
-                placeholder={t('api.key')}
-                value={p.k}
-                onChange={(e) => setAt(i, { k: e.target.value })}
-              />
-              {/* Values may carry Seebo formulas (`${ … }`) → a single-line editor that highlights them. */}
-              <SeeboField
-                ariaLabel={t('api.value')}
-                placeholder={t('api.value')}
-                value={p.v}
-                onChange={(v) => setAt(i, { v })}
-              />
-              {!isTrailing ? (
-                <IconButton label={t('menu.delete')} onClick={() => removeAt(i)}>
-                  <TrashIcon />
-                </IconButton>
-              ) : (
-                <span className="kv__spacer" />
-              )}
-            </div>
-          );
-        })
-      )}
     </div>
   );
 }

@@ -20,8 +20,6 @@ interface EnvironmentRow {
   owner_kind: string;
   owner_id: string | null;
   vars: string;
-  /** Present only in the joined list query. */
-  project_name?: string | null;
 }
 
 /** Parse the stored `vars` JSON blob into a plain string→string map (tolerant of corruption). */
@@ -37,16 +35,9 @@ function parseVars(json: string): Record<string, string> {
   }
 }
 
-/** The display label for an environment's owner: project name / username, or null (workspace). */
-function ownerName(row: EnvironmentRow): string | null {
-  if (row.owner_kind === 'project') return row.project_name ?? null;
-  if (row.owner_kind === 'user') return row.owner_id;
-  return null;
-}
-
 /**
  * Environments: named sets of plain (non-secret) key/value variables, 🟢 synchronized. Each is scoped
- * by `ownerKind` to the current user (personal), the whole workspace (shared), or a single project.
+ * by `ownerKind` to the current user (personal) or the whole workspace (shared).
  * The active environment (a 🔵 local-only, per-workspace selection) feeds the `env(...)` Seebo data
  * capability, which resolves `env('KEY')` to the active environment's value **without user input**
  * (implements {@link EnvDataProvider}). See the API-view automation spec (Fase 3).
@@ -61,12 +52,10 @@ export class EnvironmentService extends RepoBase implements EnvDataProvider {
 
   async list(): Promise<EnvironmentSummaryDto[]> {
     const rows = await this.adapter.all<EnvironmentRow>(
-      `SELECT e.id, e.name, e.description, e.owner_kind, e.owner_id, e.vars,
-              p.name AS project_name
-         FROM environments e
-         LEFT JOIN projects p ON p.id = e.owner_id AND e.owner_kind = 'project' AND p.deleted_at IS NULL
-        WHERE e.deleted_at IS NULL
-        ORDER BY e.owner_kind, e.name COLLATE NOCASE`,
+      `SELECT id, name, description, owner_kind, owner_id, vars
+         FROM environments
+        WHERE deleted_at IS NULL
+        ORDER BY owner_kind, name COLLATE NOCASE`,
     );
     return rows.map((r) => this.toSummary(r));
   }
@@ -77,7 +66,7 @@ export class EnvironmentService extends RepoBase implements EnvDataProvider {
   }
 
   async create(input: EnvCreateRequest): Promise<EnvironmentDto> {
-    const ownerId = this.resolveOwnerId(input.ownerKind, input.projectId);
+    const ownerId = input.ownerKind === 'user' ? this.currentUsername() : null;
     const id = randomUUID();
     await this.insertEntity('environments', {
       id,
@@ -176,17 +165,6 @@ export class EnvironmentService extends RepoBase implements EnvDataProvider {
     return vars[name];
   }
 
-  private resolveOwnerId(kind: EnvironmentOwnerKind, projectId?: string): string | null {
-    if (kind === 'project') {
-      if (!projectId) {
-        throw new AppError('VALIDATION', 'validation', 'A project environment requires a project.');
-      }
-      return projectId;
-    }
-    if (kind === 'user') return this.currentUsername();
-    return null;
-  }
-
   private toSummary(row: EnvironmentRow): EnvironmentSummaryDto {
     return {
       id: row.id,
@@ -194,18 +172,15 @@ export class EnvironmentService extends RepoBase implements EnvDataProvider {
       description: row.description,
       ownerKind: row.owner_kind as EnvironmentOwnerKind,
       ownerId: row.owner_id,
-      ownerName: ownerName(row),
       varCount: Object.keys(parseVars(row.vars)).length,
     };
   }
 
   private async requireRow(id: string): Promise<EnvironmentRow> {
     const row = await this.adapter.get<EnvironmentRow>(
-      `SELECT e.id, e.name, e.description, e.owner_kind, e.owner_id, e.vars,
-              p.name AS project_name
-         FROM environments e
-         LEFT JOIN projects p ON p.id = e.owner_id AND e.owner_kind = 'project' AND p.deleted_at IS NULL
-        WHERE e.id = ? AND e.deleted_at IS NULL`,
+      `SELECT id, name, description, owner_kind, owner_id, vars
+         FROM environments
+        WHERE id = ? AND deleted_at IS NULL`,
       [id],
     );
     if (!row) throw new AppError('ENVIRONMENT_NOT_FOUND', 'not_found', 'Environment not found.');

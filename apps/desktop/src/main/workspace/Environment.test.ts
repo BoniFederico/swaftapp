@@ -7,7 +7,6 @@ import { ApiRequestService } from './ApiRequestService';
 import { ChangelogService } from './ChangelogService';
 import { EnvironmentService } from './EnvironmentService';
 import { OrganizationService } from './OrganizationService';
-import { SettingsService } from './SettingsService';
 import { TemplateService } from './TemplateService';
 import { WorkspaceService, type WorkspaceFs } from './WorkspaceService';
 
@@ -29,12 +28,11 @@ async function setup(username: string | null = 'alice') {
   await ws.create({ name: 'WS', location: 'mem://env.swaft', encrypt: false });
 
   const org = new OrganizationService(ws);
-  const settings = new SettingsService(ws);
   const changelog = new ChangelogService(ws);
   const templates = new TemplateService(ws, org, changelog);
   const environments = new EnvironmentService(ws, () => username);
   const host = new SeeboHost({}, { envData: environments });
-  const apiRequest = new ApiRequestService(templates, settings, host);
+  const apiRequest = new ApiRequestService(templates, host);
 
   const tree = await org.createProject({ name: 'P' });
   const projectId = tree.projects[0]!.id;
@@ -61,25 +59,19 @@ const GET = (over: Partial<HttpRequestModel>): HttpRequestModel => ({
 });
 
 describe('EnvironmentService', () => {
-  it('creates environments scoped to user / workspace / project with the right owner + label', async () => {
-    const { environments, projectId } = await setup('alice');
+  it('creates environments scoped to user / workspace with the right owner', async () => {
+    const { environments } = await setup('alice');
     const personal = await environments.create({ name: 'Personal', ownerKind: 'user' });
     const shared = await environments.create({ name: 'Team', ownerKind: 'workspace' });
-    const proj = await environments.create({ name: 'ProjEnv', ownerKind: 'project', projectId });
 
     expect(personal.ownerKind).toBe('user');
     expect(personal.ownerId).toBe('alice');
-    expect(personal.ownerName).toBe('alice');
 
+    expect(shared.ownerKind).toBe('workspace');
     expect(shared.ownerId).toBeNull();
-    expect(shared.ownerName).toBeNull();
-
-    expect(proj.ownerKind).toBe('project');
-    expect(proj.ownerId).toBe(projectId);
-    expect(proj.ownerName).toBe('P');
 
     const list = await environments.list();
-    expect(list.map((e) => e.name).sort()).toEqual(['Personal', 'ProjEnv', 'Team']);
+    expect(list.map((e) => e.name).sort()).toEqual(['Personal', 'Team']);
   });
 
   it('updates name, description and variables', async () => {

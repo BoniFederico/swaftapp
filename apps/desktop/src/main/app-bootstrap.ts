@@ -1,12 +1,12 @@
 import { join } from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
-import { app, dialog, type BrowserWindow } from 'electron';
+import { app, dialog, session, type BrowserWindow } from 'electron';
+import type { FolderProxyDto } from '@swaft/shared';
 import { ActionService } from './actions/ActionService';
 import { AppStore } from './app-store/AppStore';
 import { CryptoService } from './crypto/CryptoService';
 import { SafeStorageCipher } from './auth/cipher';
 import { getAuthService } from './auth/registry';
-import { DatabaseService } from './db/DatabaseService';
 import { HttpService } from './http/HttpService';
 import { SecretService } from './secret/SecretService';
 import { SeeboHost } from './seebo/SeeboHost';
@@ -17,8 +17,6 @@ import {
   setAppStore,
   setBatcherService,
   setChangelogService,
-  setDatabaseService,
-  setDbHistoryService,
   setEnvironmentService,
   setHttpService,
   setOrganizationService,
@@ -36,7 +34,6 @@ import { ApiHistoryService } from './workspace/ApiHistoryService';
 import { ApiRequestService } from './workspace/ApiRequestService';
 import { BatcherService } from './workspace/BatcherService';
 import { ChangelogService } from './workspace/ChangelogService';
-import { DbHistoryService } from './workspace/DbHistoryService';
 import { EnvironmentService } from './workspace/EnvironmentService';
 import { OrganizationService } from './workspace/OrganizationService';
 import { ReleaseService } from './workspace/ReleaseService';
@@ -105,16 +102,6 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
       const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
       return res.canceled || res.filePaths.length === 0 ? null : (res.filePaths[0] ?? null);
     },
-    pickDatabaseFile: async () => {
-      const win = getWindow();
-      const opts: Electron.OpenDialogOptions = {
-        title: 'Open database',
-        properties: ['openFile'],
-        filters: [{ name: 'SQLite database', extensions: ['db', 'sqlite', 'sqlite3'] }],
-      };
-      const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
-      return res.canceled || res.filePaths.length === 0 ? null : (res.filePaths[0] ?? null);
-    },
     pickSaveTarget: async (defaultName) => {
       const win = getWindow();
       const opts: Electron.SaveDialogOptions = { title: 'Export', defaultPath: defaultName };
@@ -133,9 +120,9 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
   // The `env` data capability reads the active environment's variables (no user input needed).
   const environments = new EnvironmentService(workspaceService, currentUsername);
   const host = new SeeboHost({}, { templateData, envData: environments });
-  const render = new RenderService(workspaceService, templates, settings, host, releases);
-  const apiRequest = new ApiRequestService(templates, settings, host);
-  const batcher = new BatcherService(templates, releases, settings, host);
+  const render = new RenderService(workspaceService, templates, host, releases);
+  const apiRequest = new ApiRequestService(templates, host, organization);
+  const batcher = new BatcherService(templates, releases, host);
   const actionService = new ActionService(workspaceService, {
     host,
     releases,
@@ -148,24 +135,24 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
     join(app.getPath('userData'), 'secrets.json'),
     new SafeStorageCipher(),
   );
+  // Folder-propagated proxies route through a dedicated Electron session per proxy target, so the
+  // Chromium network stack handles both http and https (CONNECT tunneling) transparently.
+  const proxyFetchFn = (proxy: FolderProxyDto): typeof fetch => {
+    const rule = `${proxy.protocol}://${proxy.hostname}:${proxy.port}`;
+    const ses = session.fromPartition(`swaft-proxy:${rule}`);
+    return async (input, init) => {
+      // `<-loopback>` removes Chromium's default localhost bypass, so local targets are proxied too.
+      await ses.setProxy({ proxyRules: rule, proxyBypassRules: '<-loopback>' });
+      return ses.fetch(input instanceof URL ? input.toString() : input, init);
+    };
+  };
   const httpService = new HttpService({
     fetchFn: (...args) => fetch(...args),
+    proxyFetchFn,
     secrets: secretService,
     settings,
   });
   const apiHistory = new ApiHistoryService(workspaceService);
-  const databaseService = new DatabaseService({
-    fs: {
-      read: async (path) => {
-        try {
-          return await readFile(path);
-        } catch {
-          return null;
-        }
-      },
-    },
-  });
-  const dbHistory = new DbHistoryService(workspaceService);
 
   setAppStore(appStore);
   setWorkspaceService(workspaceService);
@@ -179,8 +166,6 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
   setHttpService(httpService);
   setApiHistoryService(apiHistory);
   setApiRequestService(apiRequest);
-  setDatabaseService(databaseService);
-  setDbHistoryService(dbHistory);
   setBatcherService(batcher);
   setActionService(actionService);
   setEnvironmentService(environments);

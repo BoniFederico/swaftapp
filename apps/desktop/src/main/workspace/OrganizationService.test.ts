@@ -216,4 +216,60 @@ describe('OrganizationService', () => {
     await ws.close();
     await expect(org.getTree()).rejects.toMatchObject({ code: 'WORKSPACE_REQUIRED' });
   });
+
+  it('stores folder headers/proxy/notes and persists them across reopen', async () => {
+    const { ws, org } = await setup();
+    let tree = await org.createProject({ name: 'P' });
+    tree = await org.createFolder({ name: 'F', projectId: tree.projects[0]!.id });
+    const folderId = tree.folders[0]!.id;
+
+    // Defaults: empty policy, no notes.
+    const fresh = await org.getFolder(folderId);
+    expect(fresh.headers).toEqual({});
+    expect(fresh.proxy).toBeNull();
+    expect(fresh.notes).toBe('');
+
+    await org.updateFolderMeta(folderId, {
+      headers: { 'X-Env': 'test' },
+      proxy: { protocol: 'https', hostname: 'proxy.local', port: 3128 },
+      notes: '# Docs',
+    });
+    await ws.close();
+    await ws.open({ path: 'mem://o.swaft' });
+
+    const reloaded = await org.getFolder(folderId);
+    expect(reloaded.headers).toEqual({ 'X-Env': 'test' });
+    expect(reloaded.proxy).toEqual({ protocol: 'https', hostname: 'proxy.local', port: 3128 });
+    expect(reloaded.notes).toBe('# Docs');
+
+    // Clearing the proxy stores NULL again.
+    await org.updateFolderMeta(folderId, { proxy: null });
+    expect((await org.getFolder(folderId)).proxy).toBeNull();
+
+    await expect(org.getFolder('nope')).rejects.toMatchObject({ code: 'FOLDER_NOT_FOUND' });
+  });
+
+  it('stores folder auth and exposes the inherited auth from the parent chain', async () => {
+    const { org } = await setup();
+    let tree = await org.createProject({ name: 'P' });
+    const projectId = tree.projects[0]!.id;
+    tree = await org.createFolder({ name: 'Parent', projectId });
+    const parentId = tree.folders[0]!.id;
+    tree = await org.createFolder({ name: 'Child', projectId, parentFolderId: parentId });
+    const childId = tree.folders.find((f) => f.name === 'Child')!.id;
+
+    await org.updateFolderMeta(parentId, { auth: { kind: 'bearer', token: 'T' } });
+
+    const child = await org.getFolder(childId);
+    expect(child.auth).toBeNull(); // unset = inherit
+    expect(child.inheritedAuth).toMatchObject({ kind: 'bearer', token: 'T' });
+
+    // An explicit `none` on the child stops inheritance for its own subtree previews.
+    await org.updateFolderMeta(childId, { auth: { kind: 'none' } });
+    expect((await org.getFolder(childId)).auth).toMatchObject({ kind: 'none' });
+
+    // Saving `inherit` clears back to NULL (transparent).
+    await org.updateFolderMeta(childId, { auth: { kind: 'inherit' } });
+    expect((await org.getFolder(childId)).auth).toBeNull();
+  });
 });

@@ -7,8 +7,13 @@ import { IdentityCipher } from '../auth/testing';
 import { SecretService } from '../secret/SecretService';
 import { HttpService } from './HttpService';
 
-function settings(allowedDomains: string[]): SettingsService {
-  return { getSettings: () => Promise.resolve({ allowedDomains }) } as unknown as SettingsService;
+function settings(
+  blockedDomains: string[] = [],
+  enforcedHeaders: Record<string, string> = {},
+): SettingsService {
+  return {
+    getSettings: () => Promise.resolve({ blockedDomains, enforcedHeaders }),
+  } as unknown as SettingsService;
 }
 
 const fakeFetch = (
@@ -27,18 +32,21 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 describe('HttpService', () => {
-  it('blocks a non-allow-listed domain with a coded error', async () => {
+  it('blocks a block-listed domain (incl. subdomains) with a coded error', async () => {
     const http = new HttpService({
       fetchFn: fakeFetch(() => new Response('ok')),
       secrets,
-      settings: settings(['example.com']),
+      settings: settings(['evil.com']),
     });
     await expect(http.send({ method: 'GET', url: 'https://evil.com/x' })).rejects.toMatchObject({
       code: 'DOMAIN_NOT_ALLOWED',
     });
+    await expect(http.send({ method: 'GET', url: 'https://api.evil.com/x' })).rejects.toMatchObject({
+      code: 'DOMAIN_NOT_ALLOWED',
+    });
   });
 
-  it('allows an allow-listed host (incl. subdomains) and returns the response + query', async () => {
+  it('allows any non-blocked host (empty block-list = allow all) and returns the response + query', async () => {
     let calledUrl = '';
     const http = new HttpService({
       fetchFn: fakeFetch((url) => {
@@ -46,7 +54,7 @@ describe('HttpService', () => {
         return new Response('hello', { status: 200, statusText: 'OK' });
       }),
       secrets,
-      settings: settings(['example.com']),
+      settings: settings(),
     });
     const res = await http.send({
       method: 'GET',
@@ -58,7 +66,7 @@ describe('HttpService', () => {
     expect(calledUrl).toContain('a=1');
   });
 
-  it('re-validates redirects and blocks a redirect to a non-allowed host', async () => {
+  it('re-validates redirects and blocks a redirect into a blocked host', async () => {
     const http = new HttpService({
       fetchFn: fakeFetch((url) =>
         url.includes('example.com')
@@ -66,11 +74,114 @@ describe('HttpService', () => {
           : new Response('reached', { status: 200 }),
       ),
       secrets,
-      settings: settings(['example.com']),
+      settings: settings(['evil.com']),
     });
     await expect(http.send({ method: 'GET', url: 'https://example.com/x' })).rejects.toMatchObject({
       code: 'DOMAIN_NOT_ALLOWED',
     });
+  });
+
+  it('force-applies enforced headers over the request own headers', async () => {
+    let seen: Headers | null = null;
+    const http = new HttpService({
+      fetchFn: fakeFetch((_url, init) => {
+        seen = init.headers;
+        return new Response('ok', { status: 200 });
+      }),
+      secrets,
+      settings: settings([], { 'X-Tenant': 'acme', 'User-Agent': 'swaft' }),
+    });
+    await http.send({
+      method: 'GET',
+      url: 'https://example.com/x',
+      headers: { 'X-Tenant': 'other', Accept: 'application/json' },
+    });
+    expect(seen!.get('x-tenant')).toBe('acme');
+    expect(seen!.get('user-agent')).toBe('swaft');
+    expect(seen!.get('accept')).toBe('application/json');
+  });
+
+  it('routes through proxyFetchFn when a folder proxy is given (direct fetch otherwise)', async () => {
+    let directCalls = 0;
+    let proxiedVia: string | null = null;
+    const http = new HttpService({
+      fetchFn: fakeFetch(() => {
+        directCalls++;
+        return new Response('direct', { status: 200 });
+      }),
+      proxyFetchFn: (proxy) => {
+        proxiedVia = `${proxy.protocol}://${proxy.hostname}:${proxy.port}`;
+        return fakeFetch(() => new Response('proxied', { status: 200 }));
+      },
+      secrets,
+      settings: settings(),
+    });
+
+    const direct = await http.send({ method: 'GET', url: 'https://example.com/x' });
+    expect(direct.body).toBe('direct');
+    const proxied = await http.send(
+      { method: 'GET', url: 'https://example.com/x' },
+      { proxy: { protocol: 'http', hostname: 'proxy.local', port: 8080 } },
+    );
+    expect(proxied.body).toBe('proxied');
+    expect(proxiedVia).toBe('http://proxy.local:8080');
+    expect(directCalls).toBe(1);
+  });
+
+  it('fails with a coded error when a proxy is required but no proxy transport exists', async () => {
+    const http = new HttpService({
+      fetchFn: fakeFetch(() => new Response('ok')),
+      secrets,
+      settings: settings(),
+    });
+    await expect(
+      http.send(
+        { method: 'GET', url: 'https://example.com/x' },
+        { proxy: { protocol: 'http', hostname: 'proxy.local', port: 8080 } },
+      ),
+    ).rejects.toMatchObject({ code: 'PROXY_UNAVAILABLE' });
+  });
+
+  it('applies plain basic / bearer / api-key auth (header and query placement)', async () => {
+    let seen: Headers | null = null;
+    let calledUrl = '';
+    const http = new HttpService({
+      fetchFn: fakeFetch((url, init) => {
+        calledUrl = url;
+        seen = init.headers;
+        return new Response('ok', { status: 200 });
+      }),
+      secrets,
+      settings: settings(),
+    });
+
+    await http.send({
+      method: 'GET',
+      url: 'https://example.com/x',
+      auth: { kind: 'basic', username: 'neo', password: 'matrix' },
+    });
+    expect(seen!.get('authorization')).toBe(`Basic ${Buffer.from('neo:matrix').toString('base64')}`);
+
+    await http.send({
+      method: 'GET',
+      url: 'https://example.com/x',
+      auth: { kind: 'bearer', token: 'tok123' },
+    });
+    expect(seen!.get('authorization')).toBe('Bearer tok123');
+
+    await http.send({
+      method: 'GET',
+      url: 'https://example.com/x',
+      auth: { kind: 'apikey', key: 'X-Api', value: 'v1', placement: 'header' },
+    });
+    expect(seen!.get('x-api')).toBe('v1');
+
+    await http.send({
+      method: 'GET',
+      url: 'https://example.com/x',
+      auth: { kind: 'apikey', key: 'api_key', value: 'v2', placement: 'query' },
+    });
+    expect(calledUrl).toContain('api_key=v2');
   });
 
   it('applies bearer auth from a keychain secret (the value never leaves the main process)', async () => {
@@ -82,7 +193,7 @@ describe('HttpService', () => {
         return new Response('ok', { status: 200 });
       }),
       secrets,
-      settings: settings(['example.com']),
+      settings: settings(),
     });
     await http.send({
       method: 'GET',

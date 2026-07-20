@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { ReceiptDto } from '@swaft/shared';
-import type { RenderPolicy, SeeboHost } from '../seebo/SeeboHost';
+import type { SeeboHost } from '../seebo/SeeboHost';
 import type { SeeboActionReceipt } from '../seebo/seebo-module';
 import { RepoBase } from '../workspace/RepoBase';
 import type { ReleaseService } from '../workspace/ReleaseService';
@@ -41,42 +41,29 @@ export class ActionService extends RepoBase {
     super(ws);
   }
 
-  private async policy(): Promise<RenderPolicy> {
-    const s = await this.deps.settings.getSettings();
-    return { allowedCapabilities: s.allowedCapabilities, allowedTypes: s.allowedTypes };
-  }
-
   async execute(
     templateId: string,
     opts: { confirmedActions: string[]; failFast: boolean; dryRun?: boolean },
   ): Promise<ReceiptDto[]> {
-    const policy = await this.policy();
     const { source } = await this.deps.releases.resolveSource(templateId);
     const values = await this.deps.render.getInputState(templateId);
-    const state = await this.deps.host.render(source, values, policy);
+    const state = await this.deps.host.render(source, values);
     const plan = state.actions ?? [];
     if (plan.length === 0) return this.list(templateId);
 
     const settings = await this.deps.settings.getSettings();
     const sandbox = settings.executionMode !== 'dev';
-    const result = await this.deps.host.executeActions(
-      plan,
-      {
-        confirmedActions: opts.confirmedActions,
-        failFast: opts.failFast,
-        dryRun: opts.dryRun ?? false,
-        permissions: [], // no actor-permission model yet; permissioned actions are skipped
-        environment: 'test',
-        actor: { username: this.deps.currentUsername() ?? 'unknown' },
-        // Empty allow-list ⇒ no type restriction (handlers still gate). Sandbox forbids prod.
-        policy: {
-          ...(settings.allowedActions.length ? { allowedActions: settings.allowedActions } : {}),
-          ...(sandbox ? { allowedEnvironments: ['test', 'preprod'] } : {}),
-        },
-        redact: () => '[redacted]',
-      },
-      policy,
-    );
+    const result = await this.deps.host.executeActions(plan, {
+      confirmedActions: opts.confirmedActions,
+      failFast: opts.failFast,
+      dryRun: opts.dryRun ?? false,
+      permissions: [], // no actor-permission model yet; permissioned actions are skipped
+      environment: 'test',
+      actor: { username: this.deps.currentUsername() ?? 'unknown' },
+      // Sandbox forbids prod; the per-type gate is the set of registered action handlers.
+      policy: sandbox ? { allowedEnvironments: ['test', 'preprod'] } : {},
+      redact: () => '[redacted]',
+    });
 
     for (const receipt of result.receipts) await this.persist(templateId, receipt);
     await this.ws.save();
