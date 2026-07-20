@@ -8,9 +8,11 @@ import {
   type WorkspaceTree,
 } from '@swaft/shared';
 import { AppError } from '../errors';
+import { isValidCapabilityName } from '../usercode/guard';
 import type { ChangelogService } from './ChangelogService';
 import { OrganizationService } from './OrganizationService';
 import { RepoBase } from './RepoBase';
+import { extractHttpMethod } from './template-source';
 import type { WorkspaceService } from './WorkspaceService';
 
 interface TemplateRow {
@@ -80,22 +82,12 @@ function starterSource(type: TemplateType): string {
  */
 function assertUsableCodeName(type: string, name: string): void {
   if (!isCodeTemplateType(type)) return;
-  if (!/^[A-Za-z_$][\w$]*$/.test(name.trim())) {
+  if (!isValidCapabilityName(name.trim())) {
     throw new AppError(
       'INVALID_CODE_NAME',
       'validation',
       'A capability or action is called by its name, so it must be a valid identifier: letters, digits and _ , not starting with a digit.',
     );
-  }
-}
-
-/** Best-effort HTTP method for an `api` template (its source is the JSON request model). */
-function extractHttpMethod(source: string): string | null {
-  try {
-    const parsed = JSON.parse(source) as { method?: unknown };
-    return typeof parsed.method === 'string' ? parsed.method.toUpperCase() : null;
-  } catch {
-    return null;
   }
 }
 

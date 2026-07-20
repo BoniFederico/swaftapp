@@ -8,6 +8,7 @@ import type {
 import { AppError } from '../errors';
 import type { EnvDataProvider } from '../seebo/SeeboHost';
 import type { SqlParam } from '../storage/sqlite';
+import { parseStringMap } from '../util/json';
 import { RepoBase } from './RepoBase';
 import type { WorkspaceService } from './WorkspaceService';
 
@@ -23,18 +24,6 @@ interface EnvironmentRow {
 }
 
 /** Parse the stored `vars` JSON blob into a plain string→string map (tolerant of corruption). */
-function parseVars(json: string): Record<string, string> {
-  try {
-    const value: unknown = JSON.parse(json);
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-    const out: Record<string, string> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = String(v);
-    return out;
-  } catch {
-    return {};
-  }
-}
-
 /**
  * Environments: named sets of plain (non-secret) key/value variables, 🟢 synchronized. Each is scoped
  * by `ownerKind` to the current user (personal) or the whole workspace (shared).
@@ -62,7 +51,7 @@ export class EnvironmentService extends RepoBase implements EnvDataProvider {
 
   async get(id: string): Promise<EnvironmentDto> {
     const row = await this.requireRow(id);
-    return { ...this.toSummary(row), vars: parseVars(row.vars) };
+    return { ...this.toSummary(row), vars: parseStringMap(row.vars) };
   }
 
   async create(input: EnvCreateRequest): Promise<EnvironmentDto> {
@@ -142,7 +131,7 @@ export class EnvironmentService extends RepoBase implements EnvDataProvider {
       `SELECT vars FROM environments WHERE id = ? AND deleted_at IS NULL`,
       [activeId],
     );
-    return row ? parseVars(row.vars) : {};
+    return row ? parseStringMap(row.vars) : {};
   }
 
   /**
@@ -161,7 +150,7 @@ export class EnvironmentService extends RepoBase implements EnvDataProvider {
       );
     }
     const row = await this.requireRow(activeId);
-    await this.update(activeId, { vars: { ...parseVars(row.vars), ...vars } });
+    await this.update(activeId, { vars: { ...parseStringMap(row.vars), ...vars } });
   }
 
   /**
@@ -189,7 +178,7 @@ export class EnvironmentService extends RepoBase implements EnvDataProvider {
     if (!row) {
       throw new AppError('ENV_NO_ACTIVE', 'validation', 'The active environment no longer exists.');
     }
-    const vars = parseVars(row.vars);
+    const vars = parseStringMap(row.vars);
     if (!(name in vars)) {
       throw new AppError(
         'ENV_VAR_NOT_FOUND',
@@ -207,7 +196,7 @@ export class EnvironmentService extends RepoBase implements EnvDataProvider {
       description: row.description,
       ownerKind: row.owner_kind as EnvironmentOwnerKind,
       ownerId: row.owner_id,
-      varCount: Object.keys(parseVars(row.vars)).length,
+      varCount: Object.keys(parseStringMap(row.vars)).length,
     };
   }
 

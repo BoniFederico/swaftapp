@@ -5,6 +5,7 @@ import type {
   RequestActionOutcomeDto,
 } from '@swaft/shared';
 import { AppError } from '../errors';
+import { parseJsonOr } from '../util/json';
 import type { HttpService } from '../http/HttpService';
 import type { UserCodeRegistry } from '../usercode/UserCodeRegistry';
 import type { ApiHistoryService } from './ApiHistoryService';
@@ -86,7 +87,7 @@ export class ApiRunService {
     await this.deps.history.record(templateId, outgoing.method, outgoing.url, response.status);
 
     if (postActions.length > 0) {
-      const api: ApiContext = { request: outgoing, response: { ...response, json: parseJson(response.body) } };
+      const api: ApiContext = { request: outgoing, response: { ...response, json: parseJsonOr<unknown>(response.body, undefined) } };
       for (const action of postActions) {
         // A failing `post` action must not hide the response: it is reported, not thrown.
         outcomes.push(await this.runAction(action, api));
@@ -123,15 +124,6 @@ export class ApiRunService {
 }
 
 /** JSON responses are the common case; hand actions the parsed body so they need not re-parse it. */
-function parseJson(body: string | null | undefined): unknown {
-  if (!body) return undefined;
-  try {
-    return JSON.parse(body);
-  } catch {
-    return undefined;
-  }
-}
-
 /**
  * Merge a `pre` action's `{ patch }` into the request. Only the fields a request actually has are
  * considered, and headers/query merge key-by-key so an action can add one without restating the

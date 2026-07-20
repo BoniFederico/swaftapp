@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { ApiHistoryItem, RequestActionOutcomeDto } from '@swaft/shared';
+import { parseJsonOr } from '../util/json';
 import { RepoBase } from './RepoBase';
 
 interface ApiHistoryRow {
@@ -24,15 +25,6 @@ interface ApiActionRunRow {
 }
 
 /** Parse a stored JSON column back to a value, tolerating a null/corrupt cell. */
-function parseJson<T>(raw: string | null, fallback: T): T {
-  if (raw == null) return fallback;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
-
 /** 🔵 local-only, metadata-only API history (method/url/status — never request/response bodies). */
 export class ApiHistoryService extends RepoBase {
   async record(templateId: string, method: string, url: string, status: number | null): Promise<void> {
@@ -107,9 +99,9 @@ export class ApiHistoryService extends RepoBase {
       ref: r.ref,
       trigger: r.trigger as 'pre' | 'post',
       status: r.status as RequestActionOutcomeDto['status'],
-      output: parseJson<unknown>(r.output, null),
-      logs: parseJson<string[]>(r.logs, []),
-      envWrites: parseJson<string[]>(r.env_writes, []),
+      output: parseJsonOr<unknown>(r.output, null),
+      logs: parseJsonOr<string[]>(r.logs, []),
+      envWrites: parseJsonOr<string[]>(r.env_writes, []),
       error: r.error,
       createdAt: r.created_at,
     }));

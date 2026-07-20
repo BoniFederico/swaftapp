@@ -43,7 +43,10 @@ export async function dispatch(op: string, payload: unknown): Promise<ResultEnve
     }
     return ok(result);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Internal error';
-    return makeError('INTERNAL', 'internal', message);
+    // Unexpected failure (coded AppErrors are mapped by the handlers). Log the real error here in
+    // the main process; the renderer gets a generic message — raw messages can carry filesystem
+    // paths or driver internals (IPC-9: envelopes free of secrets/internals).
+    console.error(`[swaft] op ${op} failed:`, err);
+    return makeError('INTERNAL', 'internal', 'Internal error');
   }
 }

@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { app, BrowserWindow, Menu, session, type WebContents } from 'electron';
+import { app, BrowserWindow, dialog, Menu, session, type WebContents } from 'electron';
 import { registerIpcRouter } from './ipc/router';
 import { bootstrapAuth } from './auth/bootstrap';
 import { bootstrapWorkspace } from './app-bootstrap';
@@ -85,7 +85,7 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
 
-  app.whenReady().then(() => {
+  const bootstrap = app.whenReady().then(() => {
     // Apply a Content-Security-Policy to all responses.
     session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
       callback({
@@ -107,6 +107,12 @@ if (!app.requestSingleInstanceLock()) {
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
+  });
+  // A failed bootstrap would otherwise be a silent unhandled rejection and a zombie process.
+  bootstrap.catch((err: unknown) => {
+    console.error('[swaft] fatal: bootstrap failed:', err);
+    dialog.showErrorBox('Swaft failed to start', err instanceof Error ? err.stack ?? err.message : String(err));
+    app.quit();
   });
 
   app.on('window-all-closed', () => {
