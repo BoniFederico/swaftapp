@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   ApiHistoryItem,
+  RequestAction,
   RequestActionOutcomeDto,
   DiagnosticDto,
   HttpAuth,
@@ -144,6 +145,8 @@ export function ApiView({
   const [detail, setDetail] = useState<ApiHistoryItem | null>(null);
   // The concrete auth an `inherit` request would use (from the folder chain), for the preview.
   const [inheritedAuth, setInheritedAuth] = useState<HttpAuth | null>(null);
+  // The actions the request inherits from its folder chain (apply order: outermost first), read-only.
+  const [inheritedActions, setInheritedActions] = useState<RequestAction[]>([]);
   const [busy, setBusy] = useState(false);
   const [reqTab, setReqTab] = useState<ReqTab>('params');
   const [availableActions, setAvailableActions] = useState<string[]>([]);
@@ -184,11 +187,14 @@ export function ApiView({
         /* best-effort */
       }
     }
-    // The concrete auth `inherit` resolves to: the containing folder's own auth, else what that
-    // folder inherits from its ancestors. Root templates inherit nothing.
-    async function reloadInheritedAuth(folderId: string | null) {
+    // What the request inherits from its folder chain (for the read-only previews): the concrete auth
+    // `inherit` resolves to — the containing folder's own auth, else what that folder inherits from its
+    // ancestors — and the full chain of propagated actions (the folder's own, after those it inherits).
+    // Root templates inherit nothing.
+    async function reloadInheritedPolicy(folderId: string | null) {
       if (!folderId) {
         setInheritedAuth(null);
+        setInheritedActions([]);
         return;
       }
       try {
@@ -197,8 +203,12 @@ export function ApiView({
         const effective =
           folder.auth && folder.auth.kind !== 'inherit' ? folder.auth : folder.inheritedAuth;
         setInheritedAuth(effective ?? null);
+        setInheritedActions([...folder.inheritedActions, ...folder.actions]);
       } catch {
-        if (!cancelled) setInheritedAuth(null);
+        if (!cancelled) {
+          setInheritedAuth(null);
+          setInheritedActions([]);
+        }
       }
     }
     let folderId: string | null = null;
@@ -220,7 +230,7 @@ export function ApiView({
         setValues(inp.values);
         const tm = tpl.template;
         folderId = tm.folderId;
-        void reloadInheritedAuth(folderId);
+        void reloadInheritedPolicy(folderId);
         if (tm.projectId) setProjectId(tm.projectId);
         else if (tm.folderId) {
           const tree = await client.call('tree.get');
@@ -233,7 +243,7 @@ export function ApiView({
     })();
     const unsubscribe = subscribeTreeChanged(() => {
       void reloadSource();
-      void reloadInheritedAuth(folderId); // folder auth may have changed in a folder tab
+      void reloadInheritedPolicy(folderId); // folder auth/actions may have changed in a folder tab
     });
     return () => {
       cancelled = true;
@@ -555,6 +565,7 @@ export function ApiView({
                 available={availableActions}
                 onChange={(actions) => patch({ actions })}
                 preview={previewFormula}
+                inherited={inheritedActions}
               />
             )}
             {reqTab === 'auth' && (

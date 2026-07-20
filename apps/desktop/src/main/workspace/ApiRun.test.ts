@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { HttpRequestModel, HttpResponseDto } from '@swaft/shared';
+import type { HttpRequestModel, HttpResponseDto, RequestAction } from '@swaft/shared';
 import { AppError } from '../errors';
 import type { HttpService } from '../http/HttpService';
 import type { UserCodeRegistry } from '../usercode/UserCodeRegistry';
@@ -22,6 +22,8 @@ function setup(
     logs: string[];
     envWrites: string[];
   }> = () => Promise.resolve({ value: null, logs: [], envWrites: [] }),
+  /** Actions the request "inherits" from its folder chain (apply order: outermost first). */
+  folderActions: RequestAction[] = [],
 ) {
   const sent: { request: HttpRequestModel }[] = [];
   const seen: { ref: string; input: Record<string, unknown>; api: unknown }[] = [];
@@ -30,7 +32,7 @@ function setup(
   const service = new ApiRunService({
     requests: {
       resolve: (_id: string, req: HttpRequestModel) =>
-        Promise.resolve({ request: req, rendered: false, proxy: null }),
+        Promise.resolve({ request: req, rendered: false, proxy: null, folderActions }),
     } as unknown as ApiRequestService,
     http: {
       send: (request: HttpRequestModel) => {
@@ -157,6 +159,72 @@ describe('ApiRunService', () => {
     const res = await service.send('t1', { ...REQUEST, actions: [{ ref: 'save', trigger: 'post' }] }, {});
 
     expect(res.actions?.[0]).toMatchObject({ logs: ['saved'], envWrites: ['TOKEN'], status: 'succeeded' });
+  });
+
+  it('wraps the request in its folder-inherited actions (pre outside-in, post inside-out)', async () => {
+    const order: string[] = [];
+    const { service } = setup(
+      (ref) => {
+        order.push(ref);
+        return Promise.resolve({ value: null, logs: [], envWrites: [] });
+      },
+      [
+        { ref: 'folderPre', trigger: 'pre' },
+        { ref: 'folderPost', trigger: 'post' },
+      ],
+    );
+
+    const res = await service.send(
+      't1',
+      { ...REQUEST, actions: [{ ref: 'ownPre', trigger: 'pre' }, { ref: 'ownPost', trigger: 'post' }] },
+      {},
+    );
+
+    // Pre: the folder's runs before the request's own; post: the request's own before the folder's.
+    expect(order).toEqual(['folderPre', 'ownPre', 'ownPost', 'folderPost']);
+    expect(res.actions?.map((a) => a.ref)).toEqual(['folderPre', 'ownPre', 'ownPost', 'folderPost']);
+  });
+
+  it('unwinds nested folder post-actions inside-out (the reverse of the pre order)', async () => {
+    const order: string[] = [];
+    const { service } = setup(
+      (ref) => {
+        order.push(ref);
+        return Promise.resolve({ value: null, logs: [], envWrites: [] });
+      },
+      // Arrives root→leaf (outermost first), like folderPolicyOf produces.
+      [
+        { ref: 'rootPre', trigger: 'pre' },
+        { ref: 'rootPost', trigger: 'post' },
+        { ref: 'leafPre', trigger: 'pre' },
+        { ref: 'leafPost', trigger: 'post' },
+      ],
+    );
+
+    await service.send('t1', REQUEST, {});
+
+    expect(order).toEqual(['rootPre', 'leafPre', 'leafPost', 'rootPost']);
+  });
+
+  it('blocks the send when an inherited folder pre-action fails', async () => {
+    const { service, sent } = setup(
+      () => Promise.reject(new AppError('USER_CODE_FAILED', 'validation', 'boom')),
+      [{ ref: 'folderPre', trigger: 'pre' }],
+    );
+
+    await expect(service.send('t1', REQUEST, {})).rejects.toMatchObject({
+      code: 'REQUEST_ACTION_FAILED',
+    });
+    expect(sent).toHaveLength(0);
+  });
+
+  it('skips a disabled inherited folder action', async () => {
+    const { service, seen } = setup(() => Promise.resolve({ value: null, logs: [], envWrites: [] }), [
+      { ref: 'off', trigger: 'pre', enabled: false },
+    ]);
+
+    await service.send('t1', REQUEST, {});
+    expect(seen).toHaveLength(0);
   });
 
   it('sends a request with no template verbatim, without touching actions', async () => {

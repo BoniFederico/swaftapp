@@ -11,7 +11,7 @@
  * reshaped to flat collections) + workspace settings + restrictions.
  */
 
-export const SCHEMA_VERSION = 23;
+export const SCHEMA_VERSION = 24;
 
 /** Sync-metadata columns present on every 🟢 synchronized entity. */
 export const SYNC_META_COLUMNS = [
@@ -58,7 +58,8 @@ const SYNC_META_DDL = `
 // Individual table DDL, reused by both the fresh schema and the migration so they never drift.
 // v21: folders carry a propagated HTTP policy (`headers` JSON object, `proxy` JSON or NULL) applied
 // to every API call beneath them, plus markdown `notes` (the Folder view). v22 adds `auth` (JSON or
-// NULL = inherit from the parent chain).
+// NULL = inherit from the parent chain). v24 adds `actions` (JSON array of request actions run around
+// every API call beneath the folder, concatenated down the chain).
 const FOLDERS_DDL = `CREATE TABLE folders (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -67,6 +68,7 @@ const FOLDERS_DDL = `CREATE TABLE folders (
   headers TEXT NOT NULL DEFAULT '{}',
   proxy TEXT,
   auth TEXT,
+  actions TEXT NOT NULL DEFAULT '[]',
   notes TEXT NOT NULL DEFAULT '',
   ${SYNC_META_DDL}
 );`;
@@ -455,5 +457,11 @@ export const MIGRATIONS: { to: number; sql: string }[] = [
     to: 23,
     // v23 keeps a local-only history of what each request's pre/post actions did.
     sql: API_ACTION_RUNS_DDL,
+  },
+  {
+    to: 24,
+    // v24 gives folders propagated actions (pre/post actions run around every API call beneath them,
+    // concatenated down the chain), like the headers/proxy/auth policy.
+    sql: `ALTER TABLE folders ADD COLUMN actions TEXT NOT NULL DEFAULT '[]';`,
   },
 ];

@@ -169,6 +169,23 @@ export const folderProxySchema = z
   })
   .strict();
 
+/**
+ * An action attached to a request (or a folder, propagated to the calls beneath it), run around the
+ * HTTP call. `pre` may return a patch merged into the request (signing it, refreshing a token);
+ * `post` sees the response (extracting values, asserting). Declaring `action(...)` inside a *field*
+ * stays forbidden — effects live here, not in the formulas (analisi_codice_utente.md §5.6).
+ */
+export const requestActionSchema = z
+  .object({
+    /** Name of the `action` template to run. */
+    ref: z.string().trim().min(1).max(120),
+    trigger: z.enum(['pre', 'post']),
+    /** Values passed as `input`; may carry Seebo `${ … }` formulas. */
+    input: z.record(z.string().max(4096)).optional(),
+    enabled: z.boolean().optional(),
+  })
+  .strict();
+
 /** Partial update of a folder's propagated HTTP policy + notes (the Folder view tabs). */
 export const folderUpdateRequestSchema = z
   .object({
@@ -178,6 +195,8 @@ export const folderUpdateRequestSchema = z
     proxy: folderProxySchema.nullable().optional(),
     /** Auth propagated to every API call in the folder (null = inherit from the parent chain). */
     auth: httpAuthSchema.nullable().optional(),
+    /** Actions propagated to every API call in the folder (concatenated down the parent chain). */
+    actions: z.array(requestActionSchema).max(16).optional(),
     /** Markdown documentation for the folder. */
     notes: z.string().max(200_000).optional(),
   })
@@ -267,23 +286,6 @@ export const releaseDeleteRequestSchema = z.object({ releaseId: z.string().min(1
 
 export const httpMethodSchema = z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
 export const bodyTypeSchema = z.enum(['none', 'json', 'form', 'text', 'xml']);
-/**
- * An action attached to a request, run around the HTTP call. `pre` may return a patch merged into
- * the request (signing it, refreshing a token); `post` sees the response (extracting values,
- * asserting). Declaring `action(...)` inside a *field* stays forbidden — effects live here, not in
- * the formulas (analisi_codice_utente.md §5.6).
- */
-export const requestActionSchema = z
-  .object({
-    /** Name of the `action` template to run. */
-    ref: z.string().trim().min(1).max(120),
-    trigger: z.enum(['pre', 'post']),
-    /** Values passed as `input`; may carry Seebo `${ … }` formulas. */
-    input: z.record(z.string().max(4096)).optional(),
-    enabled: z.boolean().optional(),
-  })
-  .strict();
-
 export const httpRequestSchema = z
   .object({
     method: httpMethodSchema,
@@ -707,6 +709,10 @@ export interface FolderDetailDto extends FolderDto {
   auth: HttpAuth | null;
   /** The concrete auth this folder would inherit from its ancestors (for `inherit` previews). */
   inheritedAuth: HttpAuth | null;
+  /** Actions propagated to every API call in the folder (this folder's own, applied after inherited). */
+  actions: RequestAction[];
+  /** Actions this folder inherits from its ancestors, in apply order (root-most first), read-only. */
+  inheritedActions: RequestAction[];
   /** Markdown documentation for the folder. */
   notes: string;
 }

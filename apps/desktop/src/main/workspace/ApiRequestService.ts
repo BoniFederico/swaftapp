@@ -3,6 +3,7 @@ import type {
   FolderProxyDto,
   HttpAuth,
   HttpRequestModel,
+  RequestAction,
   RequirementDto,
 } from '@swaft/shared';
 import { AppError } from '../errors';
@@ -28,6 +29,7 @@ export interface FolderPolicyProvider {
     headers: Record<string, string>;
     proxy: FolderProxyDto | null;
     auth: HttpAuth | null;
+    actions: RequestAction[];
   }>;
 }
 
@@ -65,6 +67,7 @@ export class ApiRequestService {
         headers: {} as Record<string, string>,
         proxy: null,
         auth: null,
+        actions: [] as RequestAction[],
       }
     );
   }
@@ -153,7 +156,13 @@ export class ApiRequestService {
     templateId: string,
     req: HttpRequestModel,
     values: Record<string, unknown>,
-  ): Promise<{ request: HttpRequestModel; rendered: boolean; proxy: FolderProxyDto | null }> {
+  ): Promise<{
+    request: HttpRequestModel;
+    rendered: boolean;
+    proxy: FolderProxyDto | null;
+    /** Actions inherited from the folder chain (apply order: root-most first), to run around the call. */
+    folderActions: RequestAction[];
+  }> {
     const ctx = await this.ctx(templateId);
     const policy = await this.policyOf(templateId);
     const dataCapabilities = await this.host.dataCapabilityNames();
@@ -220,7 +229,12 @@ export class ApiRequestService {
         pending: [...pending.values()],
       });
     }
-    return { request: { ...req, url, headers, query, body, auth }, rendered, proxy };
+    return {
+      request: { ...req, url, headers, query, body, auth },
+      rendered,
+      proxy,
+      folderActions: policy.actions,
+    };
   }
 }
 

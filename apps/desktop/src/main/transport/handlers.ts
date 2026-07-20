@@ -165,6 +165,7 @@ export const handlers: Record<OpName, Handler> = {
           headers: r.headers,
           proxy: r.proxy,
           auth: r.auth,
+          actions: r.actions,
           notes: r.notes,
         }),
       };

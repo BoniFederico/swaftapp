@@ -52,10 +52,19 @@ export class ApiRunService {
 
     const resolved = await this.deps.requests.resolve(templateId, request, values);
     let outgoing = resolved.request;
-    const attached = (request.actions ?? []).filter((a) => a.enabled !== false);
+    // Folder-inherited actions wrap the request's own like nested middleware: `pre` runs outside-in
+    // (outermost folder → … → request), `post` runs inside-out (request → … → outermost folder), so a
+    // broad folder set-up runs before the specific one and unwinds after it. `folderActions` arrives
+    // in apply order (root-most first); the `post` side is reversed to unwind.
+    const folderActions = (resolved.folderActions ?? []).filter((a) => a.enabled !== false);
+    const ownActions = (request.actions ?? []).filter((a) => a.enabled !== false);
+    const isPre = (a: RequestAction): boolean => a.trigger === 'pre';
+    const isPost = (a: RequestAction): boolean => a.trigger === 'post';
+    const preActions = [...folderActions.filter(isPre), ...ownActions.filter(isPre)];
+    const postActions = [...ownActions.filter(isPost), ...folderActions.filter(isPost).reverse()];
     const outcomes: RequestActionOutcomeDto[] = [];
 
-    for (const action of attached.filter((a) => a.trigger === 'pre')) {
+    for (const action of preActions) {
       const outcome = await this.runAction(action, { request: outgoing });
       outcomes.push(outcome);
       if (outcome.status === 'failed') {
@@ -76,9 +85,9 @@ export class ApiRunService {
     const response = await this.deps.http.send(outgoing, { proxy: resolved.proxy });
     await this.deps.history.record(templateId, outgoing.method, outgoing.url, response.status);
 
-    if (attached.some((a) => a.trigger === 'post')) {
+    if (postActions.length > 0) {
       const api: ApiContext = { request: outgoing, response: { ...response, json: parseJson(response.body) } };
-      for (const action of attached.filter((a) => a.trigger === 'post')) {
+      for (const action of postActions) {
         // A failing `post` action must not hide the response: it is reported, not thrown.
         outcomes.push(await this.runAction(action, api));
       }

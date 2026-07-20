@@ -101,10 +101,13 @@ export const en = {
   'folder.tab.content': 'Content',
   'folder.tab.headers': 'Headers',
   'folder.tab.auth': 'Auth',
+  'folder.tab.actions': 'Actions',
   'folder.tab.proxy': 'Proxy',
   'folder.tab.notes': 'Notes',
   'folder.auth.hint':
     'Authentication applied to every API request in this folder (subfolders included) whose auth is set to Inherit.',
+  'folder.actions.hint':
+    'Actions run around every API request in this folder (subfolders included). Pre-actions run outermost-first, before the request’s own; post-actions unwind innermost-first after it.',
   'folder.content.empty': 'This folder is empty.',
   'folder.content.items': '{{count}} items',
   'folder.headers.hint':
@@ -286,6 +289,8 @@ export const en = {
   'api.actions.none': 'No action templates in this workspace yet. Create one to run code around this request.',
   'api.actions.empty': 'No actions attached. They run around the call, not inside the fields.',
   'api.actions.add': 'Attach an action',
+  'api.actions.inherited': 'Inherited from folders',
+  'api.actions.inheritedHint': 'These run around the request too, from the folders it lives in. Edit them in the folder.',
   'api.actions.action': 'Action',
   'api.actions.trigger': 'When',
   'api.actions.pre': 'Before the request',
@@ -560,10 +565,13 @@ export const it: Partial<Record<TranslationKey, string>> = {
   'folder.tab.content': 'Contenuto',
   'folder.tab.headers': 'Header',
   'folder.tab.auth': 'Auth',
+  'folder.tab.actions': 'Actions',
   'folder.tab.proxy': 'Proxy',
   'folder.tab.notes': 'Note',
   'folder.auth.hint':
     'Autenticazione applicata a ogni richiesta API in questa cartella (sottocartelle incluse) la cui auth è impostata su Eredita.',
+  'folder.actions.hint':
+    'Le action girano attorno a ogni richiesta API in questa cartella (sottocartelle incluse). Le pre-action partono dalla cartella più esterna, prima di quelle della richiesta; le post-action si srotolano dalla più interna dopo di essa.',
   'folder.content.empty': 'Questa cartella è vuota.',
   'folder.content.items': '{{count}} elementi',
   'folder.headers.hint':
@@ -745,6 +753,8 @@ export const it: Partial<Record<TranslationKey, string>> = {
   'api.actions.none': 'Nessun template action in questo workspace. Creane uno per eseguire codice attorno a questa request.',
   'api.actions.empty': 'Nessuna action collegata. Girano attorno alla chiamata, non dentro i campi.',
   'api.actions.add': 'Collega una action',
+  'api.actions.inherited': 'Ereditate dalle cartelle',
+  'api.actions.inheritedHint': 'Girano anche attorno a questa request, dalle cartelle in cui si trova. Modificale nella cartella.',
   'api.actions.action': 'Action',
   'api.actions.trigger': 'Quando',
   'api.actions.pre': 'Prima della request',
