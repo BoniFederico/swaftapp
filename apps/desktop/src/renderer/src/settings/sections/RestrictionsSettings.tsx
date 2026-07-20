@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { WorkspaceSettingsDto, WorkspaceSettingsUpdate } from '@swaft/shared';
 import { ApiClient, ApiError } from '../../api-client/client';
 import { useI18n } from '../../i18n/I18nProvider';
-import { Button, IconButton, Select, TextField, TrashIcon, useToast } from '../../ui';
+import { Button, IconButton, Select, Switch, TextField, TrashIcon, useToast } from '../../ui';
 import { ChipListEditor } from '../ChipListEditor';
 
 interface HeaderRow {
@@ -110,6 +110,16 @@ export function RestrictionsSettings({ client }: { client: ApiClient }) {
             </Button>
           </div>
         )}
+      </div>
+
+      <div className="ui-field">
+        <span className="ui-field__label">{t('wsset.batcher')}</span>
+        <Switch
+          checked={s.batcherEnabled}
+          onChange={(checked) => void patch({ batcherEnabled: checked })}
+          label={s.batcherEnabled ? t('wsset.batcherOn') : t('wsset.batcherOff')}
+        />
+        <span className="field-hint">{t('wsset.batcherHint')}</span>
       </div>
 
       <div className="ui-field">

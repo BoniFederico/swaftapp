@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { TemplateType } from '@swaft/shared';
 import type { ApiClient } from '../api-client/client';
 import { useAuth } from '../auth/AuthProvider';
@@ -62,7 +62,20 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
   const [batch, setBatch] = useState<string[] | null>(null);
   const [sideCollapsed, setSideCollapsed] = useState(false);
   const [sideWidth, setSideWidth] = useState(280);
+  const [batcherEnabled, setBatcherEnabled] = useState(true);
   const resize = useRef<{ startX: number; startW: number } | null>(null);
+
+  // The Batcher panel visibility is a workspace restriction; re-read it when Settings close.
+  useEffect(() => {
+    if (settingsOpen) return;
+    void client
+      .call('settings.get')
+      .then((res) => {
+        setBatcherEnabled(res.settings.batcherEnabled);
+        if (!res.settings.batcherEnabled) setBatch(null); // drop an open batch view too
+      })
+      .catch(() => undefined);
+  }, [client, settingsOpen]);
 
   // Open an item in a tab. A single click opens (or reuses) a *preview* tab — at most one exists,
   // and the next single-clicked item replaces it. An already-open item is just re-activated.
@@ -202,7 +215,7 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
             onCloseTemplate={closeTab}
             onCollapse={() => setSideCollapsed(true)}
           />
-          <BatcherPanel onLoadInputs={setBatch} />
+          {batcherEnabled && <BatcherPanel onLoadInputs={setBatch} />}
           <div
             className="ws-side__resizer"
             onPointerDown={onSideResizeDown}

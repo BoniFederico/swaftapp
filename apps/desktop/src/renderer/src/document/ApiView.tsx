@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   ApiHistoryItem,
   DiagnosticDto,
+  HttpAuth,
   HttpBodyType,
   HttpMethod,
   HttpRequestModel,
@@ -22,10 +23,10 @@ import {
   IconButton,
   SaveIcon,
   Select,
-  TextField,
   useToast,
 } from '../ui';
 import { notifyTreeChanged, subscribeTreeChanged } from '../workspace/treeBus';
+import { AuthEditor } from './AuthEditor';
 import { InputPanel } from './InputPanel';
 import { compactValues } from './inputValidation';
 import { KeyValueEditor } from './KeyValueEditor';
@@ -139,9 +140,8 @@ export function ApiView({
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<ApiHistoryItem[]>([]);
   const [detail, setDetail] = useState<ApiHistoryItem | null>(null);
-  const [refs, setRefs] = useState<string[]>([]);
-  const [secretRef, setSecretRef] = useState('');
-  const [secretValue, setSecretValue] = useState('');
+  // The concrete auth an `inherit` request would use (from the folder chain), for the preview.
+  const [inheritedAuth, setInheritedAuth] = useState<HttpAuth | null>(null);
   const [busy, setBusy] = useState(false);
   const [reqTab, setReqTab] = useState<ReqTab>('params');
   const [resTab, setResTab] = useState<ResTab>('body');
@@ -180,12 +180,29 @@ export function ApiView({
         /* best-effort */
       }
     }
+    // The concrete auth `inherit` resolves to: the containing folder's own auth, else what that
+    // folder inherits from its ancestors. Root templates inherit nothing.
+    async function reloadInheritedAuth(folderId: string | null) {
+      if (!folderId) {
+        setInheritedAuth(null);
+        return;
+      }
+      try {
+        const { folder } = await client.call('folder.get', { id: folderId });
+        if (cancelled) return;
+        const effective =
+          folder.auth && folder.auth.kind !== 'inherit' ? folder.auth : folder.inheritedAuth;
+        setInheritedAuth(effective ?? null);
+      } catch {
+        if (!cancelled) setInheritedAuth(null);
+      }
+    }
+    let folderId: string | null = null;
     void (async () => {
       try {
-        const [tpl, hist, sec, inp] = await Promise.all([
+        const [tpl, hist, inp] = await Promise.all([
           client.call('template.get', { id: templateId }),
           client.call('api.history.list', { templateId }),
-          client.call('secret.list'),
           client.call('inputState.get', { templateId }),
         ]);
         if (cancelled) return;
@@ -194,9 +211,10 @@ export function ApiView({
         setReq(parsed);
         applySaved(JSON.stringify(parsed));
         setHistory(hist.items);
-        setRefs(sec.refs);
         setValues(inp.values);
         const tm = tpl.template;
+        folderId = tm.folderId;
+        void reloadInheritedAuth(folderId);
         if (tm.projectId) setProjectId(tm.projectId);
         else if (tm.folderId) {
           const tree = await client.call('tree.get');
@@ -207,7 +225,10 @@ export function ApiView({
         /* best-effort */
       }
     })();
-    const unsubscribe = subscribeTreeChanged(() => void reloadSource());
+    const unsubscribe = subscribeTreeChanged(() => {
+      void reloadSource();
+      void reloadInheritedAuth(folderId); // folder auth may have changed in a folder tab
+    });
     return () => {
       cancelled = true;
       unsubscribe();
@@ -340,12 +361,30 @@ export function ApiView({
   async function clearHistory() {
     setHistory((await client.call('api.history.clear', { templateId })).items);
   }
-  async function addSecret() {
-    if (!secretRef.trim()) return;
-    setRefs((await client.call('secret.set', { ref: secretRef.trim(), value: secretValue })).refs);
-    setSecretRef('');
-    setSecretValue('');
-  }
+
+  // Hover preview of a `${ … }` formula: render just that slot with the current input values and
+  // show the result when it completes without pending inputs. Promise-cached per (values, slot) so
+  // hovering the same formula never re-renders it; the cache resets when it grows.
+  const previewCache = useRef(new Map<string, Promise<string | null>>());
+  const valuesRef = useRef(values);
+  valuesRef.current = values;
+  const previewFormula = useCallback(
+    (slot: string): Promise<string | null> => {
+      const vals = compactValues(valuesRef.current);
+      const key = `${JSON.stringify(vals)} ${slot}`;
+      const cache = previewCache.current;
+      const hit = cache.get(key);
+      if (hit) return hit;
+      if (cache.size > 200) cache.clear();
+      const p = client
+        .call('render.renderSource', { source: slot, values: vals })
+        .then((r) => (r.result.status === 'completed' ? (r.result.output ?? '') : null))
+        .catch(() => null);
+      cache.set(key, p);
+      return p;
+    },
+    [client],
+  );
 
   const auth = req.auth ?? { kind: 'none' as const };
 
@@ -367,6 +406,7 @@ export function ApiView({
             placeholder={t('api.urlPlaceholder')}
             value={req.url}
             onChange={setUrl}
+            preview={previewFormula}
           />
         </div>
         <Button onClick={() => void send()} disabled={busy || !req.url}>
@@ -394,10 +434,18 @@ export function ApiView({
           />
           <div className="api__tabbody">
             {reqTab === 'params' && (
-              <KeyValueEditor value={splitUrl(req.url).query} onChange={setParams} />
+              <KeyValueEditor
+                value={splitUrl(req.url).query}
+                onChange={setParams}
+                preview={previewFormula}
+              />
             )}
             {reqTab === 'headers' && (
-              <KeyValueEditor value={req.headers ?? {}} onChange={(headers) => patch({ headers })} />
+              <KeyValueEditor
+                value={req.headers ?? {}}
+                onChange={(headers) => patch({ headers })}
+                preview={previewFormula}
+              />
             )}
             {reqTab === 'body' && (
               <BodyEditor
@@ -433,48 +481,12 @@ export function ApiView({
               </div>
             )}
             {reqTab === 'auth' && (
-              <div className="col" style={{ gap: 'var(--space-3)' }}>
-                <Select
-                  label={t('api.auth')}
-                  value={auth.kind}
-                  onChange={(v) =>
-                    patch({ auth: { ...auth, kind: v as 'none' | 'bearer' | 'basic' | 'apikey' } })
-                  }
-                  options={[
-                    { value: 'none', label: t('api.authNone') },
-                    { value: 'bearer', label: 'Bearer' },
-                    { value: 'basic', label: 'Basic' },
-                    { value: 'apikey', label: 'API key' },
-                  ]}
-                />
-                {auth.kind !== 'none' && (
-                  <Select
-                    label={t('api.secretRef')}
-                    value={auth.secretRef ?? ''}
-                    onChange={(v) => patch({ auth: { ...auth, secretRef: v } })}
-                    options={[{ value: '', label: '—' }, ...refs.map((r) => ({ value: r, label: r }))]}
-                  />
-                )}
-                <div className="api__secrets">
-                  <span className="ui-field__label">{t('api.secrets')}</span>
-                  <div className="row" style={{ alignItems: 'flex-end' }}>
-                    <TextField
-                      label={t('api.secretRef')}
-                      value={secretRef}
-                      onChange={(e) => setSecretRef(e.target.value)}
-                    />
-                    <TextField
-                      label={t('api.secretValue')}
-                      type="password"
-                      value={secretValue}
-                      onChange={(e) => setSecretValue(e.target.value)}
-                    />
-                    <IconButton label={t('api.addSecret')} onClick={() => void addSecret()}>
-                      <span aria-hidden="true">+</span>
-                    </IconButton>
-                  </div>
-                </div>
-              </div>
+              <AuthEditor
+                auth={auth}
+                onChange={(a) => patch({ auth: a })}
+                inherited={inheritedAuth}
+                preview={previewFormula}
+              />
             )}
           </div>
         </section>
@@ -670,8 +682,8 @@ function ResponseBody({
 
   return (
     <div className="api__body-editor">
+      {/* Copy alone top-right (same as the request body); the content-type badge sits bottom-right. */}
       <div className="api__editor-tools">
-        <span className="tree-badge">{lang ?? 'text'}</span>
         <IconButton label={t('doc.copy')} onClick={() => onCopy(display)}>
           <CopyIcon />
         </IconButton>
@@ -681,6 +693,7 @@ function ResponseBody({
         {response.body}
       </pre>
       <CodeEditor value={display} language={lang} onChange={() => {}} readOnly />
+      <span className="tree-badge api__body-badge">{lang ?? 'text'}</span>
     </div>
   );
 }

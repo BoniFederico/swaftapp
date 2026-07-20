@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { FolderDetailDto, FolderProxyDto, TemplateType, WorkspaceTree } from '@swaft/shared';
+import type {
+  FolderDetailDto,
+  FolderProxyDto,
+  HttpAuth,
+  TemplateType,
+  WorkspaceTree,
+} from '@swaft/shared';
 import { ApiClient, ApiError } from '../api-client/client';
+import { AuthEditor } from '../document/AuthEditor';
 import { KeyValueEditor } from '../document/KeyValueEditor';
 import { RenderPreview } from '../document/RenderPreview';
 import { SeeboField } from '../editor/SeeboField';
@@ -15,9 +22,9 @@ import {
   TextField,
   useToast,
 } from '../ui';
-import { subscribeTreeChanged } from './treeBus';
+import { notifyTreeChanged, subscribeTreeChanged } from './treeBus';
 
-type FolderTab = 'content' | 'headers' | 'proxy' | 'notes';
+type FolderTab = 'content' | 'headers' | 'auth' | 'proxy' | 'notes';
 
 /** Per-HTTP-method / per-subtype badge colors — mirrors the Working Tree rows. */
 const BADGE_COLORS: Record<string, string> = {
@@ -67,6 +74,10 @@ export function FolderView({
   // Editable state per tab, each with its own dirty flag (saved independently).
   const [headers, setHeaders] = useState<Record<string, string>>({});
   const [headersDirty, setHeadersDirty] = useState(false);
+  // Folder auth: null in the DB means "inherit from the parent chain" (the editor's default kind).
+  const [auth, setAuth] = useState<HttpAuth>({ kind: 'inherit' });
+  const [authDirty, setAuthDirty] = useState(false);
+  const [inheritedAuth, setInheritedAuth] = useState<HttpAuth | null>(null);
   const [proto, setProto] = useState<'http' | 'https'>('http');
   const [hostname, setHostname] = useState('');
   const [port, setPort] = useState('');
@@ -75,12 +86,17 @@ export function FolderView({
   const [notesDirty, setNotesDirty] = useState(false);
   const [notesPreview, setNotesPreview] = useState(false);
   // Mirrors of the dirty flags, readable from the async reload without re-subscribing.
-  const dirtyRef = useRef({ headers: false, proxy: false, notes: false });
-  dirtyRef.current = { headers: headersDirty, proxy: proxyDirty, notes: notesDirty };
+  const dirtyRef = useRef({ headers: false, auth: false, proxy: false, notes: false });
+  dirtyRef.current = {
+    headers: headersDirty,
+    auth: authDirty,
+    proxy: proxyDirty,
+    notes: notesDirty,
+  };
 
   useEffect(() => {
-    onDirtyChange?.(headersDirty || proxyDirty || notesDirty);
-  }, [headersDirty, proxyDirty, notesDirty, onDirtyChange]);
+    onDirtyChange?.(headersDirty || authDirty || proxyDirty || notesDirty);
+  }, [headersDirty, authDirty, proxyDirty, notesDirty, onDirtyChange]);
 
   // Load the folder + the tree (for the Content gallery), and stay in sync with outside mutations
   // (rename, moves, template create/delete) via the tree bus. Unsaved edits are never clobbered:
@@ -99,6 +115,8 @@ export function FolderView({
         setGone(false);
         onTitleChange?.(f.name);
         if (!dirtyRef.current.headers) setHeaders(f.headers);
+        if (!dirtyRef.current.auth) setAuth(f.auth ?? { kind: 'inherit' });
+        setInheritedAuth(f.inheritedAuth);
         if (!dirtyRef.current.proxy) {
           setProto(f.proxy?.protocol ?? 'http');
           setHostname(f.proxy?.hostname ?? '');
@@ -132,11 +150,15 @@ export function FolderView({
   async function save(patch: {
     headers?: Record<string, string>;
     proxy?: FolderProxyDto | null;
+    auth?: HttpAuth | null;
     notes?: string;
   }): Promise<boolean> {
     try {
       const { folder: f } = await client.call('folder.update', { id: folderId, ...patch });
       setFolder(f);
+      setInheritedAuth(f.inheritedAuth);
+      // Open API views may preview auth/policy inherited from this folder — let them refresh.
+      notifyTreeChanged();
       return true;
     } catch (err) {
       toast.show(err instanceof ApiError ? err.swaft.message : String(err), 'error');
@@ -147,6 +169,13 @@ export function FolderView({
   async function saveHeaders() {
     if (await save({ headers })) {
       setHeadersDirty(false);
+      toast.show(t('toast.saved'), 'success');
+    }
+  }
+
+  async function saveAuth() {
+    if (await save({ auth: auth.kind === 'inherit' ? null : auth })) {
+      setAuthDirty(false);
       toast.show(t('toast.saved'), 'success');
     }
   }
@@ -178,6 +207,7 @@ export function FolderView({
   const saveAllRef = useRef(() => {});
   saveAllRef.current = () => {
     if (headersDirty) void saveHeaders();
+    if (authDirty) void saveAuth();
     if (proxyDirty) void saveProxy();
     if (notesDirty) void saveNotes();
   };
@@ -206,6 +236,7 @@ export function FolderView({
   const tabs: [FolderTab, string][] = [
     ['content', t('folder.tab.content')],
     ['headers', t('folder.tab.headers')],
+    ['auth', t('folder.tab.auth')],
     ['proxy', t('folder.tab.proxy')],
     ['notes', t('folder.tab.notes')],
   ];
@@ -296,6 +327,25 @@ export function FolderView({
             />
             <div className="settings-form__actions">
               <Button variant="primary" disabled={!headersDirty} onClick={() => void saveHeaders()}>
+                {t('name.save')}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {tab === 'auth' && (
+          <div className="folder-form">
+            <p className="field-hint">{t('folder.auth.hint')}</p>
+            <AuthEditor
+              auth={auth}
+              onChange={(a) => {
+                setAuth(a);
+                setAuthDirty(true);
+              }}
+              inherited={inheritedAuth}
+            />
+            <div className="settings-form__actions">
+              <Button variant="primary" disabled={!authDirty} onClick={() => void saveAuth()}>
                 {t('name.save')}
               </Button>
             </div>

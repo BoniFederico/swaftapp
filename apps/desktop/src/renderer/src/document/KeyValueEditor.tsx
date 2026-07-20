@@ -39,11 +39,14 @@ export function KeyValueEditor({
   value,
   onChange,
   onCopy,
+  preview,
 }: {
   value: Record<string, string>;
   onChange: (value: Record<string, string>) => void;
   /** Copy the entries as `key: value` lines. */
   onCopy?: (text: string) => void;
+  /** Hover preview of a value's `${ … }` formula (see SeeboField). */
+  preview?: (slot: string) => Promise<string | null>;
 }) {
   const { t } = useI18n();
   const [batch, setBatch] = useState(false);
@@ -146,6 +149,7 @@ export function KeyValueEditor({
                     placeholder={t('api.value')}
                     value={p.v}
                     onChange={(v) => setAt(i, { v })}
+                    preview={preview}
                   />
                 </div>
                 {!isTrailing ? (

@@ -741,6 +741,16 @@ body {
 .api__method .ui-field {
   margin: 0;
 }
+/* Send + Save match the method listbox / URL field height exactly. */
+.api__bar .ui-btn {
+  height: 32px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.api__bar .ui-icon-btn {
+  width: 32px;
+  height: 32px;
+}
 /* Compact method listbox (fits OPTIONS) + slightly larger method/URL/tab fonts. */
 .api__method .ui-select {
   min-width: 0;
@@ -858,7 +868,12 @@ body {
 .api-render {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-5);
+}
+/* Air between each section label (Headers / Body) and its content. */
+.api-render > div > .ui-field__label {
+  display: block;
+  margin-bottom: var(--space-3);
 }
 .api-render__line {
   display: flex;
@@ -996,6 +1011,14 @@ body {
 .api__body-editor .cm-host {
   flex: 1;
   min-width: 0;
+}
+/* Response content-type badge, bottom-right of the body editor. */
+.api__body-badge {
+  position: absolute;
+  right: var(--space-2);
+  bottom: var(--space-2);
+  z-index: 4;
+  background: var(--surface);
 }
 /* Copy (+ body-type badge) overlaid top-right of a body/response editor. */
 .api__editor-tools {
@@ -2696,7 +2719,44 @@ body {
 /* Whole-slot bare identifier: the env-variable sugar (`${ name }` ≈ `${ env('name') }`). */
 .cm-sb-envref {
   color: #0184bc;
-  font-style: italic;
+}
+/* Hover preview tooltip: the rendered value of a `${ … }` formula. */
+.cm-tooltip:has(> .sb-preview) {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+.sb-preview {
+  max-width: 480px;
+  padding: var(--space-1) var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Authentication editor (API view Auth tab + Folder view Auth tab). */
+.auth-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 560px;
+}
+.auth-editor__pair {
+  display: grid;
+  grid-template-columns: minmax(0, 38fr) minmax(0, 62fr);
+  gap: var(--space-3);
+}
+.auth-editor__preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
 }
 .cm-host--dark .cm-sb-delim,
 .cm-host--dark .cm-sb-kw {
