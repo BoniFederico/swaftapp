@@ -277,15 +277,30 @@ export function DocumentView({
         )}
 
         <div className="doc__output">
-          <OutputView
-            result={result}
-            error={renderError}
-            busy={busy}
-            fileBaseName={template?.name ?? 'output'}
-            subtype={current.subtype}
-          />
+          <div className="doc__output-main">
+            <OutputView
+              result={result}
+              error={renderError}
+              busy={busy}
+              fileBaseName={template?.name ?? 'output'}
+              subtype={current.subtype}
+            />
+          </div>
           {result && result.actions.length > 0 && (
-            <ActionPanel client={client} templateId={templateId} actions={result.actions} />
+            <>
+              {/* A resizer between output and actions, mirroring the input/output one. The actions
+                  panel keeps a fixed (resizable) height and scrolls, rather than pushing the output. */}
+              <div
+                className="doc__asplit"
+                role="separator"
+                aria-orientation="horizontal"
+                aria-label={t('doc.resizeActions')}
+                onPointerDown={layout.onActionsResize}
+              />
+              <div className="doc__actions" style={{ height: layout.actionsHeight }}>
+                <ActionPanel client={client} templateId={templateId} actions={result.actions} />
+              </div>
+            </>
           )}
         </div>
 

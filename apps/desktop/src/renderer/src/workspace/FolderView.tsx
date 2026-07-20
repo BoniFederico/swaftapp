@@ -3,6 +3,7 @@ import type {
   FolderDetailDto,
   FolderProxyDto,
   HttpAuth,
+  RequestAction,
   TemplateType,
   WorkspaceTree,
 } from '@swaft/shared';
@@ -10,6 +11,7 @@ import { ApiClient, ApiError } from '../api-client/client';
 import { AuthEditor } from '../document/AuthEditor';
 import { KeyValueEditor } from '../document/KeyValueEditor';
 import { RenderPreview } from '../document/RenderPreview';
+import { RequestActionsEditor } from '../document/RequestActionsEditor';
 import { SeeboField } from '../editor/SeeboField';
 import { useI18n } from '../i18n/I18nProvider';
 import {
@@ -24,7 +26,7 @@ import {
 } from '../ui';
 import { notifyTreeChanged, subscribeTreeChanged } from './treeBus';
 
-type FolderTab = 'content' | 'headers' | 'auth' | 'proxy' | 'notes';
+type FolderTab = 'content' | 'headers' | 'auth' | 'actions' | 'proxy' | 'notes';
 
 /** Per-HTTP-method / per-subtype badge colors — mirrors the Working Tree rows. */
 const BADGE_COLORS: Record<string, string> = {
@@ -35,6 +37,8 @@ const BADGE_COLORS: Record<string, string> = {
   DELETE: '#dd3333',
   HEAD: '#0891b2',
   OPTIONS: '#6b7280',
+  capability: '#00897b',
+  action: '#e8590c',
 };
 const badgeColor = (v: string): string => BADGE_COLORS[v] ?? 'var(--text-muted)';
 
@@ -78,6 +82,11 @@ export function FolderView({
   const [auth, setAuth] = useState<HttpAuth>({ kind: 'inherit' });
   const [authDirty, setAuthDirty] = useState(false);
   const [inheritedAuth, setInheritedAuth] = useState<HttpAuth | null>(null);
+  // Folder actions: this folder's own, plus the read-only actions inherited from ancestor folders.
+  const [actions, setActions] = useState<RequestAction[]>([]);
+  const [actionsDirty, setActionsDirty] = useState(false);
+  const [inheritedActions, setInheritedActions] = useState<RequestAction[]>([]);
+  const [availableActions, setAvailableActions] = useState<string[]>([]);
   const [proto, setProto] = useState<'http' | 'https'>('http');
   const [hostname, setHostname] = useState('');
   const [port, setPort] = useState('');
@@ -86,17 +95,18 @@ export function FolderView({
   const [notesDirty, setNotesDirty] = useState(false);
   const [notesPreview, setNotesPreview] = useState(false);
   // Mirrors of the dirty flags, readable from the async reload without re-subscribing.
-  const dirtyRef = useRef({ headers: false, auth: false, proxy: false, notes: false });
+  const dirtyRef = useRef({ headers: false, auth: false, actions: false, proxy: false, notes: false });
   dirtyRef.current = {
     headers: headersDirty,
     auth: authDirty,
+    actions: actionsDirty,
     proxy: proxyDirty,
     notes: notesDirty,
   };
 
   useEffect(() => {
-    onDirtyChange?.(headersDirty || authDirty || proxyDirty || notesDirty);
-  }, [headersDirty, authDirty, proxyDirty, notesDirty, onDirtyChange]);
+    onDirtyChange?.(headersDirty || authDirty || actionsDirty || proxyDirty || notesDirty);
+  }, [headersDirty, authDirty, actionsDirty, proxyDirty, notesDirty, onDirtyChange]);
 
   // Load the folder + the tree (for the Content gallery), and stay in sync with outside mutations
   // (rename, moves, template create/delete) via the tree bus. Unsaved edits are never clobbered:
@@ -114,9 +124,14 @@ export function FolderView({
         setTree(tr);
         setGone(false);
         onTitleChange?.(f.name);
+        setAvailableActions(
+          tr.templates.filter((tpl) => tpl.type === 'action').map((tpl) => tpl.name),
+        );
         if (!dirtyRef.current.headers) setHeaders(f.headers);
         if (!dirtyRef.current.auth) setAuth(f.auth ?? { kind: 'inherit' });
         setInheritedAuth(f.inheritedAuth);
+        if (!dirtyRef.current.actions) setActions(f.actions);
+        setInheritedActions(f.inheritedActions);
         if (!dirtyRef.current.proxy) {
           setProto(f.proxy?.protocol ?? 'http');
           setHostname(f.proxy?.hostname ?? '');
@@ -151,12 +166,14 @@ export function FolderView({
     headers?: Record<string, string>;
     proxy?: FolderProxyDto | null;
     auth?: HttpAuth | null;
+    actions?: RequestAction[];
     notes?: string;
   }): Promise<boolean> {
     try {
       const { folder: f } = await client.call('folder.update', { id: folderId, ...patch });
       setFolder(f);
       setInheritedAuth(f.inheritedAuth);
+      setInheritedActions(f.inheritedActions);
       // Open API views may preview auth/policy inherited from this folder — let them refresh.
       notifyTreeChanged();
       return true;
@@ -176,6 +193,13 @@ export function FolderView({
   async function saveAuth() {
     if (await save({ auth: auth.kind === 'inherit' ? null : auth })) {
       setAuthDirty(false);
+      toast.show(t('toast.saved'), 'success');
+    }
+  }
+
+  async function saveActions() {
+    if (await save({ actions })) {
+      setActionsDirty(false);
       toast.show(t('toast.saved'), 'success');
     }
   }
@@ -208,6 +232,7 @@ export function FolderView({
   saveAllRef.current = () => {
     if (headersDirty) void saveHeaders();
     if (authDirty) void saveAuth();
+    if (actionsDirty) void saveActions();
     if (proxyDirty) void saveProxy();
     if (notesDirty) void saveNotes();
   };
@@ -237,6 +262,7 @@ export function FolderView({
     ['content', t('folder.tab.content')],
     ['headers', t('folder.tab.headers')],
     ['auth', t('folder.tab.auth')],
+    ['actions', t('folder.tab.actions')],
     ['proxy', t('folder.tab.proxy')],
     ['notes', t('folder.tab.notes')],
   ];
@@ -287,7 +313,14 @@ export function FolderView({
                   </button>
                 ))}
                 {templates.map((tpl) => {
-                  const badge = tpl.type === 'api' ? (tpl.method ?? 'GET') : tpl.subtype;
+                  // User code is always subtype "javascript"; show the kind so a capability and an
+                  // action are not identical (mirrors the Working Tree rows).
+                  const badge =
+                    tpl.type === 'api'
+                      ? (tpl.method ?? 'GET')
+                      : tpl.type === 'capability' || tpl.type === 'action'
+                        ? tpl.type
+                        : tpl.subtype;
                   return (
                     <button
                       key={tpl.id}
@@ -346,6 +379,28 @@ export function FolderView({
             />
             <div className="settings-form__actions">
               <Button variant="primary" disabled={!authDirty} onClick={() => void saveAuth()}>
+                {t('name.save')}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {tab === 'actions' && (
+          <div className="folder-form">
+            <p className="field-hint">{t('folder.actions.hint')}</p>
+            {/* The same editor as an API request's Actions tab, plus the read-only actions this folder
+                inherits from its ancestors. */}
+            <RequestActionsEditor
+              actions={actions}
+              available={availableActions}
+              onChange={(a) => {
+                setActions(a);
+                setActionsDirty(true);
+              }}
+              inherited={inheritedActions}
+            />
+            <div className="settings-form__actions">
+              <Button variant="primary" disabled={!actionsDirty} onClick={() => void saveActions()}>
                 {t('name.save')}
               </Button>
             </div>

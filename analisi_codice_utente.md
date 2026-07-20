@@ -4,8 +4,63 @@ Analisi di fattibilità e proposta di design per consentire all'utente di creare
 **Capability** e **Action** scritti in JavaScript, registrati su Seebo e utilizzabili nei document e
 nelle API request.
 
-Stato: proposta, non implementata. Riferimenti verificati sul codice al 2026-07-20 (schema v22,
-branch `feature/gui_refactor`, seebo 0.4.0).
+Riferimenti verificati sul codice al 2026-07-20 (schema v22, seebo 0.4.0).
+
+**Stato: Fasi A, B, C e D implementate** (branch `feature/user_custom_code`).
+
+- **Fase A** — capability read-only in sandbox: tipo di template `capability`, script host su
+  `utilityProcess` con timeout e kill, `swaft.env.get`, uso nei document e nei campi API, vista
+  dedicata con test-run.
+- **Fase B** — trust: il codice arrivato da un altro dispositivo non gira finché non viene approvato
+  leggendolo; le approvazioni stanno in `AppStore` (mai nel `.swaft`) e sono legate all'hash.
+- **Fase C** — action utente: tipo `action`, registrate come action type di Seebo (quindi usabili dai
+  document con conferma e receipt), `swaft.env.set` transazionale, e la sezione **Actions** della
+  request con trigger `pre`/`post`, patch esplicito della request e orchestrazione in `ApiRunService`.
+- **Fase D** — profilo developer: `executionMode` finalmente onorato, allow-list di moduli di sola
+  computazione, e `swaft.http` che passa da `HttpService` (blocked domains, enforced headers,
+  redirect re-validation valgono anche per il codice utente).
+
+**Non implementato della §5.5**: la scrittura su file confinata a `fileExportRoot`. Richiede
+l'impostazione (oggi inesistente) più la canonicalizzazione dei path di FB-1/FB-2, ed è preferibile
+non farne una mezza versione.
+
+Scostamenti dalla proposta, decisi durante l'implementazione:
+
+- **Nomi duplicati: non si registra nessuna delle due capability** (§5.1 diceva solo "diagnostica").
+  Registrarne una sola avrebbe legato le formule a quella caricata per prima, cioè a un ordinamento
+  arbitrario; il principio "ambiguità = mai risoluzione silenziosa" impone di fermarsi.
+- **Gli argomenti arrivano appiattiti sul requirement**, non sotto `args`: verificato sul motore, e
+  `capabilityArgs` normalizza entrambe le forme.
+- **Una chiamata deve sempre portare un `id`** (`cfg({ id: 'x' })`): è il motore a pretenderlo, non
+  Swaft.
+- **Il `type` dichiarato si legge staticamente** con una regex su `export const type = '…'`, perché
+  importare il modulo per conoscerlo avrebbe significato eseguire codice utente durante `validate`.
+- **`executionMode` non è ancora onorato**: il profilo è sempre `sandbox`. Onorarlo prima della Fase D
+  concederebbe permessi che nulla è pronto a controllare.
+- **Il trust è per template, non per workspace** (§7 diceva "per workspace"): la granularità del
+  workspace obbligherebbe a riapprovare tutto quando ne cambia una sola, e soprattutto un'unica
+  approvazione coprirebbe anche le capability aggiunte dopo. Un banner elenca comunque tutte quelle
+  in attesa, quindi la revisione resta un'operazione sola.
+- **Nessun pulsante "approva tutto"**, deliberatamente: l'approvazione sta nella vista della
+  capability, sotto il codice, così approvare implica averlo davanti.
+- **`swaft.log(...)` aggiunto** (non era nella proposta): senza, il codice utente non aveva alcun modo
+  di dire qualcosa su di sé e si debuggava restituendo valori. I log tornano col risultato, anche
+  quando l'esecuzione fallisce — è lì che servono di più.
+- **Capability e action condividono un unico namespace**: `cfg` deve significare una cosa sola, che a
+  risolverlo sia una formula o un piano di action.
+- **Una pre-action che fallisce blocca l'invio** (come da risposta 5), e restituisce il patch della
+  request in modo **esplicito** (`{ patch: { … } }`) invece di mutarla: così la modifica resta
+  ispezionabile e compare nella tab "Request render".
+- **Nel profilo developer i moduli ammessi sono solo di computazione** (`node:crypto`, `node:url`,
+  `node:util`, …). Filesystem, rete e processi restano fuori: quegli effetti devono passare dai
+  bridge `swaft`, dove la policy del workspace viene applicata. Un import che lo scanner non riesce
+  ad attribuire a uno specificatore letterale viene rifiutato, perché un'allow-list vale solo se è
+  esaustiva.
+- **Il codice scritto su questa installazione è fidato d'ufficio** (stamp `updated_by_device_id`),
+  altrimenti ogni salvataggio chiederebbe conferma e l'utente imparerebbe a cliccare senza leggere.
+  Conseguenza da conoscere: **modificare codice ricevuto lo adotta**, perché la riga passa a portare
+  il nostro stamp. È voluto — si modifica dalla vista, col sorgente a schermo — ma significa che
+  anche la paternità, non solo l'approvazione, rende eseguibile il codice.
 
 ---
 

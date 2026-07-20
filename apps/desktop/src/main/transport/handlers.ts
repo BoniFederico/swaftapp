@@ -9,10 +9,12 @@ import {
   type ErrorEnvelope,
   type FolderCreateRequest,
   type FolderMoveRequest,
-  type FolderProxyDto,
   type FolderUpdateRequest,
   type TemplateMoveRequest,
   type HttpSendRequest,
+  type UserCodeRefRequest,
+  type UserCodeRunRequest,
+  type ApiActionsClearRequest,
   type IdRequest,
   type InputStateGetRequest,
   type InputStateSetRequest,
@@ -51,11 +53,12 @@ import {
   getActionService,
   getApiHistoryService,
   getApiRequestService,
+  getApiRunService,
+  getUserCodeRegistry,
   getAppStore,
   getBatcherService,
   getChangelogService,
   getEnvironmentService,
-  getHttpService,
   getOrganizationService,
   getPlatformDialogs,
   getReleaseService,
@@ -162,6 +165,7 @@ export const handlers: Record<OpName, Handler> = {
           headers: r.headers,
           proxy: r.proxy,
           auth: r.auth,
+          actions: r.actions,
           notes: r.notes,
         }),
       };
@@ -298,30 +302,39 @@ export const handlers: Record<OpName, Handler> = {
 
   // API templates + HTTP client (M8) + formula resolution (API-view automation, Fase 1)
   'http.send': (p) =>
-    svc(async () => {
+    svc(() => {
       const r = p as HttpSendRequest;
-      // Resolve `${ … }` formulas in the request fields against the supplied inputs (when bound to a
-      // template); without a template there is no project context, so the request is sent verbatim.
-      let request = r.request;
-      let rendered = false;
-      let proxy: FolderProxyDto | null = null;
-      if (r.templateId) {
-        const resolved = await getApiRequestService().resolve(r.templateId, r.request, r.values ?? {});
-        request = resolved.request;
-        rendered = resolved.rendered;
-        proxy = resolved.proxy;
-      }
-      const response = await getHttpService().send(request, { proxy });
-      if (r.templateId) {
-        await getApiHistoryService().record(r.templateId, request.method, request.url, response.status);
-      }
-      // Surface the rendered request so the UI can show a "Request render" overview when formulas ran.
-      return { response, rendered, request: rendered ? request : undefined };
+      // Resolve formulas, run the attached pre/post actions around the call, record the history.
+      return getApiRunService().send(r.templateId, r.request, r.values ?? {});
     }),
   'api.analyze': (p) =>
     svc(async () => {
       const r = p as ApiAnalyzeRequest;
       return getApiRequestService().analyze(r.templateId, r.request, r.values ?? {});
+    }),
+  'usercode.describe': (p) =>
+    svc(async () => ({
+      capability: await getUserCodeRegistry().describe((p as UserCodeRefRequest).templateId),
+    })),
+  'usercode.run': (p) =>
+    svc(async () => {
+      const r = p as UserCodeRunRequest;
+      return getUserCodeRegistry().runOnce(r.templateId, r.args ?? {}, { dryRun: r.dryRun });
+    }),
+  'usercode.untrusted': () =>
+    svc(async () => ({ items: await getUserCodeRegistry().untrusted() })),
+  'usercode.trust': (p) =>
+    svc(async () => ({
+      capability: await getUserCodeRegistry().trust((p as UserCodeRefRequest).templateId),
+    })),
+  'api.actions.list': (p) =>
+    svc(async () => ({
+      outcomes: await getApiHistoryService().listActions((p as TemplateRefRequest).templateId),
+    })),
+  'api.actions.clear': (p) =>
+    svc(async () => {
+      const r = p as ApiActionsClearRequest;
+      return { outcomes: await getApiHistoryService().clearActions(r.templateId, r.trigger) };
     }),
   'api.history.list': (p) =>
     svc(async () => ({ items: await getApiHistoryService().list((p as TemplateRefRequest).templateId) })),

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   DEFAULT_SUBTYPE,
+  isCodeTemplateType,
   type TemplateCreateRequest,
   type TemplateDto,
   type TemplateType,
@@ -27,6 +28,67 @@ interface TemplateRow {
 /** Starter source for a fresh document template — immediately renderable, shows one widget. */
 const STARTER_SOURCE = "Hello ${ textbox({ id: 'name', label: 'Your name', type: string() }) }!";
 
+/**
+ * Starter source for a fresh `capability` template: a runnable example that shows the whole contract
+ * — the declared value type, the `{ args, swaft }` parameter, and a JSON-only return.
+ */
+const STARTER_CAPABILITY_SOURCE = `// This capability is called from a formula by this template's name, e.g.
+//   \${ myCapability({ id: 'cfg' }).baseUrl }
+// The call's own fields arrive in \`args\` (\`id\` included); whatever you return must be JSON.
+
+/** Seebo type of the resolved value: object (default), string, int, float, bool, array, … */
+export const type = 'object';
+
+export default async function ({ args, swaft }) {
+  return {
+    baseUrl: swaft.env.get('BASE_URL') ?? 'https://api.example.com',
+    calledWith: args.id,
+    at: swaft.now(),
+  };
+}
+`;
+
+/**
+ * Starter source for a fresh `action` template: an effect, with the two things that make it one —
+ * the environment write and the value that becomes its receipt.
+ */
+const STARTER_ACTION_SOURCE = `// An action is an effect. Declare it in a document with
+//   \${ action({ id: 'save', type: 'myAction', input: { … }, confirm: true }) }
+// or attach it to an API request as a pre/post trigger. It never runs without confirmation.
+
+export default async function ({ input, api, swaft }) {
+  swaft.log('running with', input);
+
+  // Environment writes are applied only if this action succeeds.
+  // swaft.env.set('TOKEN', api?.response?.json?.token);
+
+  return { ok: true, seen: Object.keys(input ?? {}) }; // becomes the receipt
+}
+`;
+
+/** The source a new template starts from, by kind. */
+function starterSource(type: TemplateType): string {
+  if (type === 'capability') return STARTER_CAPABILITY_SOURCE;
+  if (type === 'action') return STARTER_ACTION_SOURCE;
+  return STARTER_SOURCE;
+}
+
+/**
+ * A capability/action is called by its template name, so the name must be a JS identifier. Checked
+ * on create and rename: letting an unusable name through would only surface later, as code that
+ * silently never registers.
+ */
+function assertUsableCodeName(type: string, name: string): void {
+  if (!isCodeTemplateType(type)) return;
+  if (!/^[A-Za-z_$][\w$]*$/.test(name.trim())) {
+    throw new AppError(
+      'INVALID_CODE_NAME',
+      'validation',
+      'A capability or action is called by its name, so it must be a valid identifier: letters, digits and _ , not starting with a digit.',
+    );
+  }
+}
+
 /** Best-effort HTTP method for an `api` template (its source is the JSON request model). */
 function extractHttpMethod(source: string): string | null {
   try {
@@ -50,7 +112,9 @@ export class TemplateService extends RepoBase {
     super(ws);
   }
 
-  createTemplate(req: TemplateCreateRequest): Promise<WorkspaceTree> {
+  // `async` so a rejected validation is a rejected promise: throwing synchronously from a method
+  // that advertises a Promise escapes `await`-based error handling at the call site.
+  async createTemplate(req: TemplateCreateRequest): Promise<WorkspaceTree> {
     // A template lives either in a folder (`folderId`) or at the project root (`projectId`).
     if (!req.folderId && !req.projectId) {
       throw new AppError(
@@ -60,6 +124,7 @@ export class TemplateService extends RepoBase {
       );
     }
     const type = req.type ?? 'document';
+    assertUsableCodeName(type, req.name);
     return this.commitTree(() =>
       this.insertEntity('templates', {
         id: randomUUID(),
@@ -69,12 +134,14 @@ export class TemplateService extends RepoBase {
         type,
         // Always assign a subtype so the template groups correctly in the tree's Type view.
         subtype: req.subtype ?? DEFAULT_SUBTYPE[type as TemplateType],
-        source: req.source ?? STARTER_SOURCE,
+        source: req.source ?? starterSource(type as TemplateType),
       }),
     );
   }
 
-  renameTemplate(id: string, name: string): Promise<WorkspaceTree> {
+  async renameTemplate(id: string, name: string): Promise<WorkspaceTree> {
+    const tpl = await this.requireTemplate(id);
+    assertUsableCodeName(tpl.type, name);
     return this.commitTree(() => this.updateEntity('templates', id, { name: name.trim() }));
   }
 
@@ -126,6 +193,22 @@ export class TemplateService extends RepoBase {
       return row?.project_id ?? null;
     }
     return null;
+  }
+
+  /**
+   * Live templates of one kind, ordered by name, with the device that last wrote each. Used by the
+   * user-capability registry: the device stamp tells code written on this install apart from code
+   * that arrived with someone else's workspace.
+   */
+  async listByType(
+    type: TemplateType,
+  ): Promise<{ id: string; name: string; updated_by_device_id: string | null }[]> {
+    return this.adapter.all<{ id: string; name: string; updated_by_device_id: string | null }>(
+      `SELECT id, name, updated_by_device_id FROM templates
+        WHERE type = ? AND deleted_at IS NULL
+        ORDER BY name COLLATE NOCASE`,
+      [type],
+    );
   }
 
   async updateSource(

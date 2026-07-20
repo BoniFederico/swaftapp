@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import type { TemplateType } from '@swaft/shared';
+import type { TemplateType, UntrustedCapabilityDto } from '@swaft/shared';
 import type { ApiClient } from '../api-client/client';
 import { useAuth } from '../auth/AuthProvider';
 import { BatchDocumentView } from '../batcher/BatchDocumentView';
 import { BatcherPanel } from '../batcher/BatcherPanel';
 import { ApiView } from '../document/ApiView';
+import { CodeView } from '../document/CodeView';
 import { DocumentView } from '../document/DocumentView';
 import { TemplateEditorModal } from '../document/TemplateEditorModal';
 import { EnvironmentPicker } from '../environment/EnvironmentPicker';
@@ -13,6 +14,9 @@ import { useI18n } from '../i18n/I18nProvider';
 import { SettingsModal, type SettingsSectionId } from '../settings/SettingsModal';
 import {
   ApiIcon,
+  Button,
+  CapabilityIcon,
+  ConfirmDialog,
   ChevronRightIcon,
   CloseIcon,
   DocumentIcon,
@@ -24,6 +28,7 @@ import {
   SettingsIcon,
 } from '../ui';
 import { FolderView } from './FolderView';
+import { subscribeTreeChanged } from './treeBus';
 import { WorkingTree } from './WorkingTree';
 import { useWorkspace } from './WorkspaceProvider';
 
@@ -41,6 +46,7 @@ type Tab = { id: string; type: TabKind; name: string; preview: boolean; dirty: b
 function TabIcon({ type }: { type: TabKind }) {
   const className = `ws-tab__type ws-tab__type--${type}`;
   if (type === 'api') return <ApiIcon className={className} />;
+  if (type === 'capability' || type === 'action') return <CapabilityIcon className={className} />;
   if (type === 'folder') return <FolderIcon className={className} />;
   return <DocumentIcon className={className} />;
 }
@@ -63,6 +69,9 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
   const [sideCollapsed, setSideCollapsed] = useState(false);
   const [sideWidth, setSideWidth] = useState(280);
   const [batcherEnabled, setBatcherEnabled] = useState(true);
+  const [untrusted, setUntrusted] = useState<UntrustedCapabilityDto[]>([]);
+  // The tab awaiting a "discard unsaved changes?" confirmation, or null.
+  const [closing, setClosing] = useState<string | null>(null);
   const resize = useRef<{ startX: number; startW: number } | null>(null);
 
   // The Batcher panel visibility is a workspace restriction; re-read it when Settings close.
@@ -76,6 +85,18 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
       })
       .catch(() => undefined);
   }, [client, settingsOpen]);
+
+  // Capabilities awaiting approval. Re-checked whenever the tree changes, so approving one (or
+  // editing code, which revokes its approval) updates the banner without a reload.
+  useEffect(() => {
+    const refresh = () =>
+      void client
+        .call('usercode.untrusted')
+        .then((res) => setUntrusted(res.items))
+        .catch(() => setUntrusted([]));
+    refresh();
+    return subscribeTreeChanged(refresh);
+  }, [client]);
 
   // Open an item in a tab. A single click opens (or reuses) a *preview* tab — at most one exists,
   // and the next single-clicked item replaces it. An already-open item is just re-activated.
@@ -101,7 +122,7 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
   function pinTab(id: string) {
     setTabs((prev) => prev.map((tb) => (tb.id === id ? { ...tb, preview: false } : tb)));
   }
-  function closeTab(id: string) {
+  function removeTab(id: string) {
     setTabs((prev) => {
       const idx = prev.findIndex((tb) => tb.id === id);
       const next = prev.filter((tb) => tb.id !== id);
@@ -109,15 +130,33 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
       return next;
     });
   }
+
+  /**
+   * Close a tab. A tab with unsaved edits first asks for confirmation, so the changes are not lost
+   * silently. `force` skips the prompt — used when the underlying template/folder was just deleted,
+   * where its edits are moot and already confirmed.
+   */
+  function closeTab(id: string, force = false) {
+    const tab = tabs.find((tb) => tb.id === id);
+    if (!force && tab?.dirty) setClosing(id);
+    else removeTab(id);
+  }
   function setTabFlag(id: string, patch: Partial<Tab>) {
-    setTabs((prev) =>
-      prev.map((tb) => {
+    setTabs((prev) => {
+      let changed = false;
+      const next = prev.map((tb) => {
         if (tb.id !== id) return tb;
         const merged = { ...tb, ...patch };
-        // Avoid needless re-renders when nothing actually changed.
-        return tb.dirty === merged.dirty && tb.name === merged.name ? tb : merged;
-      }),
-    );
+        if (tb.dirty === merged.dirty && tb.name === merged.name) return tb;
+        changed = true;
+        return merged;
+      });
+      // Returning `prev` unchanged is what actually stops the re-render: `map` always builds a new
+      // array, so a no-op patch would still count as new state. Views report their dirty flag from an
+      // effect, and each re-render here hands them freshly-created callbacks — which would re-trigger
+      // that effect and loop.
+      return changed ? next : prev;
+    });
   }
 
   function openSettings(section: SettingsSectionId) {
@@ -212,7 +251,7 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
               if (mode === 'pin') pinTab(id); // preference: double-click consolidates the tab
             }}
             onOpenFolder={(folder) => openFolder(folder.id, folder.name)}
-            onCloseTemplate={closeTab}
+            onCloseTemplate={(id) => closeTab(id, true)}
             onCollapse={() => setSideCollapsed(true)}
           />
           {batcherEnabled && <BatcherPanel onLoadInputs={setBatch} />}
@@ -224,6 +263,19 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
           />
         </div>
         <main className="ws-main">
+          {/* Code that arrived with this workspace is inert until reviewed; this is how it is found. */}
+          {untrusted.length > 0 && (
+            <div className="ws-trust" role="status">
+              <span>{t('trust.banner', { n: untrusted.length })}</span>
+              <span className="ws-trust__names">{untrusted.map((c) => c.name).join(', ')}</span>
+              <Button
+                variant="ghost"
+                onClick={() => openTab(untrusted[0]!.templateId, 'capability', untrusted[0]!.name)}
+              >
+                {t('trust.review')}
+              </Button>
+            </div>
+          )}
           {tabs.length > 0 && (
             <div className="ws-tabs" role="tablist" aria-label={t('ws.openTabs')}>
               {tabs.map((tb) => {
@@ -290,6 +342,8 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
                     />
                   ) : tb.type === 'api' ? (
                     <ApiView {...shared} />
+                  ) : tb.type === 'capability' || tb.type === 'action' ? (
+                    <CodeView {...shared} kind={tb.type} />
                   ) : (
                     <DocumentView {...shared} />
                   )}
@@ -314,6 +368,19 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
         onClose={() => setSettingsOpen(false)}
         client={client}
         initialSection={settingsSection}
+      />
+
+      <ConfirmDialog
+        open={closing !== null}
+        title={t('tab.closeUnsaved.title')}
+        message={t('tab.closeUnsaved.message')}
+        confirmLabel={t('tab.closeUnsaved.confirm')}
+        cancelLabel={t('name.cancel')}
+        onConfirm={() => {
+          if (closing) removeTab(closing);
+          setClosing(null);
+        }}
+        onClose={() => setClosing(null)}
       />
     </div>
     </EnvironmentProvider>

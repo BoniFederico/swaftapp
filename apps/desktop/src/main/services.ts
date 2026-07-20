@@ -2,8 +2,10 @@ import type { ActionService } from './actions/ActionService';
 import type { AppStore } from './app-store/AppStore';
 import type { HttpService } from './http/HttpService';
 import type { SecretService } from './secret/SecretService';
+import type { UserCodeRegistry } from './usercode/UserCodeRegistry';
 import type { ApiHistoryService } from './workspace/ApiHistoryService';
 import type { ApiRequestService } from './workspace/ApiRequestService';
+import type { ApiRunService } from './workspace/ApiRunService';
 import type { BatcherService } from './workspace/BatcherService';
 import type { ChangelogService } from './workspace/ChangelogService';
 import type { EnvironmentService } from './workspace/EnvironmentService';
@@ -149,6 +151,26 @@ export function setApiRequestService(value: ApiRequestService | null): void {
 export function getApiRequestService(): ApiRequestService {
   if (!apiRequest) throw new Error('ApiRequestService not initialized');
   return apiRequest;
+}
+
+let apiRun: ApiRunService | null = null;
+
+export function setApiRunService(value: ApiRunService | null): void {
+  apiRun = value;
+}
+export function getApiRunService(): ApiRunService {
+  if (!apiRun) throw new Error('ApiRunService not initialized');
+  return apiRun;
+}
+
+let userCapabilities: UserCodeRegistry | null = null;
+
+export function setUserCodeRegistry(value: UserCodeRegistry | null): void {
+  userCapabilities = value;
+}
+export function getUserCodeRegistry(): UserCodeRegistry {
+  if (!userCapabilities) throw new Error('UserCodeRegistry not initialized');
+  return userCapabilities;
 }
 
 let batcher: BatcherService | null = null;

@@ -13,6 +13,14 @@ interface AppStoreData {
   deviceId: string;
   preferences: Preferences;
   recent: RecentWorkspace[];
+  /**
+   * Approved user code, per workspace path → template id → the exact source hash approved.
+   *
+   * This lives here, and **not** in the `.swaft`, on purpose: a workspace file is the thing that
+   * gets shared, so trust stored inside it would travel with the code it is meant to vouch for and
+   * sign itself. Keying on the hash means an edit revokes the approval automatically.
+   */
+  trustedCode: Record<string, Record<string, string>>;
 }
 
 const RECENT_LIMIT = 10;
@@ -32,7 +40,7 @@ export class AppStore {
   }
 
   private load(): AppStoreData {
-    const empty: AppStoreData = { deviceId: '', preferences: {}, recent: [] };
+    const empty: AppStoreData = { deviceId: '', preferences: {}, recent: [], trustedCode: {} };
     if (!existsSync(this.filePath)) return empty;
     try {
       const parsed = JSON.parse(readFileSync(this.filePath, 'utf8')) as Partial<AppStoreData>;
@@ -40,6 +48,8 @@ export class AppStore {
         deviceId: parsed.deviceId ?? '',
         preferences: parsed.preferences ?? {},
         recent: Array.isArray(parsed.recent) ? parsed.recent : [],
+        trustedCode:
+          parsed.trustedCode && typeof parsed.trustedCode === 'object' ? parsed.trustedCode : {},
       };
     } catch {
       return empty;
@@ -67,6 +77,18 @@ export class AppStore {
 
   getRecent(): RecentWorkspace[] {
     return this.data.recent.map((r) => ({ ...r }));
+  }
+
+  /** Has this exact source been approved to run, for this workspace and template? */
+  isCodeTrusted(workspacePath: string, templateId: string, sourceHash: string): boolean {
+    return this.data.trustedCode[workspacePath]?.[templateId] === sourceHash;
+  }
+
+  /** Approve one template's current source. Editing it changes the hash and revokes this. */
+  trustCode(workspacePath: string, templateId: string, sourceHash: string): void {
+    const forWorkspace = (this.data.trustedCode[workspacePath] ??= {});
+    forWorkspace[templateId] = sourceHash;
+    this.persist();
   }
 
   /** Upsert a workspace into the recent list (most-recent first, capped). */

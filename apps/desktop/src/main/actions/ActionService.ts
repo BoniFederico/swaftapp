@@ -62,12 +62,22 @@ export class ActionService extends RepoBase {
       actor: { username: this.deps.currentUsername() ?? 'unknown' },
       // Sandbox forbids prod; the per-type gate is the set of registered action handlers.
       policy: sandbox ? { allowedEnvironments: ['test', 'preprod'] } : {},
-      redact: () => '[redacted]',
+      // Input may carry rendered secrets (a formula reading env), so it stays redacted; output is
+      // what the author's own action chose to return, and the user asked to see it — pass it through.
+      redact: (value, ctx) => (ctx.field === 'output' ? value : '[redacted]'),
     });
 
-    for (const receipt of result.receipts) await this.persist(templateId, receipt);
+    // Enrich the receipts for the run that just happened with their detail, keyed by the id we
+    // persist under. Only these carry output/logs; the historical list stays a redacted audit trail.
+    const detail = new Map<string, Pick<ReceiptDto, 'output' | 'logs' | 'envWrites'>>();
+    for (const receipt of result.receipts) {
+      const id = randomUUID();
+      await this.persist(id, templateId, receipt);
+      detail.set(id, detailOf(receipt.output));
+    }
     await this.ws.save();
-    return this.list(templateId);
+    const all = await this.list(templateId);
+    return all.map((dto) => (detail.has(dto.id) ? { ...dto, ...detail.get(dto.id) } : dto));
   }
 
   async list(templateId: string): Promise<ReceiptDto[]> {
@@ -87,8 +97,9 @@ export class ActionService extends RepoBase {
     }));
   }
 
-  private async persist(templateId: string, r: SeeboActionReceipt): Promise<void> {
-    // Redacted: store status + an error code/message only — never the action input/output values.
+  private async persist(id: string, templateId: string, r: SeeboActionReceipt): Promise<void> {
+    // Redacted at rest: store status + an error code/message only — never the action's values. The
+    // fresh detail is returned in the response instead, so a reopened document shows the audit line.
     const message = (
       r.error?.code ??
       r.error?.message ??
@@ -97,7 +108,24 @@ export class ActionService extends RepoBase {
     await this.adapter.run(
       `INSERT INTO receipts (id, template_id, action_id, action_type, status, message, environment, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [randomUUID(), templateId, r.actionId, r.type, r.status, message, r.environment, this.ws.nowIso()],
+      [id, templateId, r.actionId, r.type, r.status, message, r.environment, this.ws.nowIso()],
     );
   }
+}
+
+/**
+ * Split a receipt's output into the shape the UI shows. A user action's handler returns
+ * `{ value, logs, envWrites }` (see UserCodeRegistry.runAction), so unwrap it; anything else (e.g.
+ * the built-in `log` action) is surfaced as the output itself.
+ */
+function detailOf(output: unknown): Pick<ReceiptDto, 'output' | 'logs' | 'envWrites'> {
+  if (output && typeof output === 'object' && 'value' in output && 'logs' in output) {
+    const o = output as { value: unknown; logs?: unknown; envWrites?: unknown };
+    return {
+      output: o.value,
+      logs: Array.isArray(o.logs) ? (o.logs as string[]) : [],
+      envWrites: Array.isArray(o.envWrites) ? (o.envWrites as string[]) : [],
+    };
+  }
+  return { output: output ?? null, logs: [], envWrites: [] };
 }

@@ -5,6 +5,7 @@ import type {
   FolderProxyDto,
   HttpAuth,
   ProjectDto,
+  RequestAction,
   TagDto,
   TemplateSummary,
   TemplateType,
@@ -56,6 +57,7 @@ interface FolderMetaRow extends FolderRow {
   headers: string;
   proxy: string | null;
   auth: string | null;
+  actions: string;
   notes: string;
 }
 
@@ -105,6 +107,30 @@ function parseFolderProxy(raw: string | null): FolderProxyDto | null {
     /* fall through */
   }
   return null;
+}
+
+/** Tolerant JSON parse of a folder's `actions` column (an array of request actions). */
+function parseFolderActions(raw: string | null): RequestAction[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const out: RequestAction[] = [];
+    for (const item of parsed) {
+      if (!item || typeof item !== 'object') continue;
+      const a = item as Partial<RequestAction>;
+      if (typeof a.ref !== 'string' || (a.trigger !== 'pre' && a.trigger !== 'post')) continue;
+      const action: RequestAction = { ref: a.ref, trigger: a.trigger };
+      if (a.input && typeof a.input === 'object' && !Array.isArray(a.input)) {
+        action.input = a.input as Record<string, string>;
+      }
+      if (typeof a.enabled === 'boolean') action.enabled = a.enabled;
+      out.push(action);
+    }
+    return out;
+  } catch {
+    return [];
+  }
 }
 interface TagRow {
   id: string;
@@ -244,7 +270,7 @@ export class OrganizationService extends RepoBase {
   /** A folder with its propagated HTTP policy + notes (the Folder view). */
   async getFolder(id: string): Promise<FolderDetailDto> {
     const row = await this.adapter.get<FolderMetaRow>(
-      `SELECT id, name, project_id, parent_folder_id, headers, proxy, auth, notes
+      `SELECT id, name, project_id, parent_folder_id, headers, proxy, auth, actions, notes
        FROM folders WHERE id = ? AND deleted_at IS NULL`,
       [id],
     );
@@ -258,17 +284,20 @@ export class OrganizationService extends RepoBase {
       proxy: parseFolderProxy(row.proxy),
       auth: parseFolderAuth(row.auth),
       inheritedAuth: await this.effectiveChainAuth(row.parent_folder_id),
+      actions: parseFolderActions(row.actions),
+      inheritedActions: await this.chainActions(row.parent_folder_id),
       notes: row.notes ?? '',
     };
   }
 
-  /** Partially update a folder's propagated headers/proxy/auth/notes. */
+  /** Partially update a folder's propagated headers/proxy/auth/actions/notes. */
   async updateFolderMeta(
     id: string,
     patch: {
       headers?: Record<string, string>;
       proxy?: FolderProxyDto | null;
       auth?: HttpAuth | null;
+      actions?: RequestAction[];
       notes?: string;
     },
   ): Promise<FolderDetailDto> {
@@ -281,6 +310,7 @@ export class OrganizationService extends RepoBase {
       set.auth =
         patch.auth && patch.auth.kind !== 'inherit' ? JSON.stringify(patch.auth) : null;
     }
+    if (patch.actions !== undefined) set.actions = JSON.stringify(patch.actions);
     if (patch.notes !== undefined) set.notes = patch.notes;
     if (Object.keys(set).length > 0) {
       await this.updateEntity('folders', id, set);
@@ -311,14 +341,39 @@ export class OrganizationService extends RepoBase {
   }
 
   /**
+   * The actions a node inherits from its folder chain, starting at `startId` and walking up, in
+   * apply order: root-most folder first, nearest last. Unlike headers/auth these are not overridden
+   * but *concatenated* — every ancestor's actions run around the call.
+   */
+  private async chainActions(startId: string | null): Promise<RequestAction[]> {
+    const chain: RequestAction[][] = [];
+    const seen = new Set<string>();
+    let cursor = startId;
+    while (cursor && !seen.has(cursor)) {
+      seen.add(cursor);
+      const row = await this.adapter.get<{ parent_folder_id: string | null; actions: string }>(
+        `SELECT parent_folder_id, actions FROM folders WHERE id = ? AND deleted_at IS NULL`,
+        [cursor],
+      );
+      if (!row) break;
+      chain.push(parseFolderActions(row.actions));
+      cursor = row.parent_folder_id;
+    }
+    // `chain` is leaf→root; reverse so the outermost folder's actions come first.
+    return chain.reverse().flat();
+  }
+
+  /**
    * The HTTP policy a template inherits from its folder chain: headers merged root→leaf (a nearer
-   * folder overrides an ancestor's same-name header), the nearest configured proxy and the nearest
-   * folder-defined auth. Root-level templates (no folder) inherit nothing.
+   * folder overrides an ancestor's same-name header), the nearest configured proxy, the nearest
+   * folder-defined auth, and the actions of every folder concatenated root→leaf. Root-level
+   * templates (no folder) inherit nothing.
    */
   async folderPolicyOf(templateId: string): Promise<{
     headers: Record<string, string>;
     proxy: FolderProxyDto | null;
     auth: HttpAuth | null;
+    actions: RequestAction[];
   }> {
     const tpl = await this.adapter.get<{ folder_id: string }>(
       `SELECT folder_id FROM templates WHERE id = ? AND deleted_at IS NULL`,
@@ -330,6 +385,7 @@ export class OrganizationService extends RepoBase {
       headers: string;
       proxy: string | null;
       auth: string | null;
+      actions: string;
     }[] = [];
     const seen = new Set<string>();
     let cursor = tpl?.folder_id || null;
@@ -340,8 +396,9 @@ export class OrganizationService extends RepoBase {
         headers: string;
         proxy: string | null;
         auth: string | null;
+        actions: string;
       }>(
-        `SELECT parent_folder_id, headers, proxy, auth FROM folders WHERE id = ? AND deleted_at IS NULL`,
+        `SELECT parent_folder_id, headers, proxy, auth, actions FROM folders WHERE id = ? AND deleted_at IS NULL`,
         [cursor],
       );
       if (!row) break;
@@ -351,13 +408,15 @@ export class OrganizationService extends RepoBase {
     const headers: Record<string, string> = {};
     let proxy: FolderProxyDto | null = null;
     let auth: HttpAuth | null = null;
+    const actions: RequestAction[] = [];
     for (const row of chain.reverse()) {
       Object.assign(headers, parseFolderHeaders(row.headers));
       proxy = parseFolderProxy(row.proxy) ?? proxy;
       const rowAuth = parseFolderAuth(row.auth);
       if (rowAuth && rowAuth.kind !== 'inherit') auth = rowAuth;
+      actions.push(...parseFolderActions(row.actions));
     }
-    return { headers, proxy, auth };
+    return { headers, proxy, auth, actions };
   }
 
   /** Move a folder under a new parent (or to the project root when `parentFolderId` is null). */

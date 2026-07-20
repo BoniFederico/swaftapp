@@ -12,6 +12,7 @@ import { ApiClient, ApiError } from '../api-client/client';
 import { useI18n } from '../i18n/I18nProvider';
 import {
   ApiIcon,
+  CapabilityIcon,
   Button,
   ChevronIcon,
   ChevronLeftIcon,
@@ -39,6 +40,8 @@ const BADGE_COLORS: Record<string, string> = {
   markdown: '#4078c0',
   css: '#2965f1',
   javascript: '#c9a227',
+  capability: '#00897b',
+  action: '#e8590c',
   java: '#b07219',
   json: '#3f9d3f',
   yaml: '#cb171e',
@@ -79,14 +82,22 @@ function TypeIcon({ type }: { type: TemplateType }) {
   switch (type) {
     case 'api':
       return <ApiIcon className={className} />;
+    case 'capability':
+    case 'action':
+      return <CapabilityIcon className={className} />;
     default:
       return <DocumentIcon className={className} />;
   }
 }
 
-/** The small badge shown on a template row: the HTTP method for APIs, else the subtype. */
+/**
+ * The small badge shown on a template row: the HTTP method for APIs, the kind for user code (whose
+ * subtype is always "javascript", which would make a capability and an action look identical), else
+ * the subtype.
+ */
 function rowBadge(tpl: TemplateSummary): string | null {
   if (tpl.type === 'api') return tpl.method ?? 'GET';
+  if (tpl.type === 'capability' || tpl.type === 'action') return tpl.type;
   return tpl.subtype;
 }
 
@@ -229,6 +240,18 @@ export function WorkingTree({
       return next;
     } finally {
       setBusy(false);
+    }
+  }
+
+  /**
+   * Run a tree mutation whose callers `void` the promise, surfacing any failure as a toast instead
+   * of a silent no-op — e.g. creating an action with a name that is not a valid identifier.
+   */
+  async function guarded(fn: () => Promise<void>): Promise<void> {
+    try {
+      await fn();
+    } catch (e) {
+      toast.show(e instanceof ApiError ? e.swaft.message : String(e), 'error');
     }
   }
 
@@ -555,7 +578,7 @@ export function WorkingTree({
   }
 
   function renderTypeView() {
-    const types: TemplateType[] = ['document', 'api'];
+    const types: TemplateType[] = ['document', 'api', 'capability', 'action'];
     return types.map((type) => {
       const ofType = projectTemplates.filter((tpl) => tpl.type === type);
       if (ofType.length === 0) return null;
@@ -711,7 +734,7 @@ export function WorkingTree({
       <CreateProjectDialog
         open={projectOpen}
         busy={busy}
-        onSubmit={(name, description) => void createProject(name, description)}
+        onSubmit={(name, description) => void guarded(() => createProject(name, description))}
         onClose={() => setProjectOpen(false)}
       />
 
@@ -721,14 +744,14 @@ export function WorkingTree({
         submitLabel={dialog?.mode.startsWith('rename') ? t('name.save') : t('name.create')}
         initialValue={dialog && 'value' in dialog ? dialog.value : ''}
         busy={busy}
-        onSubmit={submitDialog}
+        onSubmit={(name) => void guarded(() => submitDialog(name))}
         onClose={() => setDialog(null)}
       />
 
       <CreateTemplateDialog
         open={createTpl !== null}
         busy={busy}
-        onSubmit={(name, type) => void createTemplate(name, type)}
+        onSubmit={(name, type) => void guarded(() => createTemplate(name, type))}
         onClose={() => setCreateTpl(null)}
       />
 

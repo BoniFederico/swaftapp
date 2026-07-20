@@ -272,4 +272,50 @@ describe('OrganizationService', () => {
     await org.updateFolderMeta(childId, { auth: { kind: 'inherit' } });
     expect((await org.getFolder(childId)).auth).toBeNull();
   });
+
+  it('stores folder actions and inherits the whole chain (concatenated root→leaf)', async () => {
+    const { ws, org, templates } = await setup();
+    let tree = await org.createProject({ name: 'P' });
+    const projectId = tree.projects[0]!.id;
+    tree = await org.createFolder({ name: 'Parent', projectId });
+    const parentId = tree.folders[0]!.id;
+    tree = await org.createFolder({ name: 'Child', projectId, parentFolderId: parentId });
+    const childId = tree.folders.find((f) => f.name === 'Child')!.id;
+
+    // Defaults: no actions, nothing inherited.
+    const fresh = await org.getFolder(parentId);
+    expect(fresh.actions).toEqual([]);
+    expect(fresh.inheritedActions).toEqual([]);
+
+    await org.updateFolderMeta(parentId, {
+      actions: [{ ref: 'signAll', trigger: 'pre', input: { key: 'k' }, enabled: true }],
+    });
+    await org.updateFolderMeta(childId, { actions: [{ ref: 'logResponse', trigger: 'post' }] });
+
+    // The child sees the parent's action as inherited (read-only) and its own separately.
+    const child = await org.getFolder(childId);
+    expect(child.inheritedActions).toEqual([
+      { ref: 'signAll', trigger: 'pre', input: { key: 'k' }, enabled: true },
+    ]);
+    expect(child.actions).toEqual([{ ref: 'logResponse', trigger: 'post' }]);
+
+    // A template in the child folder inherits both, concatenated outermost-first.
+    const created = await templates.createTemplate({
+      folderId: childId,
+      name: 'Call',
+      source: 'x',
+      type: 'api',
+      subtype: 'json',
+    });
+    const templateId = created.templates.find((t) => t.name === 'Call')!.id;
+    const policy = await org.folderPolicyOf(templateId);
+    expect(policy.actions.map((a) => a.ref)).toEqual(['signAll', 'logResponse']);
+
+    // Persists across reopen.
+    await ws.close();
+    await ws.open({ path: 'mem://o.swaft' });
+    expect((await org.getFolder(parentId)).actions).toEqual([
+      { ref: 'signAll', trigger: 'pre', input: { key: 'k' }, enabled: true },
+    ]);
+  });
 });

@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
 import { app, dialog, session, type BrowserWindow } from 'electron';
-import type { FolderProxyDto } from '@swaft/shared';
+import { DATA_CAPABILITIES, httpRequestSchema, type FolderProxyDto } from '@swaft/shared';
 import { ActionService } from './actions/ActionService';
 import { AppStore } from './app-store/AppStore';
 import { CryptoService } from './crypto/CryptoService';
@@ -9,11 +9,16 @@ import { SafeStorageCipher } from './auth/cipher';
 import { getAuthService } from './auth/registry';
 import { HttpService } from './http/HttpService';
 import { SecretService } from './secret/SecretService';
-import { SeeboHost } from './seebo/SeeboHost';
+import { BUILTIN_ACTION_HANDLERS } from './seebo/action-handlers';
+import { SeeboHost, WIDGET_CAPABILITIES } from './seebo/SeeboHost';
+import { UserCodeRegistry } from './usercode/UserCodeRegistry';
+import { UtilityProcessRuntime } from './usercode/UtilityProcessRuntime';
+import { getHttpService } from './services';
 import {
   setActionService,
   setApiHistoryService,
   setApiRequestService,
+  setApiRunService,
   setAppStore,
   setBatcherService,
   setChangelogService,
@@ -26,12 +31,14 @@ import {
   setSecretService,
   setSettingsService,
   setTemplateService,
+  setUserCodeRegistry,
   setWorkspaceService,
   type PlatformDialogs,
 } from './services';
 import { createDbBackend } from './storage/worker-db-backend';
 import { ApiHistoryService } from './workspace/ApiHistoryService';
 import { ApiRequestService } from './workspace/ApiRequestService';
+import { ApiRunService } from './workspace/ApiRunService';
 import { BatcherService } from './workspace/BatcherService';
 import { ChangelogService } from './workspace/ChangelogService';
 import { EnvironmentService } from './workspace/EnvironmentService';
@@ -42,6 +49,17 @@ import { SettingsService } from './workspace/SettingsService';
 import { TemplateDataProvider } from './workspace/TemplateDataProvider';
 import { TemplateService } from './workspace/TemplateService';
 import { WorkspaceService } from './workspace/WorkspaceService';
+
+const BUILTIN_ACTION_TYPES = Object.keys(BUILTIN_ACTION_HANDLERS);
+
+/** Parse a response body for user code, without making a bad body an error. */
+function safeJson(body: string): unknown {
+  try {
+    return JSON.parse(body);
+  } catch {
+    return undefined;
+  }
+}
 
 const SWAFT_FILTER = { name: 'Swaft Workspace', extensions: ['swaft'] };
 
@@ -119,7 +137,29 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
   const templateData = new TemplateDataProvider(workspaceService, releases);
   // The `env` data capability reads the active environment's variables (no user input needed).
   const environments = new EnvironmentService(workspaceService, currentUsername);
-  const host = new SeeboHost({}, { templateData, envData: environments });
+  // User-authored capabilities run in a dedicated process (never in main): losing that isolation
+  // must fail loudly, so there is no in-process fallback here.
+  // The isolated process has no network of its own: its HTTP lands here, in the same service that
+  // applies the workspace's blocked domains, enforced headers and redirect re-validation.
+  const scriptRuntime = new UtilityProcessRuntime(join(__dirname, 'scriptHost.js'), {
+    http: async (payload) => {
+      const parsed = httpRequestSchema.parse(payload);
+      const response = await getHttpService().send(parsed);
+      return { ...response, json: safeJson(response.body) };
+    },
+  });
+  const userCapabilities = new UserCodeRegistry(workspaceService, {
+    templates,
+    releases,
+    environments,
+    settings,
+    runtime: scriptRuntime,
+    reservedNames: [...WIDGET_CAPABILITIES, ...DATA_CAPABILITIES, ...BUILTIN_ACTION_TYPES],
+    // Approvals live in the app-level store, never in the `.swaft` — a workspace must not vouch
+    // for the code it carries.
+    trust: appStore,
+  });
+  const host = new SeeboHost({}, { templateData, envData: environments, userCapabilities });
   const render = new RenderService(workspaceService, templates, host, releases);
   const apiRequest = new ApiRequestService(templates, host, organization);
   const batcher = new BatcherService(templates, releases, host);
@@ -166,6 +206,10 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
   setHttpService(httpService);
   setApiHistoryService(apiHistory);
   setApiRequestService(apiRequest);
+  setApiRunService(
+    new ApiRunService({ requests: apiRequest, http: httpService, history: apiHistory, code: userCapabilities }),
+  );
+  setUserCodeRegistry(userCapabilities);
   setBatcherService(batcher);
   setActionService(actionService);
   setEnvironmentService(environments);

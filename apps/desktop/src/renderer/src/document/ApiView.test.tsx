@@ -63,6 +63,8 @@ function makeTransport(sent: unknown[]): Transport {
           return Promise.resolve(ok({ template: { ...template(), source } }));
         case 'api.history.list':
           return Promise.resolve(ok({ items: [] }));
+        case 'api.actions.list':
+          return Promise.resolve(ok({ outcomes: [] }));
         case 'secret.list':
           return Promise.resolve(ok({ refs: [] }));
         case 'inputState.get':
@@ -82,7 +84,9 @@ function makeTransport(sent: unknown[]): Transport {
           const rendered = url.includes('${');
           // Mimic the backend: a formula with no matching input value is rejected.
           if (rendered && !p.values?.seg) {
-            return Promise.resolve(makeError('INPUT_REQUIRED', 'validation', 'Fill the required inputs.'));
+            return Promise.resolve(
+              makeError('INPUT_REQUIRED', 'validation', 'Fill the required inputs.', { pending: [SEG] }),
+            );
           }
           const resolvedUrl = rendered
             ? url.replace(/\$\{[^}]*\}/g, String(p.values?.seg ?? ''))
@@ -139,17 +143,27 @@ describe('ApiView — formula inputs (Fase 1)', () => {
     expect(last.values).toEqual({ seg: 'users' });
   });
 
-  it('shows no inputs for a plain (formula-free) request', async () => {
+  it('hides the Input tab entirely for a plain (formula-free) request', async () => {
     const sent: unknown[] = [];
     const { container } = renderApiView(sent);
     await screen.findByRole('button', { name: 'Send' });
     typeInto(container, 'URL', 'https://example.com/x');
 
-    fireEvent.click(screen.getByRole('tab', { name: /Input/ }));
-    expect(await screen.findByText(/Use \$\{ … \} formulas|Nessun input/i)).toBeInTheDocument();
+    // No formulas → nothing to resolve → the Input tab is not offered at all.
+    await waitFor(() => expect(screen.queryByRole('tab', { name: /Input/ })).toBeNull());
   });
 
-  it('offers a "Request render" tab showing the rendered request after a formula send', async () => {
+  it('shows the Input tab only once a formula needs a widget', async () => {
+    const sent: unknown[] = [];
+    const { container } = renderApiView(sent);
+    await screen.findByRole('button', { name: 'Send' });
+
+    expect(screen.queryByRole('tab', { name: /Input/ })).toBeNull();
+    typeInto(container, 'URL', "https://example.com/${ textbox({ id:'seg', type:string() }) }");
+    await screen.findByRole('tab', { name: /Input/ });
+  });
+
+  it('offers a "Request" tab showing the rendered request after a formula send', async () => {
     const sent: unknown[] = [];
     const { container } = renderApiView(sent);
     await screen.findByRole('button', { name: 'Send' });
@@ -160,7 +174,7 @@ describe('ApiView — formula inputs (Fase 1)', () => {
     fireEvent.change(seg, { target: { value: 'users' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
 
-    const tab = await screen.findByRole('tab', { name: /Request render/ });
+    const tab = await screen.findByRole('tab', { name: /^Request$/ });
     fireEvent.click(tab);
     const overview = await screen.findByTestId('api-request-render');
     expect(overview.textContent).toContain('https://example.com/users');
@@ -224,6 +238,8 @@ describe('ApiView — bindings', () => {
             return Promise.resolve(ok({ template: { ...template(), source: state.source } }));
           case 'api.history.list':
             return Promise.resolve(ok({ items: [] }));
+          case 'api.actions.list':
+            return Promise.resolve(ok({ outcomes: [] }));
           case 'secret.list':
             return Promise.resolve(ok({ refs: [] }));
           case 'inputState.get':

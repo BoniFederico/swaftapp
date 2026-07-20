@@ -169,6 +169,23 @@ export const folderProxySchema = z
   })
   .strict();
 
+/**
+ * An action attached to a request (or a folder, propagated to the calls beneath it), run around the
+ * HTTP call. `pre` may return a patch merged into the request (signing it, refreshing a token);
+ * `post` sees the response (extracting values, asserting). Declaring `action(...)` inside a *field*
+ * stays forbidden — effects live here, not in the formulas (analisi_codice_utente.md §5.6).
+ */
+export const requestActionSchema = z
+  .object({
+    /** Name of the `action` template to run. */
+    ref: z.string().trim().min(1).max(120),
+    trigger: z.enum(['pre', 'post']),
+    /** Values passed as `input`; may carry Seebo `${ … }` formulas. */
+    input: z.record(z.string().max(4096)).optional(),
+    enabled: z.boolean().optional(),
+  })
+  .strict();
+
 /** Partial update of a folder's propagated HTTP policy + notes (the Folder view tabs). */
 export const folderUpdateRequestSchema = z
   .object({
@@ -178,6 +195,8 @@ export const folderUpdateRequestSchema = z
     proxy: folderProxySchema.nullable().optional(),
     /** Auth propagated to every API call in the folder (null = inherit from the parent chain). */
     auth: httpAuthSchema.nullable().optional(),
+    /** Actions propagated to every API call in the folder (concatenated down the parent chain). */
+    actions: z.array(requestActionSchema).max(16).optional(),
     /** Markdown documentation for the folder. */
     notes: z.string().max(200_000).optional(),
   })
@@ -202,8 +221,9 @@ export const settingsUpdateSchema = z
 // --- M6: templates + Seebo rendering ----------------------------------------
 
 // Template kinds. `render` was folded into `document` (its subtypes — mermaid/swagger/echarts — are
-// now document subtypes that render in the output).
-export const templateTypeSchema = z.enum(['document', 'api']);
+// now document subtypes that render in the output). `capability` and `action` are user-authored
+// JavaScript: the first resolves data for a formula, the second is an effect (analisi_codice_utente.md).
+export const templateTypeSchema = z.enum(['document', 'api', 'capability', 'action']);
 
 export const templateCreateRequestSchema = z
   .object({
@@ -278,6 +298,8 @@ export const httpRequestSchema = z
     /** Free-text Markdown documentation for the request (the "Information" tab). */
     info: z.string().max(100_000).optional(),
     auth: httpAuthSchema.optional(),
+    /** Actions run before/after the call (see {@link requestActionSchema}). */
+    actions: z.array(requestActionSchema).max(16).optional(),
   })
   .strict();
 export const httpSendRequestSchema = z
@@ -299,6 +321,25 @@ export const apiAnalyzeRequestSchema = z
   .strict();
 export const secretSetRequestSchema = z
   .object({ ref: z.string().trim().min(1).max(64), value: z.string().max(4096) })
+  .strict();
+
+// --- User code: capabilities authored in JavaScript -------------------------
+
+/** Inspect a `capability` template: the name it registers under and whether it is usable. */
+export const userCodeRefRequestSchema = z.object({ templateId: z.string().min(1) }).strict();
+/** Clear a request's persisted action history — optionally just one trigger. */
+export const apiActionsClearRequestSchema = z
+  .object({ templateId: z.string().min(1), trigger: z.enum(['pre', 'post']).optional() })
+  .strict();
+/** Run a `capability` template once from its editor, with the arguments a formula would pass. */
+export const userCodeRunRequestSchema = z
+  .object({
+    templateId: z.string().min(1),
+    /** A capability call's descriptor fields, or an action's `input`. */
+    args: z.record(z.unknown()).optional(),
+    /** Actions: ask what it *would* do instead of doing it. */
+    dryRun: z.boolean().optional(),
+  })
   .strict();
 
 // --- M10: batcher + actions -------------------------------------------------
@@ -418,8 +459,14 @@ export const OP_NAMES = [
   'render.renderSource',
   'http.send',
   'api.analyze',
+  'usercode.describe',
+  'usercode.run',
+  'usercode.untrusted',
+  'usercode.trust',
   'api.history.list',
   'api.history.clear',
+  'api.actions.list',
+  'api.actions.clear',
   'api.history.delete',
   'secret.set',
   'secret.list',
@@ -498,8 +545,14 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'render.renderSource': renderSourceRequestSchema,
   'http.send': httpSendRequestSchema,
   'api.analyze': apiAnalyzeRequestSchema,
+  'usercode.describe': userCodeRefRequestSchema,
+  'usercode.run': userCodeRunRequestSchema,
+  'usercode.untrusted': emptyRequestSchema,
+  'usercode.trust': userCodeRefRequestSchema,
   'api.history.list': templateRefRequestSchema,
   'api.history.clear': templateRefRequestSchema,
+  'api.actions.list': templateRefRequestSchema,
+  'api.actions.clear': apiActionsClearRequestSchema,
   'api.history.delete': idRequestSchema,
   'secret.set': secretSetRequestSchema,
   'secret.list': emptyRequestSchema,
@@ -656,6 +709,10 @@ export interface FolderDetailDto extends FolderDto {
   auth: HttpAuth | null;
   /** The concrete auth this folder would inherit from its ancestors (for `inherit` previews). */
   inheritedAuth: HttpAuth | null;
+  /** Actions propagated to every API call in the folder (this folder's own, applied after inherited). */
+  actions: RequestAction[];
+  /** Actions this folder inherits from its ancestors, in apply order (root-most first), read-only. */
+  inheritedActions: RequestAction[];
   /** Markdown documentation for the folder. */
   notes: string;
 }
@@ -801,11 +858,15 @@ export const SUBTYPES: Record<TemplateType, string[]> = {
     'yaml',
   ],
   api: ['json'],
+  capability: ['javascript'],
+  action: ['javascript'],
 };
 /** Default subtype assigned to a new template (and used to group subtype-less ones in the tree). */
 export const DEFAULT_SUBTYPE: Record<TemplateType, string> = {
   document: 'text',
   api: 'json',
+  capability: 'javascript',
+  action: 'javascript',
 };
 /** Subtypes the Document output shows rendered (not as code). */
 export const RENDERABLE_SUBTYPES = new Set(['html', 'markdown', 'eml', 'mermaid', 'swagger', 'echarts']);
@@ -839,6 +900,7 @@ export type HttpMethod = z.infer<typeof httpMethodSchema>;
 export type HttpAuth = z.infer<typeof httpAuthSchema>;
 export type HttpBodyType = z.infer<typeof bodyTypeSchema>;
 export type HttpRequestModel = z.infer<typeof httpRequestSchema>;
+export type RequestAction = z.infer<typeof requestActionSchema>;
 
 export interface HttpResponseDto {
   status: number;
@@ -871,6 +933,12 @@ export interface ReceiptDto {
   message: string;
   environment: string;
   createdAt: string;
+  /** Value the action returned, on the run that just happened (not persisted). Input stays redacted. */
+  output?: unknown;
+  /** Lines the action logged with `swaft.log(...)`. */
+  logs?: string[];
+  /** Names of the environment variables the action wrote (values are never echoed). */
+  envWrites?: string[];
 }
 
 export interface WorkspaceSettingsDto {
@@ -982,6 +1050,9 @@ export interface DiagnosticsResponse {
 
 export type HttpSendRequest = z.infer<typeof httpSendRequestSchema>;
 export type ApiAnalyzeRequest = z.infer<typeof apiAnalyzeRequestSchema>;
+export type UserCodeRefRequest = z.infer<typeof userCodeRefRequestSchema>;
+export type ApiActionsClearRequest = z.infer<typeof apiActionsClearRequestSchema>;
+export type UserCodeRunRequest = z.infer<typeof userCodeRunRequestSchema>;
 export type SecretSetRequest = z.infer<typeof secretSetRequestSchema>;
 
 export interface HttpSendResponse {
@@ -990,6 +1061,8 @@ export interface HttpSendResponse {
   rendered?: boolean;
   /** The concrete (rendered) request that was actually sent — present only when `rendered`. */
   request?: HttpRequestModel;
+  /** What the request's attached actions did, in run order (pre first, then post). */
+  actions?: RequestActionOutcomeDto[];
 }
 /** Input widgets a request's formula fields need, plus any static diagnostics (live editor feedback). */
 export interface ApiAnalyzeResponse {
@@ -998,6 +1071,71 @@ export interface ApiAnalyzeResponse {
 }
 export interface ApiHistoryResponse {
   items: ApiHistoryItem[];
+}
+
+/** What one request-attached action did, surfaced in the response panel after a send. */
+export interface RequestActionOutcomeDto {
+  ref: string;
+  trigger: 'pre' | 'post';
+  status: 'succeeded' | 'failed' | 'skipped';
+  /** Whatever the action returned (its receipt payload), or null. */
+  output: unknown;
+  /** Lines it logged. */
+  logs: string[];
+  /** Names of the environment variables it wrote. */
+  envWrites: string[];
+  /** Present when it failed. */
+  error: string | null;
+  /** When the run happened (persisted history entries carry it; the fresh send response may omit it). */
+  createdAt?: string;
+}
+/** The persisted pre/post action history for a request template. */
+export interface RequestActionsResponse {
+  outcomes: RequestActionOutcomeDto[];
+}
+
+/** Template kinds whose source is user-authored JavaScript rather than a Seebo template. */
+export const CODE_TEMPLATE_TYPES: TemplateType[] = ['capability', 'action'];
+export function isCodeTemplateType(type: string): boolean {
+  return (CODE_TEMPLATE_TYPES as string[]).includes(type);
+}
+
+/** Why a `capability` template is (not) registered — shown in its editor header. */
+export type UserCapabilityStatus =
+  | 'ok'
+  | 'invalid-name'
+  | 'duplicate-name'
+  | 'reserved-name'
+  /** Written on another install and not approved here yet — the code will not run. */
+  | 'untrusted';
+export interface UserCapabilityDto {
+  /** The name formulas call it by: the template name (see analisi_codice_utente.md §5.1). */
+  name: string;
+  /** Seebo base type the resolved value is validated against (`export const type`). */
+  type: string;
+  status: UserCapabilityStatus;
+  /** Human-readable reason when `status !== 'ok'`. */
+  message: string | null;
+}
+export interface UserCapabilityResponse {
+  capability: UserCapabilityDto;
+}
+/** A capability awaiting approval, for the "review before it runs" banner. */
+export interface UntrustedCapabilityDto {
+  templateId: string;
+  name: string;
+}
+export interface UntrustedCapabilitiesResponse {
+  items: UntrustedCapabilityDto[];
+}
+/** One test run from the capability/action editor. */
+export interface UserCodeRunResponse {
+  value: unknown;
+  durationMs: number;
+  /** Lines the code emitted with `swaft.log(...)`. */
+  logs: string[];
+  /** Names of the environment variables an action wrote (values are never echoed back). */
+  envWrites: string[];
 }
 export interface SecretsResponse {
   refs: string[];
@@ -1081,8 +1219,14 @@ export interface OpContracts {
   'render.renderSource': { request: RenderSourceRequest; response: RenderResponse };
   'http.send': { request: HttpSendRequest; response: HttpSendResponse };
   'api.analyze': { request: ApiAnalyzeRequest; response: ApiAnalyzeResponse };
+  'usercode.describe': { request: UserCodeRefRequest; response: UserCapabilityResponse };
+  'usercode.run': { request: UserCodeRunRequest; response: UserCodeRunResponse };
+  'usercode.untrusted': { request: EmptyRequest; response: UntrustedCapabilitiesResponse };
+  'usercode.trust': { request: UserCodeRefRequest; response: UserCapabilityResponse };
   'api.history.list': { request: TemplateRefRequest; response: ApiHistoryResponse };
   'api.history.clear': { request: TemplateRefRequest; response: ApiHistoryResponse };
+  'api.actions.list': { request: TemplateRefRequest; response: RequestActionsResponse };
+  'api.actions.clear': { request: ApiActionsClearRequest; response: RequestActionsResponse };
   'api.history.delete': { request: IdRequest; response: OkResponse };
   'secret.set': { request: SecretSetRequest; response: SecretsResponse };
   'secret.list': { request: EmptyRequest; response: SecretsResponse };
