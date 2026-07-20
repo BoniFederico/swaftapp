@@ -11,8 +11,8 @@ export interface MenuItem {
 
 /**
  * Three-dot action menu. The popup is portalled to `document.body` and `position: fixed` at the
- * trigger's coordinates, so it anchors next to the button and escapes the Working Tree's virtualized
- * (transformed) rows + scroll clipping. Closes on outside-click / Escape.
+ * trigger's coordinates, so it anchors next to the button and escapes the Working Tree's scroll
+ * clipping (and any transformed ancestor). Closes on outside-click / Escape.
  */
 export function Menu({ label, items }: { label: string; items: MenuItem[] }) {
   const { open, setOpen, pos, triggerRef, popRef, toggle } = usePopover<HTMLUListElement>();

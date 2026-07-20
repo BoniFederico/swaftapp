@@ -408,6 +408,19 @@ export function WorkingTree({
     ];
   }
 
+  /** Keyboard equivalence for clickable rows: Enter/Space activate like a click (WCAG 2.1.1). */
+  function rowKeyProps(activate: () => void) {
+    return {
+      tabIndex: 0,
+      onKeyDown: (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          activate();
+        }
+      },
+    };
+  }
+
   function renderTemplate(tpl: TemplateSummary, depth: number, draggable = false) {
     const badge = badgeMode === 'subtype' ? rowBadge(tpl) : null;
     const tags =
@@ -431,6 +444,7 @@ export function WorkingTree({
         }}
         onClick={() => onOpenTemplate(tpl.id, 'view', tpl.type, tpl.name)}
         onDoubleClick={() => void openOnDoubleClick(tpl)}
+        {...rowKeyProps(() => onOpenTemplate(tpl.id, 'view', tpl.type, tpl.name))}
       >
         <span className="tree-item__spacer" />
         <TypeIcon type={tpl.type} />
@@ -510,6 +524,10 @@ export function WorkingTree({
             toggle(folder.id);
             onOpenFolder?.(folder);
           }}
+          {...rowKeyProps(() => {
+            toggle(folder.id);
+            onOpenFolder?.(folder);
+          })}
         >
           {hasChildren ? (
             <span className="tree-item__twisty" aria-hidden="true">
@@ -538,7 +556,11 @@ export function WorkingTree({
     const isOpen = sectionOpen(key);
     return (
       <div key={key}>
-        <div className="tree-item tree-section" onClick={() => toggleSection(key)}>
+        <div
+          className="tree-item tree-section"
+          onClick={() => toggleSection(key)}
+          {...rowKeyProps(() => toggleSection(key))}
+        >
           <span className="tree-item__twisty" aria-hidden="true">
             <ChevronIcon className={`tree-twisty${isOpen ? ' tree-twisty--open' : ''}`} />
           </span>
@@ -594,7 +616,11 @@ export function WorkingTree({
       const isOpen = sectionOpen(key);
       return (
         <div key={key}>
-          <div className="tree-item tree-section" onClick={() => toggleSection(key)}>
+          <div
+            className="tree-item tree-section"
+            onClick={() => toggleSection(key)}
+            {...rowKeyProps(() => toggleSection(key))}
+          >
             <span className="tree-item__twisty" aria-hidden="true">
               <ChevronIcon className={`tree-twisty${isOpen ? ' tree-twisty--open' : ''}`} />
             </span>
@@ -614,6 +640,7 @@ export function WorkingTree({
                       className="tree-item tree-folder"
                       style={{ paddingLeft: 20 }}
                       onClick={() => toggleSection(subKey)}
+                      {...rowKeyProps(() => toggleSection(subKey))}
                     >
                       <span className="tree-item__twisty" aria-hidden="true">
                         <ChevronIcon className={`tree-twisty${subOpen ? ' tree-twisty--open' : ''}`} />

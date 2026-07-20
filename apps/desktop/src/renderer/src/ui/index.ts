@@ -37,6 +37,7 @@ export { TextField } from './TextField';
 export { Select, type SelectOption } from './Select';
 export { Switch } from './Switch';
 export { Dialog } from './Dialog';
+export { useFocusTrap } from './useFocusTrap';
 export { ToastProvider, useToast, type ToastKind } from './Toast';
 export { Table, type Column } from './Table';
 export { EmptyState, LoadingState, ErrorState } from './states';

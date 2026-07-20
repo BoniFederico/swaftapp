@@ -25,6 +25,7 @@ import {
   IconButton,
   SaveIcon,
   Select,
+  useFocusTrap,
   useToast,
 } from '../ui';
 import { notifyTreeChanged, subscribeTreeChanged } from '../workspace/treeBus';
@@ -880,8 +881,17 @@ function HistoryView({
 function HistoryDetail({ item, onClose }: { item: ApiHistoryItem; onClose: () => void }) {
   const { t } = useI18n();
   const [tab, setTab] = useState<'request' | 'response'>('request');
+  const overlayRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(overlayRef);
   return (
-    <div className="editor-overlay" role="dialog" aria-modal="true" aria-label={t('api.history')}>
+    <div
+      ref={overlayRef}
+      className="editor-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('api.history')}
+      tabIndex={-1}
+    >
       <div className="editor-modal api-detail">
         <header className="editor-modal__bar">
           <span className="output-modal__title">{t('api.history')}</span>

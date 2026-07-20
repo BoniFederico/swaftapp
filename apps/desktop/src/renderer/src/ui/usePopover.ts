@@ -3,8 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 /**
  * Shared popover state: open/close, viewport-anchored position from the trigger, and
  * outside-click / Escape dismissal. The popup itself must be rendered in a portal (to `document.body`)
- * so `position: fixed` is viewport-relative — otherwise a transformed ancestor (e.g. a virtualized
- * row) becomes its containing block and the coordinates are wrong.
+ * so `position: fixed` is viewport-relative — otherwise a transformed ancestor becomes its
+ * containing block and the coordinates are wrong.
  */
 export function usePopover<E extends HTMLElement>(width = 200) {
   const [open, setOpen] = useState(false);
