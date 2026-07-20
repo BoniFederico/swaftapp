@@ -202,8 +202,9 @@ export const settingsUpdateSchema = z
 // --- M6: templates + Seebo rendering ----------------------------------------
 
 // Template kinds. `render` was folded into `document` (its subtypes — mermaid/swagger/echarts — are
-// now document subtypes that render in the output).
-export const templateTypeSchema = z.enum(['document', 'api']);
+// now document subtypes that render in the output). `capability` is user-authored JavaScript that
+// registers a Seebo data capability (see analisi_codice_utente.md).
+export const templateTypeSchema = z.enum(['document', 'api', 'capability']);
 
 export const templateCreateRequestSchema = z
   .object({
@@ -299,6 +300,19 @@ export const apiAnalyzeRequestSchema = z
   .strict();
 export const secretSetRequestSchema = z
   .object({ ref: z.string().trim().min(1).max(64), value: z.string().max(4096) })
+  .strict();
+
+// --- User code: capabilities authored in JavaScript -------------------------
+
+/** Inspect a `capability` template: the name it registers under and whether it is usable. */
+export const userCodeRefRequestSchema = z.object({ templateId: z.string().min(1) }).strict();
+/** Run a `capability` template once from its editor, with the arguments a formula would pass. */
+export const userCodeRunRequestSchema = z
+  .object({
+    templateId: z.string().min(1),
+    /** The capability call's descriptor fields (`id` plus whatever the author reads). */
+    args: z.record(z.unknown()).optional(),
+  })
   .strict();
 
 // --- M10: batcher + actions -------------------------------------------------
@@ -418,6 +432,8 @@ export const OP_NAMES = [
   'render.renderSource',
   'http.send',
   'api.analyze',
+  'usercode.describe',
+  'usercode.run',
   'api.history.list',
   'api.history.clear',
   'api.history.delete',
@@ -498,6 +514,8 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'render.renderSource': renderSourceRequestSchema,
   'http.send': httpSendRequestSchema,
   'api.analyze': apiAnalyzeRequestSchema,
+  'usercode.describe': userCodeRefRequestSchema,
+  'usercode.run': userCodeRunRequestSchema,
   'api.history.list': templateRefRequestSchema,
   'api.history.clear': templateRefRequestSchema,
   'api.history.delete': idRequestSchema,
@@ -801,11 +819,13 @@ export const SUBTYPES: Record<TemplateType, string[]> = {
     'yaml',
   ],
   api: ['json'],
+  capability: ['javascript'],
 };
 /** Default subtype assigned to a new template (and used to group subtype-less ones in the tree). */
 export const DEFAULT_SUBTYPE: Record<TemplateType, string> = {
   document: 'text',
   api: 'json',
+  capability: 'javascript',
 };
 /** Subtypes the Document output shows rendered (not as code). */
 export const RENDERABLE_SUBTYPES = new Set(['html', 'markdown', 'eml', 'mermaid', 'swagger', 'echarts']);
@@ -982,6 +1002,8 @@ export interface DiagnosticsResponse {
 
 export type HttpSendRequest = z.infer<typeof httpSendRequestSchema>;
 export type ApiAnalyzeRequest = z.infer<typeof apiAnalyzeRequestSchema>;
+export type UserCodeRefRequest = z.infer<typeof userCodeRefRequestSchema>;
+export type UserCodeRunRequest = z.infer<typeof userCodeRunRequestSchema>;
 export type SecretSetRequest = z.infer<typeof secretSetRequestSchema>;
 
 export interface HttpSendResponse {
@@ -998,6 +1020,26 @@ export interface ApiAnalyzeResponse {
 }
 export interface ApiHistoryResponse {
   items: ApiHistoryItem[];
+}
+
+/** Why a `capability` template is (not) registered — shown in its editor header. */
+export type UserCapabilityStatus = 'ok' | 'invalid-name' | 'duplicate-name' | 'reserved-name';
+export interface UserCapabilityDto {
+  /** The name formulas call it by: the template name (see analisi_codice_utente.md §5.1). */
+  name: string;
+  /** Seebo base type the resolved value is validated against (`export const type`). */
+  type: string;
+  status: UserCapabilityStatus;
+  /** Human-readable reason when `status !== 'ok'`. */
+  message: string | null;
+}
+export interface UserCapabilityResponse {
+  capability: UserCapabilityDto;
+}
+/** One test run from the capability editor. */
+export interface UserCodeRunResponse {
+  value: unknown;
+  durationMs: number;
 }
 export interface SecretsResponse {
   refs: string[];
@@ -1081,6 +1123,8 @@ export interface OpContracts {
   'render.renderSource': { request: RenderSourceRequest; response: RenderResponse };
   'http.send': { request: HttpSendRequest; response: HttpSendResponse };
   'api.analyze': { request: ApiAnalyzeRequest; response: ApiAnalyzeResponse };
+  'usercode.describe': { request: UserCodeRefRequest; response: UserCapabilityResponse };
+  'usercode.run': { request: UserCodeRunRequest; response: UserCodeRunResponse };
   'api.history.list': { request: TemplateRefRequest; response: ApiHistoryResponse };
   'api.history.clear': { request: TemplateRefRequest; response: ApiHistoryResponse };
   'api.history.delete': { request: IdRequest; response: OkResponse };

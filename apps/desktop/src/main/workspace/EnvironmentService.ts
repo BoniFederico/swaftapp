@@ -130,6 +130,22 @@ export class EnvironmentService extends RepoBase implements EnvDataProvider {
   // --- `env(...)` data capability -------------------------------------------
 
   /**
+   * Every variable of the active environment, or `{}` when none is selected. Handed to user-authored
+   * capabilities so `swaft.env.get(...)` can stay synchronous inside the isolated script host: the
+   * alternative — a round trip per lookup — would cost far more and grants no less power, since that
+   * code may read any variable either way.
+   */
+  async snapshot(): Promise<Record<string, string>> {
+    const activeId = await this.getSelection();
+    if (!activeId) return {};
+    const row = await this.adapter.get<EnvironmentRow>(
+      `SELECT vars FROM environments WHERE id = ? AND deleted_at IS NULL`,
+      [activeId],
+    );
+    return row ? parseVars(row.vars) : {};
+  }
+
+  /**
    * Resolve `env('KEY')` to the active environment's value for `key`. Runs during the Seebo drive
    * loop (no user prompt). Throws when there is no active environment or the key is absent, so the
    * render surfaces a clear diagnostic instead of a silent empty string.

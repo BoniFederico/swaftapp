@@ -10,6 +10,7 @@ export {
   FolderIcon,
   DocumentIcon,
   ApiIcon,
+  CapabilityIcon,
   ChevronIcon,
   HistoryIcon,
   CodeIcon,

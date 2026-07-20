@@ -43,6 +43,7 @@ interface OpenState {
  */
 export class WorkspaceService {
   private state: OpenState | null = null;
+  private rev = 0;
 
   constructor(private readonly deps: WorkspaceServiceDeps) {}
 
@@ -131,6 +132,7 @@ export class WorkspaceService {
         encrypted,
       };
       this.state = { summary, adapter, password: encrypted ? req.password : undefined };
+      this.rev++;
       this.deps.onOpened?.(summary);
       return summary;
     } catch (err) {
@@ -144,6 +146,7 @@ export class WorkspaceService {
   /** Re-serialize (and re-encrypt) the open workspace to disk. Used by editing flows (M5+). */
   async save(): Promise<void> {
     if (!this.state) return;
+    this.rev++;
     const image = await this.state.adapter.serialize();
     const out = this.state.password
       ? await this.deps.crypto.encrypt(image, this.state.password)
@@ -152,7 +155,18 @@ export class WorkspaceService {
   }
 
   async close(): Promise<void> {
+    this.rev++;
     await this.closeCurrent();
+  }
+
+  /**
+   * Monotonic counter bumped whenever the workspace content may have changed (every `save`, plus
+   * open/close). Read-through caches over workspace data — e.g. the user-capability registry, which
+   * would otherwise re-read and re-hash every capability template on each render — use it as a cheap
+   * invalidation signal instead of subscribing to per-table events.
+   */
+  get revision(): number {
+    return this.rev;
   }
 
   current(): WorkspaceSummary | null {

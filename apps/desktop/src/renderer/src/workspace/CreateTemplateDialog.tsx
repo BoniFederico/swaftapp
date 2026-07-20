@@ -57,6 +57,7 @@ export function CreateTemplateDialog({
           options={[
             { value: 'document', label: t('tpl.document') },
             { value: 'api', label: t('tpl.api') },
+            { value: 'capability', label: t('tpl.capability') },
           ]}
         />
       </form>

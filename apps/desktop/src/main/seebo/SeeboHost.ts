@@ -1,3 +1,4 @@
+import { DATA_CAPABILITIES } from '@swaft/shared';
 import { BUILTIN_ACTION_HANDLERS } from './action-handlers';
 import type {
   SeeboAction,
@@ -88,10 +89,30 @@ export interface SeeboHostOptions {
   now?: () => Date;
 }
 
+/** A user-authored capability, as the engine needs to see it: a name and its value contract. */
+export interface UserCapabilityRegistration {
+  name: string;
+  /** Seebo base type the resolved value is validated against. */
+  type: string;
+}
+
+/**
+ * Supplies the capabilities users wrote themselves (`capability` templates). Kept as an interface so
+ * the host stays unaware of the script runtime, and so tests can register capabilities without
+ * spawning a process.
+ */
+export interface UserCapabilityProvider {
+  /** Registrable capabilities. Called once per engine, so it must be cached, not recomputed. */
+  list(): Promise<UserCapabilityRegistration[]>;
+  /** Run one call; `requirement` is the descriptor the engine flattened (id plus author fields). */
+  resolve(name: string, requirement: Record<string, unknown>): Promise<unknown>;
+}
+
 /** Collaborators a host needs for data capabilities; omitted in pure (widget-only) engines/tests. */
 export interface SeeboHostDeps {
   templateData?: TemplateDataProvider;
   envData?: EnvDataProvider;
+  userCapabilities?: UserCapabilityProvider;
 }
 
 /** Per-render policy derived from workspace settings (only non-empty allow-lists restrict). */
@@ -185,7 +206,7 @@ export class SeeboHost {
     // Register `template` (a data capability) only when a provider is wired — pure widget engines
     // (e.g. tests, the Template Editor without a workspace) keep their original surface untouched.
     const dataCapabilities: string[] = [];
-    const { templateData, envData } = this.deps;
+    const { templateData, envData, userCapabilities } = this.deps;
     if (templateData) {
       // Declare an `object` contract so member access (`template('cfg').baseUrl`) type-checks without
       // the template repeating `type:object()`; a JSON object would otherwise fail the default (string)
@@ -201,6 +222,19 @@ export class SeeboHost {
     if (envData) {
       capabilities.env = (req) => envData.resolve(envKey(req));
       dataCapabilities.push('env');
+    }
+    // User-authored capabilities resolve like any other data capability; the difference is that the
+    // resolver forwards to an isolated process instead of running here. A built-in always wins, so a
+    // capability template can never change what an existing template means.
+    if (userCapabilities) {
+      for (const { name, type } of await userCapabilities.list()) {
+        if (name in capabilities) continue;
+        capabilities[name] = defineCapability(name, {
+          type,
+          resolve: (req) => userCapabilities.resolve(name, req as Record<string, unknown>),
+        });
+        dataCapabilities.push(name);
+      }
     }
     const alwaysAllowed = [...WIDGET_CAPABILITIES, ...dataCapabilities];
 
@@ -227,6 +261,18 @@ export class SeeboHost {
       engine.defineAction(type, handler);
     }
     return engine;
+  }
+
+  /**
+   * Capabilities that resolve to a value instead of asking the user for one — the built-in data
+   * capabilities plus every registered user capability. Callers use it to keep those out of input
+   * panels: `analyze` reports them as requirements exactly like a widget, and only the host knows
+   * which names are user-authored (the renderer's static `DATA_CAPABILITIES` list cannot).
+   */
+  async dataCapabilityNames(): Promise<ReadonlySet<string>> {
+    const names = new Set<string>(DATA_CAPABILITIES);
+    for (const { name } of (await this.deps.userCapabilities?.list()) ?? []) names.add(name);
+    return names;
   }
 
   /** Static analysis: the requirements (widgets) a template needs, with type/options. */

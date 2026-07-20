@@ -22,11 +22,13 @@ export default defineConfig({
     resolve: { alias: sharedAlias },
     build: {
       rollupOptions: {
-        // `dbWorker` is the dedicated DB worker entry (emitted to out/main/dbWorker.js); the
-        // WorkspaceService spawns it to keep sql.js off the main thread.
+        // Extra entries emitted next to the main bundle and spawned by it:
+        // - `dbWorker` (worker thread) keeps sql.js off the main thread;
+        // - `scriptHost` (utilityProcess) runs user-authored capabilities in their own process.
         input: {
           index: resolve(here, 'src/main/index.ts'),
           dbWorker: resolve(here, 'src/main/workers/db.worker.ts'),
+          scriptHost: resolve(here, 'src/main/workers/script-host.ts'),
         },
       },
     },

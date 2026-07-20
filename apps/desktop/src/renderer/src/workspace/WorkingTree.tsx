@@ -12,6 +12,7 @@ import { ApiClient, ApiError } from '../api-client/client';
 import { useI18n } from '../i18n/I18nProvider';
 import {
   ApiIcon,
+  CapabilityIcon,
   Button,
   ChevronIcon,
   ChevronLeftIcon,
@@ -79,6 +80,8 @@ function TypeIcon({ type }: { type: TemplateType }) {
   switch (type) {
     case 'api':
       return <ApiIcon className={className} />;
+    case 'capability':
+      return <CapabilityIcon className={className} />;
     default:
       return <DocumentIcon className={className} />;
   }
@@ -555,7 +558,7 @@ export function WorkingTree({
   }
 
   function renderTypeView() {
-    const types: TemplateType[] = ['document', 'api'];
+    const types: TemplateType[] = ['document', 'api', 'capability'];
     return types.map((type) => {
       const ofType = projectTemplates.filter((tpl) => tpl.type === type);
       if (ofType.length === 0) return null;

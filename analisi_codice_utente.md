@@ -4,8 +4,27 @@ Analisi di fattibilità e proposta di design per consentire all'utente di creare
 **Capability** e **Action** scritti in JavaScript, registrati su Seebo e utilizzabili nei document e
 nelle API request.
 
-Stato: proposta, non implementata. Riferimenti verificati sul codice al 2026-07-20 (schema v22,
-branch `feature/gui_refactor`, seebo 0.4.0).
+Riferimenti verificati sul codice al 2026-07-20 (schema v22, seebo 0.4.0).
+
+**Stato: Fase A implementata** (branch `feature/user_custom_code`). Le capability read-only in
+sandbox funzionano end-to-end: nuovo tipo di template `capability`, script host su `utilityProcess`
+con timeout e kill, `swaft.env.get`, uso nei document e nei campi API, vista dedicata con test-run.
+Fasi B (trust del workspace), C (action + sezione Actions API) e D (profilo developer) da fare — la
+Fase B resta il prerequisito prima di qualunque condivisione di workspace con codice.
+
+Scostamenti dalla proposta, decisi durante l'implementazione:
+
+- **Nomi duplicati: non si registra nessuna delle due capability** (§5.1 diceva solo "diagnostica").
+  Registrarne una sola avrebbe legato le formule a quella caricata per prima, cioè a un ordinamento
+  arbitrario; il principio "ambiguità = mai risoluzione silenziosa" impone di fermarsi.
+- **Gli argomenti arrivano appiattiti sul requirement**, non sotto `args`: verificato sul motore, e
+  `capabilityArgs` normalizza entrambe le forme.
+- **Una chiamata deve sempre portare un `id`** (`cfg({ id: 'x' })`): è il motore a pretenderlo, non
+  Swaft.
+- **Il `type` dichiarato si legge staticamente** con una regex su `export const type = '…'`, perché
+  importare il modulo per conoscerlo avrebbe significato eseguire codice utente durante `validate`.
+- **`executionMode` non è ancora onorato**: il profilo è sempre `sandbox`. Onorarlo prima della Fase D
+  concederebbe permessi che nulla è pronto a controllare.
 
 ---
 

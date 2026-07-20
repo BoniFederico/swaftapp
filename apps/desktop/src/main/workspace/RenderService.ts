@@ -1,6 +1,7 @@
 import type { DiagnosticDto, RenderResultDto, RequirementDto } from '@swaft/shared';
 import { toDiagnosticDto, toRenderResult, toRequirementDto } from '../seebo/map';
 import type { SeeboHost, SeeboRenderContext } from '../seebo/SeeboHost';
+import type { SeeboRequirement } from '../seebo/seebo-module';
 import { RepoBase } from './RepoBase';
 import type { ReleaseService } from './ReleaseService';
 import type { TemplateService } from './TemplateService';
@@ -28,13 +29,20 @@ export class RenderService extends RepoBase {
     return { projectId: await this.templates.projectIdOf(templateId), templateId };
   }
 
-  /** The widget requirements for the template's **effective** source (selected release / draft). */
+  /**
+   * The widget requirements for the template's **effective** source (selected release / draft).
+   * Data capabilities — `template`, `env` and every user-authored one — resolve to a value, so they
+   * are filtered out here rather than in the renderer, which cannot know the user-authored names.
+   */
   async analyze(templateId: string): Promise<RequirementDto[]> {
     const { source } = await this.releases.resolveSource(templateId);
     const ctx = await this.renderCtx(templateId);
-    return (await this.host.analyze(source, undefined, ctx)).requirements.map(
-      toRequirementDto,
-    );
+    return this.inputRequirements((await this.host.analyze(source, undefined, ctx)).requirements);
+  }
+
+  private async inputRequirements(requirements: SeeboRequirement[]): Promise<RequirementDto[]> {
+    const data = await this.host.dataCapabilityNames();
+    return requirements.map(toRequirementDto).filter((r) => !data.has(r.capability));
   }
 
   /** Render the template's effective source with the provided values; persists them as last inputs. */
@@ -49,7 +57,7 @@ export class RenderService extends RepoBase {
 
   /** Analyze arbitrary source (Template Editor live feedback). */
   async analyzeSource(source: string): Promise<RequirementDto[]> {
-    return (await this.host.analyze(source)).requirements.map(toRequirementDto);
+    return this.inputRequirements((await this.host.analyze(source)).requirements);
   }
 
   /** Render arbitrary (possibly unsaved) source — the Template Editor's view/render preview. */

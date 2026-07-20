@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
 import { app, dialog, session, type BrowserWindow } from 'electron';
-import type { FolderProxyDto } from '@swaft/shared';
+import { DATA_CAPABILITIES, type FolderProxyDto } from '@swaft/shared';
 import { ActionService } from './actions/ActionService';
 import { AppStore } from './app-store/AppStore';
 import { CryptoService } from './crypto/CryptoService';
@@ -9,7 +9,9 @@ import { SafeStorageCipher } from './auth/cipher';
 import { getAuthService } from './auth/registry';
 import { HttpService } from './http/HttpService';
 import { SecretService } from './secret/SecretService';
-import { SeeboHost } from './seebo/SeeboHost';
+import { SeeboHost, WIDGET_CAPABILITIES } from './seebo/SeeboHost';
+import { UserCapabilityRegistry } from './usercode/UserCapabilityRegistry';
+import { UtilityProcessRuntime } from './usercode/UtilityProcessRuntime';
 import {
   setActionService,
   setApiHistoryService,
@@ -26,6 +28,7 @@ import {
   setSecretService,
   setSettingsService,
   setTemplateService,
+  setUserCapabilityRegistry,
   setWorkspaceService,
   type PlatformDialogs,
 } from './services';
@@ -119,7 +122,17 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
   const templateData = new TemplateDataProvider(workspaceService, releases);
   // The `env` data capability reads the active environment's variables (no user input needed).
   const environments = new EnvironmentService(workspaceService, currentUsername);
-  const host = new SeeboHost({}, { templateData, envData: environments });
+  // User-authored capabilities run in a dedicated process (never in main): losing that isolation
+  // must fail loudly, so there is no in-process fallback here.
+  const scriptRuntime = new UtilityProcessRuntime(join(__dirname, 'scriptHost.js'));
+  const userCapabilities = new UserCapabilityRegistry(workspaceService, {
+    templates,
+    releases,
+    environments,
+    runtime: scriptRuntime,
+    reservedNames: [...WIDGET_CAPABILITIES, ...DATA_CAPABILITIES],
+  });
+  const host = new SeeboHost({}, { templateData, envData: environments, userCapabilities });
   const render = new RenderService(workspaceService, templates, host, releases);
   const apiRequest = new ApiRequestService(templates, host, organization);
   const batcher = new BatcherService(templates, releases, host);
@@ -166,6 +179,7 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
   setHttpService(httpService);
   setApiHistoryService(apiHistory);
   setApiRequestService(apiRequest);
+  setUserCapabilityRegistry(userCapabilities);
   setBatcherService(batcher);
   setActionService(actionService);
   setEnvironmentService(environments);

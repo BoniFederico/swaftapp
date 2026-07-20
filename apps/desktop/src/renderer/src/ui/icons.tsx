@@ -90,6 +90,15 @@ export function ApiIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function CapabilityIcon(props: SVGProps<SVGSVGElement>) {
+  // Angle brackets: user-authored code, distinct from the document and API glyphs.
+  return (
+    <Icon {...props}>
+      <path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z" />
+    </Icon>
+  );
+}
+
 export function ChevronIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Icon {...props}>

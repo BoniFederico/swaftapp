@@ -13,6 +13,8 @@ import {
   type FolderUpdateRequest,
   type TemplateMoveRequest,
   type HttpSendRequest,
+  type UserCodeRefRequest,
+  type UserCodeRunRequest,
   type IdRequest,
   type InputStateGetRequest,
   type InputStateSetRequest,
@@ -51,6 +53,7 @@ import {
   getActionService,
   getApiHistoryService,
   getApiRequestService,
+  getUserCapabilityRegistry,
   getAppStore,
   getBatcherService,
   getChangelogService,
@@ -322,6 +325,15 @@ export const handlers: Record<OpName, Handler> = {
     svc(async () => {
       const r = p as ApiAnalyzeRequest;
       return getApiRequestService().analyze(r.templateId, r.request, r.values ?? {});
+    }),
+  'usercode.describe': (p) =>
+    svc(async () => ({
+      capability: await getUserCapabilityRegistry().describe((p as UserCodeRefRequest).templateId),
+    })),
+  'usercode.run': (p) =>
+    svc(async () => {
+      const r = p as UserCodeRunRequest;
+      return getUserCapabilityRegistry().runOnce(r.templateId, r.args ?? {});
     }),
   'api.history.list': (p) =>
     svc(async () => ({ items: await getApiHistoryService().list((p as TemplateRefRequest).templateId) })),

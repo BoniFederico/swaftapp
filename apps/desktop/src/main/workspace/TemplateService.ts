@@ -27,6 +27,31 @@ interface TemplateRow {
 /** Starter source for a fresh document template — immediately renderable, shows one widget. */
 const STARTER_SOURCE = "Hello ${ textbox({ id: 'name', label: 'Your name', type: string() }) }!";
 
+/**
+ * Starter source for a fresh `capability` template: a runnable example that shows the whole contract
+ * — the declared value type, the `{ args, swaft }` parameter, and a JSON-only return.
+ */
+const STARTER_CAPABILITY_SOURCE = `// This capability is called from a formula by this template's name, e.g.
+//   \${ myCapability({ id: 'cfg' }).baseUrl }
+// The call's own fields arrive in \`args\` (\`id\` included); whatever you return must be JSON.
+
+/** Seebo type of the resolved value: object (default), string, int, float, bool, array, … */
+export const type = 'object';
+
+export default async function ({ args, swaft }) {
+  return {
+    baseUrl: swaft.env.get('BASE_URL') ?? 'https://api.example.com',
+    calledWith: args.id,
+    at: swaft.now(),
+  };
+}
+`;
+
+/** The source a new template starts from, by kind. */
+function starterSource(type: TemplateType): string {
+  return type === 'capability' ? STARTER_CAPABILITY_SOURCE : STARTER_SOURCE;
+}
+
 /** Best-effort HTTP method for an `api` template (its source is the JSON request model). */
 function extractHttpMethod(source: string): string | null {
   try {
@@ -69,7 +94,7 @@ export class TemplateService extends RepoBase {
         type,
         // Always assign a subtype so the template groups correctly in the tree's Type view.
         subtype: req.subtype ?? DEFAULT_SUBTYPE[type as TemplateType],
-        source: req.source ?? STARTER_SOURCE,
+        source: req.source ?? starterSource(type as TemplateType),
       }),
     );
   }
@@ -126,6 +151,19 @@ export class TemplateService extends RepoBase {
       return row?.project_id ?? null;
     }
     return null;
+  }
+
+  /**
+   * Live templates of one kind, ordered by name. Used by the user-capability registry to find the
+   * `capability` templates without walking the whole tree.
+   */
+  async listByType(type: TemplateType): Promise<{ id: string; name: string }[]> {
+    return this.adapter.all<{ id: string; name: string }>(
+      `SELECT id, name FROM templates
+        WHERE type = ? AND deleted_at IS NULL
+        ORDER BY name COLLATE NOCASE`,
+      [type],
+    );
   }
 
   async updateSource(

@@ -1,17 +1,14 @@
-import {
-  DATA_CAPABILITIES,
-  type DiagnosticDto,
-  type FolderProxyDto,
-  type HttpAuth,
-  type HttpRequestModel,
-  type RequirementDto,
+import type {
+  DiagnosticDto,
+  FolderProxyDto,
+  HttpAuth,
+  HttpRequestModel,
+  RequirementDto,
 } from '@swaft/shared';
 import { AppError } from '../errors';
 import { toDiagnosticDto, toRequirementDto } from '../seebo/map';
 import type { SeeboHost, SeeboRenderContext } from '../seebo/SeeboHost';
 import type { TemplateService } from './TemplateService';
-
-const DATA_CAPABILITY_SET: ReadonlySet<string> = new Set(DATA_CAPABILITIES);
 
 /** A Seebo slot opener (`${`, `#{`, `@{`); only strings containing one are run through the engine. */
 function hasFormula(s: string): boolean {
@@ -108,6 +105,8 @@ export class ApiRequestService {
       ...(policy.proxy ? [policy.proxy.hostname] : []),
       ...authSources(effectiveAuth),
     ];
+    // Built-in data capabilities plus the user-authored ones: all resolve to a value, none is input.
+    const dataCapabilities = await this.host.dataCapabilityNames();
     const byId = new Map<string, RequirementDto>(); // the static universe of input requirements
     const pendingById = new Map<string, RequirementDto>(); // render-resolved (dynamic options/candidates)
     const reached = new Set<string>();
@@ -119,7 +118,7 @@ export class ApiRequestService {
       for (const r of analysis.requirements) {
         const dto = toRequirementDto(r);
         // Data capabilities (e.g. `template`) resolve to a value — they are not user inputs.
-        if (DATA_CAPABILITY_SET.has(dto.capability)) continue;
+        if (dataCapabilities.has(dto.capability)) continue;
         byId.set(dto.id, dto);
       }
       for (const d of await this.host.validate(src)) diagnostics.push(toDiagnosticDto(d));
@@ -132,7 +131,7 @@ export class ApiRequestService {
       } else {
         for (const p of state.pending ?? []) {
           const dto = toRequirementDto(p);
-          if (!DATA_CAPABILITY_SET.has(dto.capability)) pendingById.set(dto.id, dto);
+          if (!dataCapabilities.has(dto.capability)) pendingById.set(dto.id, dto);
           reached.add(dto.id);
         }
         if (state.resolved) for (const k of Object.keys(state.resolved)) reached.add(k);
@@ -157,6 +156,7 @@ export class ApiRequestService {
   ): Promise<{ request: HttpRequestModel; rendered: boolean; proxy: FolderProxyDto | null }> {
     const ctx = await this.ctx(templateId);
     const policy = await this.policyOf(templateId);
+    const dataCapabilities = await this.host.dataCapabilityNames();
     const rendered =
       ApiRequestService.sources(req).some(hasFormula) || Object.keys(policy.headers).length > 0;
     const pending = new Map<string, RequirementDto>();
@@ -169,7 +169,7 @@ export class ApiRequestService {
       if (state.status === 'waiting') {
         for (const r of state.pending ?? []) {
           const dto = toRequirementDto(r);
-          if (!DATA_CAPABILITY_SET.has(dto.capability)) pending.set(dto.id, dto);
+          if (!dataCapabilities.has(dto.capability)) pending.set(dto.id, dto);
         }
         return '';
       }
