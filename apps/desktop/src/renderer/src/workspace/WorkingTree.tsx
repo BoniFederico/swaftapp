@@ -40,6 +40,8 @@ const BADGE_COLORS: Record<string, string> = {
   markdown: '#4078c0',
   css: '#2965f1',
   javascript: '#c9a227',
+  capability: '#00897b',
+  action: '#e8590c',
   java: '#b07219',
   json: '#3f9d3f',
   yaml: '#cb171e',
@@ -88,9 +90,14 @@ function TypeIcon({ type }: { type: TemplateType }) {
   }
 }
 
-/** The small badge shown on a template row: the HTTP method for APIs, else the subtype. */
+/**
+ * The small badge shown on a template row: the HTTP method for APIs, the kind for user code (whose
+ * subtype is always "javascript", which would make a capability and an action look identical), else
+ * the subtype.
+ */
 function rowBadge(tpl: TemplateSummary): string | null {
   if (tpl.type === 'api') return tpl.method ?? 'GET';
+  if (tpl.type === 'capability' || tpl.type === 'action') return tpl.type;
   return tpl.subtype;
 }
 

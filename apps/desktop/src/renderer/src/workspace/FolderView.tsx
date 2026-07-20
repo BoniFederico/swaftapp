@@ -35,6 +35,8 @@ const BADGE_COLORS: Record<string, string> = {
   DELETE: '#dd3333',
   HEAD: '#0891b2',
   OPTIONS: '#6b7280',
+  capability: '#00897b',
+  action: '#e8590c',
 };
 const badgeColor = (v: string): string => BADGE_COLORS[v] ?? 'var(--text-muted)';
 
@@ -287,7 +289,14 @@ export function FolderView({
                   </button>
                 ))}
                 {templates.map((tpl) => {
-                  const badge = tpl.type === 'api' ? (tpl.method ?? 'GET') : tpl.subtype;
+                  // User code is always subtype "javascript"; show the kind so a capability and an
+                  // action are not identical (mirrors the Working Tree rows).
+                  const badge =
+                    tpl.type === 'api'
+                      ? (tpl.method ?? 'GET')
+                      : tpl.type === 'capability' || tpl.type === 'action'
+                        ? tpl.type
+                        : tpl.subtype;
                   return (
                     <button
                       key={tpl.id}
