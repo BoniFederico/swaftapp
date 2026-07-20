@@ -30,174 +30,51 @@ export interface PlatformDialogs {
   pickSaveTarget(defaultName: string): Promise<string | null>;
 }
 
-let appStore: AppStore | null = null;
-let workspaceService: WorkspaceService | null = null;
-let dialogs: PlatformDialogs | null = null;
-
-export function setAppStore(value: AppStore | null): void {
-  appStore = value;
-}
-export function getAppStore(): AppStore {
-  if (!appStore) throw new Error('AppStore not initialized');
-  return appStore;
-}
-
-export function setWorkspaceService(value: WorkspaceService | null): void {
-  workspaceService = value;
-}
-export function getWorkspaceService(): WorkspaceService {
-  if (!workspaceService) throw new Error('WorkspaceService not initialized');
-  return workspaceService;
+/** One nullable slot per service: `set` at bootstrap (or a fake in tests), `get` throws until then. */
+function serviceSlot<T>(name: string): { get: () => T; set: (value: T | null) => void } {
+  let current: T | null = null;
+  return {
+    get: () => {
+      if (!current) throw new Error(`${name} not initialized`);
+      return current;
+    },
+    set: (value: T | null) => {
+      current = value;
+    },
+  };
 }
 
-export function setPlatformDialogs(value: PlatformDialogs | null): void {
-  dialogs = value;
-}
-export function getPlatformDialogs(): PlatformDialogs {
-  if (!dialogs) throw new Error('PlatformDialogs not initialized');
-  return dialogs;
-}
-
-let organization: OrganizationService | null = null;
-let settings: SettingsService | null = null;
-
-export function setOrganizationService(value: OrganizationService | null): void {
-  organization = value;
-}
-export function getOrganizationService(): OrganizationService {
-  if (!organization) throw new Error('OrganizationService not initialized');
-  return organization;
-}
-
-export function setSettingsService(value: SettingsService | null): void {
-  settings = value;
-}
-export function getSettingsService(): SettingsService {
-  if (!settings) throw new Error('SettingsService not initialized');
-  return settings;
-}
-
-let templates: TemplateService | null = null;
-let render: RenderService | null = null;
-
-export function setTemplateService(value: TemplateService | null): void {
-  templates = value;
-}
-export function getTemplateService(): TemplateService {
-  if (!templates) throw new Error('TemplateService not initialized');
-  return templates;
-}
-
-export function setRenderService(value: RenderService | null): void {
-  render = value;
-}
-export function getRenderService(): RenderService {
-  if (!render) throw new Error('RenderService not initialized');
-  return render;
-}
-
-let releases: ReleaseService | null = null;
-let changelog: ChangelogService | null = null;
-
-export function setReleaseService(value: ReleaseService | null): void {
-  releases = value;
-}
-export function getReleaseService(): ReleaseService {
-  if (!releases) throw new Error('ReleaseService not initialized');
-  return releases;
-}
-
-export function setChangelogService(value: ChangelogService | null): void {
-  changelog = value;
-}
-export function getChangelogService(): ChangelogService {
-  if (!changelog) throw new Error('ChangelogService not initialized');
-  return changelog;
-}
-
-let http: HttpService | null = null;
-let secrets: SecretService | null = null;
-let apiHistory: ApiHistoryService | null = null;
-
-export function setHttpService(value: HttpService | null): void {
-  http = value;
-}
-export function getHttpService(): HttpService {
-  if (!http) throw new Error('HttpService not initialized');
-  return http;
-}
-
-export function setSecretService(value: SecretService | null): void {
-  secrets = value;
-}
-export function getSecretService(): SecretService {
-  if (!secrets) throw new Error('SecretService not initialized');
-  return secrets;
-}
-
-export function setApiHistoryService(value: ApiHistoryService | null): void {
-  apiHistory = value;
-}
-export function getApiHistoryService(): ApiHistoryService {
-  if (!apiHistory) throw new Error('ApiHistoryService not initialized');
-  return apiHistory;
-}
-
-let apiRequest: ApiRequestService | null = null;
-
-export function setApiRequestService(value: ApiRequestService | null): void {
-  apiRequest = value;
-}
-export function getApiRequestService(): ApiRequestService {
-  if (!apiRequest) throw new Error('ApiRequestService not initialized');
-  return apiRequest;
-}
-
-let apiRun: ApiRunService | null = null;
-
-export function setApiRunService(value: ApiRunService | null): void {
-  apiRun = value;
-}
-export function getApiRunService(): ApiRunService {
-  if (!apiRun) throw new Error('ApiRunService not initialized');
-  return apiRun;
-}
-
-let userCapabilities: UserCodeRegistry | null = null;
-
-export function setUserCodeRegistry(value: UserCodeRegistry | null): void {
-  userCapabilities = value;
-}
-export function getUserCodeRegistry(): UserCodeRegistry {
-  if (!userCapabilities) throw new Error('UserCodeRegistry not initialized');
-  return userCapabilities;
-}
-
-let batcher: BatcherService | null = null;
-let actions: ActionService | null = null;
-
-export function setBatcherService(value: BatcherService | null): void {
-  batcher = value;
-}
-export function getBatcherService(): BatcherService {
-  if (!batcher) throw new Error('BatcherService not initialized');
-  return batcher;
-}
-
-export function setActionService(value: ActionService | null): void {
-  actions = value;
-}
-export function getActionService(): ActionService {
-  if (!actions) throw new Error('ActionService not initialized');
-  return actions;
-}
-
-let environments: EnvironmentService | null = null;
-
-export function setEnvironmentService(value: EnvironmentService | null): void {
-  environments = value;
-}
-export function getEnvironmentService(): EnvironmentService {
-  if (!environments) throw new Error('EnvironmentService not initialized');
-  return environments;
-}
+export const { get: getAppStore, set: setAppStore } = serviceSlot<AppStore>('AppStore');
+export const { get: getWorkspaceService, set: setWorkspaceService } =
+  serviceSlot<WorkspaceService>('WorkspaceService');
+export const { get: getPlatformDialogs, set: setPlatformDialogs } =
+  serviceSlot<PlatformDialogs>('PlatformDialogs');
+export const { get: getOrganizationService, set: setOrganizationService } =
+  serviceSlot<OrganizationService>('OrganizationService');
+export const { get: getSettingsService, set: setSettingsService } =
+  serviceSlot<SettingsService>('SettingsService');
+export const { get: getTemplateService, set: setTemplateService } =
+  serviceSlot<TemplateService>('TemplateService');
+export const { get: getRenderService, set: setRenderService } =
+  serviceSlot<RenderService>('RenderService');
+export const { get: getReleaseService, set: setReleaseService } =
+  serviceSlot<ReleaseService>('ReleaseService');
+export const { get: getChangelogService, set: setChangelogService } =
+  serviceSlot<ChangelogService>('ChangelogService');
+export const { get: getHttpService, set: setHttpService } = serviceSlot<HttpService>('HttpService');
+export const { get: getSecretService, set: setSecretService } =
+  serviceSlot<SecretService>('SecretService');
+export const { get: getApiHistoryService, set: setApiHistoryService } =
+  serviceSlot<ApiHistoryService>('ApiHistoryService');
+export const { get: getApiRequestService, set: setApiRequestService } =
+  serviceSlot<ApiRequestService>('ApiRequestService');
+export const { get: getApiRunService, set: setApiRunService } =
+  serviceSlot<ApiRunService>('ApiRunService');
+export const { get: getUserCodeRegistry, set: setUserCodeRegistry } =
+  serviceSlot<UserCodeRegistry>('UserCodeRegistry');
+export const { get: getBatcherService, set: setBatcherService } =
+  serviceSlot<BatcherService>('BatcherService');
+export const { get: getActionService, set: setActionService } =
+  serviceSlot<ActionService>('ActionService');
+export const { get: getEnvironmentService, set: setEnvironmentService } =
+  serviceSlot<EnvironmentService>('EnvironmentService');
