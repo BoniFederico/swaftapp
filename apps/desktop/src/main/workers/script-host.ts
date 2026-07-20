@@ -1,4 +1,5 @@
 import type {
+  HostCall,
   ScriptErrorCode,
   ScriptHostMessage,
   ScriptRunReply,
@@ -44,6 +45,22 @@ function harden(): void {
   }
 }
 
+/** Calls we made back into main, waiting for their answer. */
+let hostCallSeq = 0;
+const hostCalls = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
+
+/**
+ * Ask main to do something user code must not do itself. The isolated process has no network of its
+ * own — this is the only way out, and it lands in `HttpService` where the workspace policy lives.
+ */
+function callHost(method: HostCall['method'], payload: unknown): Promise<unknown> {
+  const id = ++hostCallSeq;
+  return new Promise<unknown>((resolve, reject) => {
+    hostCalls.set(id, { resolve, reject });
+    parentPort.postMessage({ hostCall: { id, method, payload } });
+  });
+}
+
 const MAX_LOGS = 100;
 const MAX_LOG_CHARS = 2000;
 
@@ -72,7 +89,7 @@ function makeSwaft(req: ScriptRunRequest, out: Collector): unknown {
       out.envWrites[name] = String(value);
     };
   }
-  return Object.freeze({
+  const swaft: Record<string, unknown> = {
     env: Object.freeze(env),
     /** ISO-8601 now. A `Date` could not cross back into the render state, so we hand over a string. */
     now: (): string => new Date().toISOString(),
@@ -84,7 +101,12 @@ function makeSwaft(req: ScriptRunRequest, out: Collector): unknown {
     },
     /** True when the caller only wants to know what would happen (actions). */
     dryRun: req.dryRun === true,
-  });
+  };
+  // Developer profile only: HTTP, and only through main. There is no `fetch` here to fall back on.
+  if (req.profile === 'developer') {
+    swaft.http = (request: unknown): Promise<unknown> => callHost('http', request);
+  }
+  return Object.freeze(swaft);
 }
 
 function stringify(value: unknown): string {
@@ -178,6 +200,16 @@ function messageOf(err: unknown): string {
 harden();
 
 parentPort.on('message', (event: { data: ScriptHostMessage }) => {
+  // The answer to something we asked main for, not a new run.
+  if ('hostReply' in event.data) {
+    const reply = event.data.hostReply;
+    const pending = hostCalls.get(reply.id);
+    if (!pending) return;
+    hostCalls.delete(reply.id);
+    if (reply.ok) pending.resolve(reply.value);
+    else pending.reject(new Error(reply.code ? `${reply.code}: ${reply.message}` : reply.message));
+    return;
+  }
   const { id, run: request } = event.data;
   // Logs are collected even on failure — they are usually how the failure gets diagnosed.
   const out: Collector = { logs: [], envWrites: {} };

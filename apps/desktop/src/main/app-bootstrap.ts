@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
 import { app, dialog, session, type BrowserWindow } from 'electron';
-import { DATA_CAPABILITIES, type FolderProxyDto } from '@swaft/shared';
+import { DATA_CAPABILITIES, httpRequestSchema, type FolderProxyDto } from '@swaft/shared';
 import { ActionService } from './actions/ActionService';
 import { AppStore } from './app-store/AppStore';
 import { CryptoService } from './crypto/CryptoService';
@@ -13,6 +13,7 @@ import { BUILTIN_ACTION_HANDLERS } from './seebo/action-handlers';
 import { SeeboHost, WIDGET_CAPABILITIES } from './seebo/SeeboHost';
 import { UserCodeRegistry } from './usercode/UserCodeRegistry';
 import { UtilityProcessRuntime } from './usercode/UtilityProcessRuntime';
+import { getHttpService } from './services';
 import {
   setActionService,
   setApiHistoryService,
@@ -50,6 +51,15 @@ import { TemplateService } from './workspace/TemplateService';
 import { WorkspaceService } from './workspace/WorkspaceService';
 
 const BUILTIN_ACTION_TYPES = Object.keys(BUILTIN_ACTION_HANDLERS);
+
+/** Parse a response body for user code, without making a bad body an error. */
+function safeJson(body: string): unknown {
+  try {
+    return JSON.parse(body);
+  } catch {
+    return undefined;
+  }
+}
 
 const SWAFT_FILTER = { name: 'Swaft Workspace', extensions: ['swaft'] };
 
@@ -129,11 +139,20 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
   const environments = new EnvironmentService(workspaceService, currentUsername);
   // User-authored capabilities run in a dedicated process (never in main): losing that isolation
   // must fail loudly, so there is no in-process fallback here.
-  const scriptRuntime = new UtilityProcessRuntime(join(__dirname, 'scriptHost.js'));
+  // The isolated process has no network of its own: its HTTP lands here, in the same service that
+  // applies the workspace's blocked domains, enforced headers and redirect re-validation.
+  const scriptRuntime = new UtilityProcessRuntime(join(__dirname, 'scriptHost.js'), {
+    http: async (payload) => {
+      const parsed = httpRequestSchema.parse(payload);
+      const response = await getHttpService().send(parsed);
+      return { ...response, json: safeJson(response.body) };
+    },
+  });
   const userCapabilities = new UserCodeRegistry(workspaceService, {
     templates,
     releases,
     environments,
+    settings,
     runtime: scriptRuntime,
     reservedNames: [...WIDGET_CAPABILITIES, ...DATA_CAPABILITIES, ...BUILTIN_ACTION_TYPES],
     // Approvals live in the app-level store, never in the `.swaft` — a workspace must not vouch

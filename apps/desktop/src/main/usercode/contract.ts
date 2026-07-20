@@ -58,8 +58,43 @@ export type ScriptRunReply =
   | ({ id: number; ok: true } & ScriptRunOutcome)
   | { id: number; ok: false; code: ScriptErrorCode; message: string; logs: string[] };
 
-/** Messages main → host. `ready` flows the other way at startup. */
-export type ScriptHostMessage = { id: number; run: ScriptRunRequest };
+/**
+ * A call the isolated process makes *back* into main, for the things it must not do itself. The
+ * developer profile's HTTP goes through here so `HttpService` still applies the workspace policy —
+ * blocked domains, enforced headers, redirect re-validation. A raw `fetch` in the host would bypass
+ * all of it, which is why none is provided.
+ */
+export interface HostCall {
+  id: number;
+  method: 'http';
+  payload: unknown;
+}
+export type HostCallReply =
+  | { hostReply: { id: number; ok: true; value: unknown } }
+  /** `code` is the app error code (e.g. DOMAIN_NOT_ALLOWED), so the author sees why, not just that. */
+  | { hostReply: { id: number; ok: false; message: string; code?: string } };
+
+/** Messages main → host: a run request, or the answer to a call the host made. */
+export type ScriptHostMessage = { id: number; run: ScriptRunRequest } | HostCallReply;
+
+/** Messages host → main: the result of a run, or a call it needs main to make. */
+export type ScriptHostOutbound = ScriptRunReply | { hostCall: HostCall };
+
+/**
+ * Modules the **developer** profile may import. Deliberately computation-only: anything that can
+ * reach the outside world (fs, net, child_process, http) is absent, because those effects must go
+ * through the `swaft` bridges where the workspace policy is applied.
+ */
+export const DEVELOPER_MODULE_ALLOWLIST = [
+  'node:crypto',
+  'node:url',
+  'node:querystring',
+  'node:util',
+  'node:buffer',
+  'node:string_decoder',
+  'node:punycode',
+  'node:zlib',
+] as const;
 
 export const SCRIPT_ERROR_CODES = [
   /** The source is rejected before it ever runs (imports in sandbox, unusable export shape…). */

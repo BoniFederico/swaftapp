@@ -1,4 +1,4 @@
-import { CAPABILITY_TYPES, type ScriptProfile } from './contract';
+import { CAPABILITY_TYPES, DEVELOPER_MODULE_ALLOWLIST, type ScriptProfile } from './contract';
 
 /**
  * Pure guards for user-authored JavaScript. Everything here is side-effect free and runs identically
@@ -53,6 +53,27 @@ export function stripCommentsAndLiterals(source: string): string {
 /** `import` (static or dynamic) and CommonJS `require`, outside comments and literals. */
 const IMPORT_SYNTAX = /(^|[^\w.$])import\s*(\(|['"]|[\w{*])/;
 const REQUIRE_SYNTAX = /(^|[^\w.$])require\s*\(/;
+/** The specifier of every import in a source: `from 'x'`, `import 'x'`, `import('x')`. */
+const IMPORT_SPECIFIER = /(?:^|[^\w.$])import\s*(?:\(\s*)?['"]([^'"]+)['"]|\bfrom\s*['"]([^'"]+)['"]/g;
+
+/**
+ * Every module specifier the source imports. Read from the original text (not the blanked copy,
+ * which has no literals left) after confirming the import itself is real code.
+ */
+export function importedSpecifiers(source: string): string[] {
+  const code = stripCommentsAndLiterals(source);
+  const found: string[] = [];
+  for (const match of source.matchAll(IMPORT_SPECIFIER)) {
+    // The blanked copy keeps offsets and turns comments into spaces, so a keyword that survives
+    // there is real code; one that does not was inside a comment or a string.
+    const at = match.index ?? 0;
+    const blanked = code.slice(at, at + match[0].length);
+    if (!blanked.includes('import') && !blanked.includes('from')) continue;
+    const specifier = match[1] ?? match[2];
+    if (specifier) found.push(specifier);
+  }
+  return found;
+}
 
 /**
  * Reject a source the sandbox profile must not run. Returns a human-readable reason, or null when
@@ -65,13 +86,25 @@ const REQUIRE_SYNTAX = /(^|[^\w.$])require\s*\(/;
  */
 export function findForbiddenSyntax(source: string, profile: ScriptProfile): string | null {
   const code = stripCommentsAndLiterals(source);
+  if (REQUIRE_SYNTAX.test(code)) {
+    // Never available: user code is an ES module, and `require` would be a way back to everything.
+    return 'require(...) is not available; user code runs as an ES module without Node built-ins';
+  }
+  if (!IMPORT_SYNTAX.test(code)) return null;
   if (profile === 'sandbox') {
-    if (IMPORT_SYNTAX.test(code)) {
-      return 'importing modules is not allowed in sandbox execution mode';
-    }
-    if (REQUIRE_SYNTAX.test(code)) {
-      return 'require(...) is not available; capabilities run without Node built-ins';
-    }
+    return 'importing modules is not allowed in sandbox execution mode';
+  }
+  // Developer profile: computation-only modules, by name.
+  const allowed = new Set<string>(DEVELOPER_MODULE_ALLOWLIST);
+  const specifiers = importedSpecifiers(source);
+  if (specifiers.length === 0) {
+    // An import the scanner cannot attribute to a specifier (computed, re-exported) is refused
+    // rather than waved through: the allow-list only means something if it is exhaustive.
+    return 'only literal imports of allowed modules are supported';
+  }
+  const refused = specifiers.filter((s) => !allowed.has(s));
+  if (refused.length > 0) {
+    return `these modules are not available to user code: ${refused.join(', ')} (allowed: ${[...allowed].join(', ')})`;
   }
   return null;
 }

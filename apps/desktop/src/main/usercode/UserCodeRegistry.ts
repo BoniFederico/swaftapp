@@ -3,6 +3,7 @@ import type { UserCapabilityDto, UserCapabilityStatus } from '@swaft/shared';
 import { AppError } from '../errors';
 import type { UserCapabilityProvider, UserCapabilityRegistration } from '../seebo/SeeboHost';
 import type { EnvironmentService } from '../workspace/EnvironmentService';
+import type { SettingsService } from '../workspace/SettingsService';
 import type { ReleaseService } from '../workspace/ReleaseService';
 import type { TemplateService } from '../workspace/TemplateService';
 import type { WorkspaceService } from '../workspace/WorkspaceService';
@@ -46,6 +47,7 @@ export interface UserCodeRegistryDeps {
   templates: TemplateService;
   releases: ReleaseService;
   environments: EnvironmentService;
+  settings: SettingsService;
   runtime: ScriptRuntime;
   /** Capability names Swaft owns (widgets + built-in data capabilities); may not be shadowed. */
   reservedNames: readonly string[];
@@ -75,6 +77,7 @@ export interface UserCodeRegistryDeps {
 export class UserCodeRegistry implements UserCapabilityProvider {
   private snapshot: Snapshot | null = null;
   private envCache: { revision: number; vars: Record<string, string> } | null = null;
+  private profileCache: { revision: number; profile: ScriptProfile } | null = null;
 
   constructor(
     private readonly ws: WorkspaceService,
@@ -238,7 +241,7 @@ export class UserCodeRegistry implements UserCapabilityProvider {
       kind: entry.kind,
       code: entry.code,
       hash: entry.hash,
-      profile: this.profile(),
+      profile: await this.profile(),
       args,
       env: await this.envVars(),
       api: opts.api,
@@ -247,12 +250,17 @@ export class UserCodeRegistry implements UserCapabilityProvider {
   }
 
   /**
-   * Sandbox is the only profile Swaft implements today; the developer unlocks (module allow-list,
-   * HTTP through HttpService, bounded file writes) are a later phase, and until they exist honouring
-   * `executionMode` here would grant power nothing is prepared to police.
+   * The workspace's execution mode decides what user code may reach: `sandbox` is computation only,
+   * `developer` additionally allows a short list of computation modules and HTTP *through*
+   * HttpService. Cached per workspace revision — changing the setting saves, which bumps it.
    */
-  private profile(): ScriptProfile {
-    return 'sandbox';
+  private async profile(): Promise<ScriptProfile> {
+    const revision = this.ws.revision;
+    if (this.profileCache?.revision === revision) return this.profileCache.profile;
+    const { executionMode } = await this.deps.settings.getSettings();
+    const profile: ScriptProfile = executionMode === 'dev' ? 'developer' : 'sandbox';
+    this.profileCache = { revision, profile };
+    return profile;
   }
 
   private async envVars(): Promise<Record<string, string>> {

@@ -6,6 +6,7 @@ import { ChangelogService } from '../workspace/ChangelogService';
 import { EnvironmentService } from '../workspace/EnvironmentService';
 import { OrganizationService } from '../workspace/OrganizationService';
 import { ReleaseService } from '../workspace/ReleaseService';
+import { SettingsService } from '../workspace/SettingsService';
 import { TemplateService } from '../workspace/TemplateService';
 import { WorkspaceService, type WorkspaceFs } from '../workspace/WorkspaceService';
 import type { ScriptRunOutcome, ScriptRunRequest } from './contract';
@@ -78,10 +79,12 @@ async function setup(
   const templates = new TemplateService(ws, org, changelog);
   const releases = new ReleaseService(ws, templates, changelog);
   const environments = new EnvironmentService(ws, () => 'alice');
+  const settings = new SettingsService(ws);
   const registry = new UserCodeRegistry(ws, {
     templates,
     releases,
     environments,
+    settings,
     runtime,
     reservedNames: [...WIDGET_CAPABILITIES, 'template', 'env'],
     trust,
@@ -123,6 +126,7 @@ async function setup(
     templates,
     releases,
     environments,
+    settings,
     registry,
     folderId,
     addCapability,
@@ -481,6 +485,41 @@ describe('UserCodeRegistry — actions', () => {
     await expect(registry.runAction('notify', {})).rejects.toMatchObject({
       code: 'USER_CODE_UNTRUSTED',
     });
+  });
+});
+
+describe('UserCodeRegistry — execution profile', () => {
+  it('runs sandboxed by default', async () => {
+    const runtime = new FakeRuntime();
+    const { registry, addCapability } = await setup(runtime);
+    await addCapability('cfg', OK_SOURCE);
+
+    await registry.resolve('cfg', { id: 'x' });
+    expect(runtime.calls.at(-1)!.profile).toBe('sandbox');
+  });
+
+  it('switches to the developer profile with the workspace execution mode', async () => {
+    const runtime = new FakeRuntime();
+    const { registry, settings, addCapability } = await setup(runtime);
+    await addCapability('cfg', OK_SOURCE);
+
+    await settings.updateSettings({ executionMode: 'dev', confirmDev: true });
+    await registry.resolve('cfg', { id: 'x' });
+
+    expect(runtime.calls.at(-1)!.profile).toBe('developer');
+  });
+
+  it('goes back to sandbox when the mode does', async () => {
+    const runtime = new FakeRuntime();
+    const { registry, settings, addCapability } = await setup(runtime);
+    await addCapability('cfg', OK_SOURCE);
+    await settings.updateSettings({ executionMode: 'dev', confirmDev: true });
+    await registry.resolve('cfg', { id: 'x' });
+
+    await settings.updateSettings({ executionMode: 'sandbox' });
+    await registry.resolve('cfg', { id: 'x' });
+
+    expect(runtime.calls.at(-1)!.profile).toBe('sandbox');
   });
 });
 

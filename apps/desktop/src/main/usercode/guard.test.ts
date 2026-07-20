@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   capabilityArgs,
   findForbiddenSyntax,
+  importedSpecifiers,
   findNonJsonPath,
   isValidCapabilityName,
   normalizeCapabilityType,
@@ -50,6 +51,62 @@ describe('findForbiddenSyntax (sandbox)', () => {
 
   it('does not mistake a property named import-ish for an import', () => {
     expect(findForbiddenSyntax('export default (o) => o.importantThing;', 'sandbox')).toBeNull();
+  });
+});
+
+describe('findForbiddenSyntax (developer)', () => {
+  it('allows a computation module from the allow-list', () => {
+    const code = `import { createHash } from 'node:crypto';\nexport default () => createHash('sha256');`;
+    expect(findForbiddenSyntax(code, 'developer')).toBeNull();
+  });
+
+  it.each(['node:fs', 'node:child_process', 'node:net', 'node:http', 'electron', './secrets.js'])(
+    'refuses %s even in developer mode',
+    (specifier) => {
+      const reason = findForbiddenSyntax(`import x from '${specifier}';\nexport default () => x;`, 'developer');
+      // Reaching the outside world must go through the swaft bridges, where the policy is applied.
+      expect(reason).toContain(specifier);
+    },
+  );
+
+  it('refuses the whole source when one import of several is not allowed', () => {
+    const code = `import a from 'node:crypto';\nimport b from 'node:fs';\nexport default () => [a, b];`;
+    expect(findForbiddenSyntax(code, 'developer')).toContain('node:fs');
+  });
+
+  it('refuses an import whose specifier it cannot read, rather than waving it through', () => {
+    // An allow-list only means something if the scan is exhaustive.
+    const code = `const m = 'node:' + 'fs';\nconst fs = await import(m);\nexport default () => fs;`;
+    expect(findForbiddenSyntax(code, 'developer')).toBeTruthy();
+  });
+
+  it('never allows require, in either profile', () => {
+    for (const profile of ['sandbox', 'developer'] as const) {
+      expect(findForbiddenSyntax(`const fs = require('node:fs');`, profile)).toContain('require');
+    }
+  });
+});
+
+describe('importedSpecifiers', () => {
+  it('reads every import form', () => {
+    const code = [
+      `import a from 'node:crypto';`,
+      `import { b } from "node:url";`,
+      `import * as c from 'node:util';`,
+      `import 'node:zlib';`,
+      `const d = await import('node:querystring');`,
+    ].join('\n');
+    expect(importedSpecifiers(code)).toEqual([
+      'node:crypto',
+      'node:url',
+      'node:util',
+      'node:zlib',
+      'node:querystring',
+    ]);
+  });
+
+  it('ignores an import mentioned in a comment', () => {
+    expect(importedSpecifiers(`// import x from 'node:fs'\nexport default () => 1;`)).toEqual([]);
   });
 });
 
