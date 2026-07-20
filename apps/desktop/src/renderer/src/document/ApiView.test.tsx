@@ -149,7 +149,7 @@ describe('ApiView — formula inputs (Fase 1)', () => {
     expect(await screen.findByText(/Use \$\{ … \} formulas|Nessun input/i)).toBeInTheDocument();
   });
 
-  it('offers a "Request render" tab showing the rendered request after a formula send', async () => {
+  it('offers a "Request" tab showing the rendered request after a formula send', async () => {
     const sent: unknown[] = [];
     const { container } = renderApiView(sent);
     await screen.findByRole('button', { name: 'Send' });
@@ -160,7 +160,7 @@ describe('ApiView — formula inputs (Fase 1)', () => {
     fireEvent.change(seg, { target: { value: 'users' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
 
-    const tab = await screen.findByRole('tab', { name: /Request render/ });
+    const tab = await screen.findByRole('tab', { name: /^Request$/ });
     fireEvent.click(tab);
     const overview = await screen.findByTestId('api-request-render');
     expect(overview.textContent).toContain('https://example.com/users');

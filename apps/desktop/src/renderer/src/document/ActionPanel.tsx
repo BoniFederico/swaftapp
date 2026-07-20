@@ -21,6 +21,7 @@ export function ActionPanel({
   const { t } = useI18n();
   const [confirmed, setConfirmed] = useState<Set<string>>(new Set());
   const [receipts, setReceipts] = useState<ReceiptDto[]>([]);
+  const [expanded, setExpanded] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -49,6 +50,11 @@ export function ActionPanel({
         dryRun: false,
       });
       setReceipts(res.receipts);
+      // Reveal the detail of what just ran, so it is one glance away rather than one click.
+      const withDetail = res.receipts.find(
+        (r) => r.output != null || (r.logs?.length ?? 0) > 0 || (r.envWrites?.length ?? 0) > 0,
+      );
+      setExpanded(withDetail?.id ?? null);
     } finally {
       setBusy(false);
     }
@@ -82,15 +88,58 @@ export function ActionPanel({
       </div>
       {receipts.length > 0 && (
         <ul className="action-receipts" data-testid="action-receipts">
-          {receipts.map((r) => (
-            <li key={r.id} className="action-receipt">
-              <span className="ui-badge">{r.status}</span>
-              <span className="action-item__id">{r.actionType}</span>
-              <span className="muted">{r.message}</span>
-            </li>
-          ))}
+          {receipts.map((r) => {
+            const hasDetail =
+              r.output !== undefined || (r.logs?.length ?? 0) > 0 || (r.envWrites?.length ?? 0) > 0;
+            const open = expanded === r.id;
+            return (
+              <li key={r.id} className={`action-receipt${hasDetail ? ' action-receipt--clickable' : ''}`}>
+                {/* The receipt line is a button when there is something to reveal: output, logs, writes. */}
+                <button
+                  type="button"
+                  className="action-receipt__row"
+                  disabled={!hasDetail}
+                  aria-expanded={hasDetail ? open : undefined}
+                  onClick={() => setExpanded(open ? null : r.id)}
+                >
+                  {hasDetail && (
+                    <span className={`action-receipt__twisty${open ? ' is-open' : ''}`} aria-hidden="true">
+                      ▸
+                    </span>
+                  )}
+                  <span className={`ui-badge action-receipt__status--${r.status}`}>{r.status}</span>
+                  <span className="action-item__id">{r.actionType}</span>
+                  <span className="muted">{r.message}</span>
+                </button>
+                {open && hasDetail && (
+                  <div className="action-receipt__detail">
+                    {r.output !== undefined && r.output !== null && (
+                      <div className="ui-field">
+                        <span className="ui-field__label">{t('action.output')}</span>
+                        <pre className="action-receipt__pre">{formatOutput(r.output)}</pre>
+                      </div>
+                    )}
+                    {(r.logs?.length ?? 0) > 0 && (
+                      <div className="ui-field">
+                        <span className="ui-field__label">{t('code.logs')}</span>
+                        <pre className="action-receipt__pre">{r.logs!.join('\n')}</pre>
+                      </div>
+                    )}
+                    {(r.envWrites?.length ?? 0) > 0 && (
+                      <span className="field-hint">{t('action.wrote', { names: r.envWrites!.join(', ') })}</span>
+                    )}
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </Card>
   );
+}
+
+/** A string output reads best raw; anything else as pretty JSON. */
+function formatOutput(output: unknown): string {
+  return typeof output === 'string' ? output : JSON.stringify(output, null, 2);
 }

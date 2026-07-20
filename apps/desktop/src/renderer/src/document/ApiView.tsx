@@ -37,7 +37,7 @@ import { useDocLayout } from './useDocLayout';
 
 const METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
 type ReqTab = 'params' | 'headers' | 'body' | 'auth' | 'actions' | 'info' | 'input';
-type ResTab = 'render' | 'body' | 'headers' | 'history';
+type ResTab = 'preActions' | 'render' | 'body' | 'headers' | 'history' | 'postActions';
 
 const CONTENT_TYPE: Record<HttpBodyType, string | null> = {
   none: null,
@@ -284,6 +284,9 @@ export function ApiView({
     return subscribeTreeChanged(refresh);
   }, [client]);
 
+  const preOutcomes = actionOutcomes.filter((o) => o.trigger === 'pre');
+  const postOutcomes = actionOutcomes.filter((o) => o.trigger === 'post');
+
   const dirty = savedSource !== null && JSON.stringify(req) !== savedSource;
   useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
 
@@ -362,7 +365,7 @@ export function ApiView({
       const res = await client.call('http.send', { templateId, request: req, values: vals });
       setResponse(res.response);
       setActionOutcomes(res.actions ?? []);
-      // A "Request render" tab is offered only when formulas were actually rendered.
+      // A "Request" tab is offered only when formulas were actually rendered.
       setRenderedReq(res.rendered && res.request ? res.request : null);
       setResTab('body');
       setHistory((await client.call('api.history.list', { templateId })).items);
@@ -370,9 +373,11 @@ export function ApiView({
       setResponse(null);
       if (e instanceof ApiError) {
         setError(e.swaft.message);
-        // A pre-request action that failed carries what ran before it gave up.
+        // A pre-request action that failed carries what ran before it gave up — show it.
         const failed = e.swaft.details?.actions;
-        setActionOutcomes(Array.isArray(failed) ? (failed as RequestActionOutcomeDto[]) : []);
+        const outcomes = Array.isArray(failed) ? (failed as RequestActionOutcomeDto[]) : [];
+        setActionOutcomes(outcomes);
+        if (outcomes.some((o) => o.trigger === 'pre')) setResTab('preActions');
         // Missing inputs → jump to the Input tab so the user can fill the required widgets.
         if (e.swaft.code === 'INPUT_REQUIRED') setReqTab('input');
       } else {
@@ -542,12 +547,18 @@ export function ApiView({
           <div className="api__resp-head">
             <Tabs
               tabs={[
+                ...(preOutcomes.length
+                  ? ([['preActions', `${t('api.tab.preActions')} (${preOutcomes.length})`]] as [string, string][])
+                  : []),
                 ...(renderedReq
                   ? ([['render', t('api.requestRender')]] as [string, string][])
                   : []),
                 ['body', t('api.body')],
                 ['headers', t('api.headers')],
                 ['history', t('api.history')],
+                ...(postOutcomes.length
+                  ? ([['postActions', `${t('api.tab.postActions')} (${postOutcomes.length})`]] as [string, string][])
+                  : []),
               ]}
               active={resTab}
               onSelect={(k) => setResTab(k as ResTab)}
@@ -563,11 +574,12 @@ export function ApiView({
               <div className="auth-error" role="alert">
                 {error}
               </div>
+            ) : resTab === 'preActions' ? (
+              <ActionOutcomes outcomes={preOutcomes} />
+            ) : resTab === 'postActions' ? (
+              <ActionOutcomes outcomes={postOutcomes} />
             ) : resTab === 'render' && renderedReq ? (
-              <div className="col" style={{ gap: 'var(--space-4)' }}>
-                <ActionOutcomes outcomes={actionOutcomes} />
-                <RequestRender request={renderedReq} />
-              </div>
+              <RequestRender request={renderedReq} />
             ) : resTab === 'history' ? (
               <HistoryView history={history} onOpen={setDetail} onClear={() => void clearHistory()} />
             ) : !response ? (
@@ -905,27 +917,26 @@ function ActionOutcomes({ outcomes }: { outcomes: RequestActionOutcomeDto[] }) {
   const { t } = useI18n();
   if (outcomes.length === 0) return null;
   return (
-    <div className="ui-field">
-      <span className="ui-field__label">{t('api.actions.ran')}</span>
-      <ul className="act-outcomes">
-        {outcomes.map((o, i) => (
-          <li key={i} className={`act-outcome act-outcome--${o.status}`}>
-            <div className="act-outcome__head">
-              <code>{o.ref}</code>
-              <span className="ui-badge">{t(o.trigger === 'pre' ? 'api.actions.pre' : 'api.actions.post')}</span>
-              <span className="act-outcome__spacer" />
-              {o.envWrites.length > 0 && (
-                <span className="muted">{t('api.actions.wrote', { names: o.envWrites.join(', ') })}</span>
-              )}
-            </div>
-            {o.error && <div className="act-outcome__error">{o.error}</div>}
-            {o.logs.length > 0 && <pre className="act-outcome__logs">{o.logs.join('\n')}</pre>}
-            {o.output != null && (
-              <pre className="act-outcome__logs">{JSON.stringify(o.output, null, 2)}</pre>
+    <ul className="act-outcomes">
+      {outcomes.map((o, i) => (
+        <li key={i} className={`act-outcome act-outcome--${o.status}`}>
+          <div className="act-outcome__head">
+            <span className={`ui-badge act-outcome__status--${o.status}`}>{o.status}</span>
+            <code>{o.ref}</code>
+            <span className="act-outcome__spacer" />
+            {o.envWrites.length > 0 && (
+              <span className="muted">{t('api.actions.wrote', { names: o.envWrites.join(', ') })}</span>
             )}
-          </li>
-        ))}
-      </ul>
-    </div>
+          </div>
+          {o.error && <div className="act-outcome__error">{o.error}</div>}
+          {o.logs.length > 0 && <pre className="act-outcome__logs">{o.logs.join('\n')}</pre>}
+          {o.output != null && (
+            <pre className="act-outcome__logs">
+              {typeof o.output === 'string' ? o.output : JSON.stringify(o.output, null, 2)}
+            </pre>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }

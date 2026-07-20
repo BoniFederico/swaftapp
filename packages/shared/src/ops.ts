@@ -919,6 +919,12 @@ export interface ReceiptDto {
   message: string;
   environment: string;
   createdAt: string;
+  /** Value the action returned, on the run that just happened (not persisted). Input stays redacted. */
+  output?: unknown;
+  /** Lines the action logged with `swaft.log(...)`. */
+  logs?: string[];
+  /** Names of the environment variables the action wrote (values are never echoed). */
+  envWrites?: string[];
 }
 
 export interface WorkspaceSettingsDto {
