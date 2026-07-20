@@ -2696,6 +2696,61 @@ body {
   margin-top: var(--space-5);
 }
 
+/* ---------- Create-template type picker ---------- */
+/* The four template types as radio cards (icon + name + one-liner) instead of a dropdown. */
+.tpl-type-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.tpl-type-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.tpl-type-card:hover {
+  background: var(--surface-2);
+}
+.tpl-type-card[aria-checked='true'] {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+.tpl-type-card__icon {
+  width: 26px;
+  height: 26px;
+}
+/* Per-type tints matching the tree icons, so the kinds read the same across the app. */
+.tpl-type-card__icon--document {
+  color: #3b82f6;
+}
+.tpl-type-card__icon--api {
+  color: #f59e0b;
+}
+.tpl-type-card__icon--capability {
+  color: #8b5cf6;
+}
+.tpl-type-card__icon--action {
+  color: #10b981;
+}
+.tpl-type-card__label {
+  font-weight: 600;
+}
+.tpl-type-card__desc {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
 /* ---------- Toast ---------- */
 .ui-toasts {
   position: fixed;

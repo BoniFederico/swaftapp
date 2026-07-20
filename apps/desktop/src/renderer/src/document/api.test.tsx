@@ -66,8 +66,7 @@ async function signUpToWorkspaceApiTemplate() {
   // create an API template
   fireEvent.click(screen.getByRole('button', { name: 'Create template' }));
   fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Call' } });
-  fireEvent.click(screen.getByLabelText('Type'));
-  fireEvent.click(screen.getByRole('option', { name: 'API' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'API' }));
   fireEvent.click(screen.getByRole('button', { name: 'Create' }));
   await screen.findByLabelText('URL');
 }

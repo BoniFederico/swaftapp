@@ -223,6 +223,10 @@ export const en = {
   'tpl.api': 'API',
   'tpl.capability': 'Capability',
   'tpl.action': 'Action',
+  'tpl.documentDesc': 'Rendered document driven by inputs.',
+  'tpl.apiDesc': 'Structured HTTP request.',
+  'tpl.capabilityDesc': 'Sandboxed function for formulas.',
+  'tpl.actionDesc': 'Sandboxed action, confirmed before it runs.',
   'tpl.codeNameHint': 'The name is how formulas and action plans reference it, so use letters, digits and _ (not starting with a digit).',
 
   'cap.title': 'Capability',
@@ -687,6 +691,10 @@ export const it: Partial<Record<TranslationKey, string>> = {
   'tpl.api': 'API',
   'tpl.capability': 'Capability',
   'tpl.action': 'Action',
+  'tpl.documentDesc': 'Documento renderizzato a partire dagli input.',
+  'tpl.apiDesc': 'Richiesta HTTP strutturata.',
+  'tpl.capabilityDesc': 'Funzione sandbox per le formule.',
+  'tpl.actionDesc': 'Azione sandbox, confermata prima di eseguire.',
   'tpl.codeNameHint': 'Il nome è ciò con cui formule e action plan la richiamano: usa lettere, cifre e _ (non iniziare con una cifra).',
 
   'cap.title': 'Capability',
