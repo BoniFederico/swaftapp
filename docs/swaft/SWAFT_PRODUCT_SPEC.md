@@ -60,7 +60,7 @@ the application shell, persistence layer, security boundary and user interface a
 ### 2.1 Goals
 
 - **G1** — Provide a local-first workspace stored as a single portable `.swaft` SQLite file.
-- **G2** — Let users author, version and render **document**, **api** and **render** templates.
+- **G2** — Let users author, version and render **document** and **api** templates (the original `render` type was folded into `document` subtypes), plus user-authored **capability**/**action** code templates.
 - **G3** — Provide a real HTTP client and a real (read-only-by-default) database client, both executed in the backend.
 - **G4** — Generate and execute Seebo-produced **actions** under explicit confirmation and backend enforcement.
 - **G5** — Provide immutable, linearly versioned releases with personal (non-synchronized) release selection.
@@ -150,7 +150,7 @@ A **workspace** is the top-level container and unit of storage, sharing and secu
 |---------|------|
 | **Project** | A macro-folder that **filters the Working Tree**. Projects scope which templates/folders are shown. |
 | **Folder** | Acts as an **HTTP collection** for API templates; general grouping container for templates. |
-| **Template** | The core authored unit. One of three types: `document`, `api`, `render`. |
+| **Template** | The core authored unit. One of four types: `document`, `api`, `capability`, `action` (the original `render` type was folded into `document` subtypes). |
 | **Tag** | A label applied to templates for cross-cutting organization/filtering. |
 | **Restriction** | A workspace-level constraint (e.g. allowed HTTP domains, allowed actions, allowed capabilities) enforced by the backend. |
 
@@ -176,13 +176,15 @@ Restrictions are synchronized workspace settings that the backend enforces. They
 
 ## 7. Template Types
 
-Swaft supports exactly **three template types**, each mapped to exactly one primary view.
+Swaft supports **four template types**, each mapped to exactly one primary view. (The original
+`render` type was folded into `document` subtypes: a renderable subtype simply has no inputs.)
 
 | Type | Primary view | Purpose |
 |------|--------------|---------|
-| `document` | **Document View** | Input-driven document rendering with optional generated actions. |
+| `document` | **Document View** | Input-driven document rendering with optional generated actions; renderable subtypes (html, markdown, mermaid, swagger, echarts, …) cover the former `render` type. |
 | `api` | **API View** | Structured HTTP request execution (real HTTP client). |
-| `render` | **Render View** | Standalone, view-only rendering. |
+| `capability` | **Code View** | User-authored Seebo capability (sandboxed JavaScript) usable from formulas. |
+| `action` | **Code View** | User-authored Seebo action (sandboxed JavaScript) with confirmation + receipt. |
 
 ### 7.1 Document Templates
 
@@ -386,7 +388,7 @@ Every persisted entity is classified as exactly one of:
 | **Workspace** | Top-level container; unit of storage, sharing and security. |
 | **Storage mode** | `local` \| `p2p` \| `server`; immutable after creation. |
 | **Execution mode** | `sandbox` \| `dev`; governs allowed dangerous operations. |
-| **Template** | Authored unit of type `document`, `api`, or `render`. |
+| **Template** | Authored unit of type `document`, `api`, `capability` or `action`. |
 | **Release** | Immutable semantic snapshot of a template. |
 | **Release selection** | Personal, local-only choice of which release to use. |
 | **Working Tree** | Always-visible navigation tree of projects/folders/templates. |

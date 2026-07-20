@@ -6,14 +6,13 @@ IPC, transport-agnostic API client.
 
 > **Documentation:** see [`docs/swaft/`](docs/swaft/) — start with
 > [`README`](docs/swaft/README.md), [`SWAFT_MVP_SCOPE.md`](docs/swaft/SWAFT_MVP_SCOPE.md), and the
-> step-by-step build guide [`MVP_STEPS.md`](docs/swaft/MVP_STEPS.md).
+> step-by-step build guide [`MVP_STEPS.md`](docs/swaft/MVP_STEPS.md). The user-authored code
+> feature (capability/action templates) is designed in
+> [`analisi_codice_utente.md`](analisi_codice_utente.md).
 
 ## Requirements
 
-- **Node.js 20 LTS recommended.** Electron 33's installer (`extract-zip`) can **silently fail to
-  unpack the Electron binary on Node 23+** (including Node 24): `npm install` succeeds but
-  `npm run dev` then fails with `Error: Electron uninstall`. Use Node 20 LTS for a clean install, or
-  apply the recovery below.
+- **Node.js 20 LTS or newer** (the repo is developed on Node 20–24).
 - npm ≥ 10
 - Windows or macOS (MVP targets)
 
@@ -23,22 +22,9 @@ IPC, transport-agnostic API client.
 npm install
 ```
 
-The first install downloads the Electron binary (needs network access).
-
-### If `npm run dev` says `Error: Electron uninstall` (Node 23+/24)
-
-The Electron binary did not unpack. Easiest fix: switch to **Node 20 LTS** and reinstall:
-
-```bash
-# with nvm-windows / nvm
-nvm install 20 && nvm use 20
-rm -rf node_modules package-lock.json   # (PowerShell: Remove-Item -Recurse -Force node_modules, package-lock.json)
-npm install
-```
-
-Or recover the binary in place (the zip is already cached): extract
-`%LOCALAPPDATA%\electron\Cache\<hash>\electron-v33.4.11-win32-x64.zip` into
-`node_modules\electron\dist\` and create `node_modules\electron\path.txt` containing `electron.exe`.
+The first install downloads the Electron binary (needs network access). If `npm run dev` ever fails
+with `Error: Electron uninstall`, the binary did not unpack — reinstall with
+`rm -rf node_modules package-lock.json && npm install`.
 
 ## Run the app (see it)
 
@@ -48,9 +34,11 @@ npm run dev      # launch the Electron app with HMR
 npm run see      # alias of dev
 ```
 
-You should see the **Swaft** window with: a **theme toggle** (light/dark), the **5 primary colors**,
-and a **“Ping backend”** button that round-trips `system.ping` through the hardened IPC bridge and
-shows `pong=true …`.
+First run: the **sign-up gate** asks you to create the local account that protects the device
+(Argon2id verifier kept in OS secure storage). After signing in you land on the **homepage** —
+create or open a `.swaft` workspace, then work in the shell: **Working Tree** (projects, folders,
+tags, templates), **Document / API / Code views**, template editor with releases, environments,
+actions with confirmation + receipts, and per-workspace restrictions.
 
 ## Verify (conformance checks)
 
@@ -68,16 +56,15 @@ npm run build           # production build (out/)
 npm run e2e             # Playwright-for-Electron smoke (run `npm run build` first)
 ```
 
-## “See it” after each milestone
+Two heavy renderer suites (`workspace.test.tsx`, `api.test.tsx`) are excluded from the default run
+because they can hang the jsdom worker on some machines; opt in with:
 
-Every milestone in [`docs/swaft/MVP_STEPS.md`](docs/swaft/MVP_STEPS.md) ends with a **See it**
-command so you can launch the app and verify conformance before moving on. The two constants:
+```bash
+SWAFT_RUN_HEAVY_TESTS=1 npm run test
+```
 
-- **Run it:** `npm run dev`
-- **Check it:** `npm run verify` (and `npm run e2e` once built)
-
-What “seeing it” shows grows per milestone (M0 foundation → M1 IPC demo → M2 themed design system →
-M3 sign-in gate → M4 create/open workspace → … → M11 packaged app).
+The e2e smoke launches the **built** app against a throwaway profile (`SWAFT_USER_DATA_DIR`), signs
+up through the real IPC path and asserts the homepage — it never touches your real account.
 
 ## Project layout
 
