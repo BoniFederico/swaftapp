@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { ok, type ResultEnvelope, type WorkspaceSettingsDto, type WorkspaceSettingsUpdate } from '@swaft/shared';
 import { AppProviders } from '../AppProviders';
 import { ApiClient } from '../api-client/client';
@@ -54,6 +54,26 @@ describe('RestrictionsSettings — nothing is stored until Save', () => {
 
     fireEvent.click(save);
     await waitFor(() => expect(updates).toEqual([{ batcherEnabled: false }]));
+  });
+
+  it('grows the enforced-headers table a row at a time, with no Add button', async () => {
+    const updates = renderSection();
+    const save = await screen.findByRole('button', { name: /save/i });
+    // The table grows on its own — no Add button inside it (the chip list above has its own).
+    const table = document.querySelector('.kv')!;
+    expect(within(table as HTMLElement).queryByRole('button', { name: /^add$/i })).toBeNull();
+
+    // One empty trailing row to start with.
+    expect(screen.getAllByLabelText('Key')).toHaveLength(1);
+    fireEvent.change(screen.getAllByLabelText('Key')[0]!, { target: { value: 'X-Tenant' } });
+    fireEvent.change(screen.getAllByLabelText('Value')[0]!, { target: { value: 'acme' } });
+
+    // Filling the trailing row spawns the next one.
+    await waitFor(() => expect(screen.getAllByLabelText('Key')).toHaveLength(2));
+    expect(updates).toEqual([]);
+
+    fireEvent.click(save);
+    await waitFor(() => expect(updates).toEqual([{ enforcedHeaders: { 'X-Tenant': 'acme' } }]));
   });
 
   it('reverts every pending edit on Cancel without writing anything', async () => {

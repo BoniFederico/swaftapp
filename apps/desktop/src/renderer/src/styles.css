@@ -983,6 +983,12 @@ body {
 .kv__mode:hover {
   color: var(--text);
 }
+/* Plain (non-formula) bulk editor, for enforced headers and environment variables. */
+.kv__batch {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  resize: vertical;
+}
 
 /* Request body editor (type + code) and the Information tab. */
 .api__body,
@@ -3175,24 +3181,6 @@ body {
 .env-vars__row .ui-icon-btn svg {
   width: 14px;
   height: 14px;
-}
-.env-vars__empty {
-  margin: 0;
-  padding: var(--space-3);
-  color: var(--text-muted);
-  font-size: var(--fs-sm);
-}
-.env-vars__foot {
-  display: flex;
-  padding: var(--space-1);
-}
-.env-vars__foot .ui-btn {
-  font-size: var(--fs-sm);
-  padding: var(--space-1) var(--space-2);
-  color: var(--text-muted);
-}
-.env-vars__foot .ui-btn:hover:not(:disabled) {
-  color: var(--text);
 }
 
 /* ---------- Folder view (Content / Headers / Proxy / Notes) ---------- */

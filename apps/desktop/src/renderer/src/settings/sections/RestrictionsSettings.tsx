@@ -1,14 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { ExecutionMode, WorkspaceSettingsDto, WorkspaceSettingsUpdate } from '@swaft/shared';
 import { ApiClient, ApiError } from '../../api-client/client';
+import { KeyValueEditor } from '../../document/KeyValueEditor';
 import { useI18n } from '../../i18n/I18nProvider';
-import { Button, IconButton, Select, Switch, TextField, TrashIcon, useToast } from '../../ui';
+import { Button, Select, Switch, TextField, useToast } from '../../ui';
 import { ChipListEditor } from '../ChipListEditor';
-
-interface HeaderRow {
-  key: string;
-  value: string;
-}
 
 /** The whole editable state of this section, as a single draft object. */
 interface Draft {
@@ -16,19 +12,7 @@ interface Draft {
   batcherEnabled: boolean;
   blockedDomains: string[];
   proxyUrl: string;
-  headers: HeaderRow[];
-}
-
-function toRows(headers: Record<string, string>): HeaderRow[] {
-  return Object.entries(headers).map(([key, value]) => ({ key, value }));
-}
-function fromRows(rows: HeaderRow[]): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const { key, value } of rows) {
-    const k = key.trim();
-    if (k) out[k] = value;
-  }
-  return out;
+  enforcedHeaders: Record<string, string>;
 }
 
 function toDraft(s: WorkspaceSettingsDto): Draft {
@@ -37,7 +21,7 @@ function toDraft(s: WorkspaceSettingsDto): Draft {
     batcherEnabled: s.batcherEnabled,
     blockedDomains: s.blockedDomains,
     proxyUrl: s.proxyUrl ?? '',
-    headers: toRows(s.enforcedHeaders),
+    enforcedHeaders: s.enforcedHeaders,
   };
 }
 
@@ -71,10 +55,6 @@ export function RestrictionsSettings({ client }: { client: ApiClient }) {
     setDraft((d) => (d ? { ...d, ...patch } : d));
   }
 
-  function setRows(fn: (rows: HeaderRow[]) => HeaderRow[]) {
-    setDraft((d) => (d ? { ...d, headers: fn(d.headers) } : d));
-  }
-
   async function save() {
     if (!draft || !saved) return;
     const patch: WorkspaceSettingsUpdate = {};
@@ -86,8 +66,8 @@ export function RestrictionsSettings({ client }: { client: ApiClient }) {
     if (JSON.stringify(draft.blockedDomains) !== JSON.stringify(saved.blockedDomains))
       patch.blockedDomains = draft.blockedDomains;
     if (draft.proxyUrl.trim() !== saved.proxyUrl.trim()) patch.proxyUrl = draft.proxyUrl.trim() || null;
-    if (JSON.stringify(fromRows(draft.headers)) !== JSON.stringify(fromRows(saved.headers)))
-      patch.enforcedHeaders = fromRows(draft.headers);
+    if (JSON.stringify(draft.enforcedHeaders) !== JSON.stringify(saved.enforcedHeaders))
+      patch.enforcedHeaders = draft.enforcedHeaders;
 
     try {
       const { settings } = await client.call('settings.update', patch);
@@ -165,49 +145,11 @@ export function RestrictionsSettings({ client }: { client: ApiClient }) {
 
       <div className="ui-field">
         <span className="ui-field__label">{t('wsset.enforcedHeaders')}</span>
-        <div className="env-vars">
-          <div className="env-vars__headrow" aria-hidden="true">
-            <span className="env-vars__colhead env-vars__key">{t('env.settings.varKey')}</span>
-            <span className="env-vars__colhead env-vars__value">{t('env.settings.varValue')}</span>
-            <span className="env-vars__delcol" />
-          </div>
-          {draft.headers.length === 0 && <p className="env-vars__empty">{t('wsset.empty')}</p>}
-          {draft.headers.map((row, i) => (
-            <div key={i} className="env-vars__row">
-              <input
-                className="env-vars__input env-vars__key"
-                aria-label={t('env.settings.varKey')}
-                placeholder={t('env.settings.varKey')}
-                value={row.key}
-                spellCheck={false}
-                onChange={(e) =>
-                  setRows((rs) => rs.map((r, j) => (j === i ? { ...r, key: e.target.value } : r)))
-                }
-              />
-              <input
-                className="env-vars__input env-vars__value"
-                aria-label={t('env.settings.varValue')}
-                placeholder={t('env.settings.varValue')}
-                value={row.value}
-                spellCheck={false}
-                onChange={(e) =>
-                  setRows((rs) => rs.map((r, j) => (j === i ? { ...r, value: e.target.value } : r)))
-                }
-              />
-              <IconButton
-                label={t('wsset.remove')}
-                onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))}
-              >
-                <TrashIcon />
-              </IconButton>
-            </div>
-          ))}
-          <div className="env-vars__foot">
-            <Button variant="ghost" onClick={() => setRows((rs) => [...rs, { key: '', value: '' }])}>
-              {t('wsset.add')}
-            </Button>
-          </div>
-        </div>
+        <KeyValueEditor
+          plain
+          value={draft.enforcedHeaders}
+          onChange={(enforcedHeaders) => edit({ enforcedHeaders })}
+        />
         <span className="field-hint">{t('wsset.enforcedHeadersHint')}</span>
       </div>
 

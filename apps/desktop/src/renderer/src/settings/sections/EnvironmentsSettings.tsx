@@ -4,24 +4,8 @@ import { ApiClient, ApiError } from '../../api-client/client';
 import { useEnvironments } from '../../environment/EnvironmentProvider';
 import { OWNER_KIND_LABEL } from '../../environment/ownerKind';
 import { useI18n } from '../../i18n/I18nProvider';
-import { Button, ConfirmDialog, IconButton, PlusIcon, Switch, TextField, TrashIcon, useToast } from '../../ui';
-
-interface VarRow {
-  key: string;
-  value: string;
-}
-
-function toRows(vars: Record<string, string>): VarRow[] {
-  return Object.entries(vars).map(([key, value]) => ({ key, value }));
-}
-function fromRows(rows: VarRow[]): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const { key, value } of rows) {
-    const k = key.trim();
-    if (k) out[k] = value;
-  }
-  return out;
-}
+import { KeyValueEditor } from '../../document/KeyValueEditor';
+import { Button, ConfirmDialog, IconButton, PlusIcon, Switch, TextField, useToast } from '../../ui';
 
 /** ENVIRONMENTS: create / rename / describe / edit variables of the workspace's environments, and pick
  * which one is active. The active environment feeds the `env(...)` Seebo capability. */
@@ -212,7 +196,7 @@ function EnvironmentEditor({
   const [env, setEnv] = useState<EnvironmentDto | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [rows, setRows] = useState<VarRow[]>([]);
+  const [vars, setVars] = useState<Record<string, string>>({});
   const [dirty, setDirty] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -222,7 +206,7 @@ function EnvironmentEditor({
       setEnv(res.environment);
       setName(res.environment.name);
       setDescription(res.environment.description ?? '');
-      setRows(toRows(res.environment.vars));
+      setVars(res.environment.vars);
       setDirty(false);
     },
     [client],
@@ -243,7 +227,7 @@ function EnvironmentEditor({
         id: environmentId,
         name: name.trim(),
         description: description.trim() || null,
-        vars: fromRows(rows),
+        vars,
       });
       toast.show(t('env.settings.saved'), 'success');
       onChanged();
@@ -294,47 +278,13 @@ function EnvironmentEditor({
 
       <div className="ui-field">
         <span className="ui-field__label">{t('env.settings.variables')}</span>
-        <div className="env-vars">
-          <div className="env-vars__grid">
-            <div className="env-vars__headrow" aria-hidden="true">
-              <span className="env-vars__colhead env-vars__key">{t('env.settings.varKey')}</span>
-              <span className="env-vars__colhead env-vars__value">{t('env.settings.varValue')}</span>
-              <span className="env-vars__delcol" />
-            </div>
-            {rows.length === 0 && <p className="env-vars__empty">{t('env.settings.noVars')}</p>}
-            {rows.map((row, i) => (
-              <div key={i} className="env-vars__row">
-                <input
-                  className="env-vars__input env-vars__key"
-                  aria-label={t('env.settings.varKey')}
-                  placeholder={t('env.settings.varKey')}
-                  value={row.key}
-                  spellCheck={false}
-                  onChange={(e) => edit(() => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, key: e.target.value } : r))))}
-                />
-                <input
-                  className="env-vars__input env-vars__value"
-                  aria-label={t('env.settings.varValue')}
-                  placeholder={t('env.settings.varValue')}
-                  value={row.value}
-                  spellCheck={false}
-                  onChange={(e) => edit(() => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, value: e.target.value } : r))))}
-                />
-                <IconButton
-                  label={t('env.settings.removeVar')}
-                  onClick={() => edit(() => setRows((rs) => rs.filter((_, j) => j !== i)))}
-                >
-                  <TrashIcon />
-                </IconButton>
-              </div>
-            ))}
-          </div>
-          <div className="env-vars__foot">
-            <Button variant="ghost" onClick={() => edit(() => setRows((rs) => [...rs, { key: '', value: '' }]))}>
-              {t('env.settings.addVar')}
-            </Button>
-          </div>
-        </div>
+        <KeyValueEditor
+          plain
+          value={vars}
+          onChange={(next) => edit(() => setVars(next))}
+          keyLabel={t('env.settings.varKey')}
+          valueLabel={t('env.settings.varValue')}
+        />
       </div>
 
       <div className="env-settings__actions">
