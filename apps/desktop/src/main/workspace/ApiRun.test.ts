@@ -43,6 +43,7 @@ function setup(
         history.push(url);
         return Promise.resolve([]);
       },
+      recordActions: () => Promise.resolve(),
     } as unknown as ApiHistoryService,
     code: {
       runAction: (ref: string, input: Record<string, unknown>, opts: { api?: unknown }) => {

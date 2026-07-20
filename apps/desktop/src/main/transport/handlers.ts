@@ -14,6 +14,7 @@ import {
   type HttpSendRequest,
   type UserCodeRefRequest,
   type UserCodeRunRequest,
+  type ApiActionsClearRequest,
   type IdRequest,
   type InputStateGetRequest,
   type InputStateSetRequest,
@@ -325,6 +326,15 @@ export const handlers: Record<OpName, Handler> = {
     svc(async () => ({
       capability: await getUserCodeRegistry().trust((p as UserCodeRefRequest).templateId),
     })),
+  'api.actions.list': (p) =>
+    svc(async () => ({
+      outcomes: await getApiHistoryService().listActions((p as TemplateRefRequest).templateId),
+    })),
+  'api.actions.clear': (p) =>
+    svc(async () => {
+      const r = p as ApiActionsClearRequest;
+      return { outcomes: await getApiHistoryService().clearActions(r.templateId, r.trigger) };
+    }),
   'api.history.list': (p) =>
     svc(async () => ({ items: await getApiHistoryService().list((p as TemplateRefRequest).templateId) })),
   'api.history.clear': (p) =>

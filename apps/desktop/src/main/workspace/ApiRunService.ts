@@ -61,6 +61,8 @@ export class ApiRunService {
       if (outcome.status === 'failed') {
         // The point of a `pre` action is to make the request valid (sign it, refresh a token); if it
         // could not, sending anyway would produce a confusing HTTP error instead of the real cause.
+        // Persist what ran so the failure is in the Pre-Action history, then stop.
+        await this.deps.history.recordActions(templateId, outcomes);
         throw new AppError(
           'REQUEST_ACTION_FAILED',
           'validation',
@@ -81,6 +83,10 @@ export class ApiRunService {
         outcomes.push(await this.runAction(action, api));
       }
     }
+
+    // Persist the run's outcomes so the Pre/Post-Action tabs accumulate a history, like the request
+    // history does.
+    await this.deps.history.recordActions(templateId, outcomes);
 
     const rendered = resolved.rendered || outcomes.length > 0;
     return {

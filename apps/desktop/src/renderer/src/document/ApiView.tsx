@@ -204,9 +204,10 @@ export function ApiView({
     let folderId: string | null = null;
     void (async () => {
       try {
-        const [tpl, hist, inp] = await Promise.all([
+        const [tpl, hist, acts, inp] = await Promise.all([
           client.call('template.get', { id: templateId }),
           client.call('api.history.list', { templateId }),
+          client.call('api.actions.list', { templateId }),
           client.call('inputState.get', { templateId }),
         ]);
         if (cancelled) return;
@@ -215,6 +216,7 @@ export function ApiView({
         setReq(parsed);
         applySaved(JSON.stringify(parsed));
         setHistory(hist.items);
+        setActionOutcomes(acts.outcomes);
         setValues(inp.values);
         const tm = tpl.template;
         folderId = tm.folderId;
@@ -286,6 +288,21 @@ export function ApiView({
 
   const preOutcomes = actionOutcomes.filter((o) => o.trigger === 'pre');
   const postOutcomes = actionOutcomes.filter((o) => o.trigger === 'post');
+
+  // If the Input tab vanishes (everything filled, no errors) while it is the active one, fall back.
+  useEffect(() => {
+    if (reqTab === 'input' && requirements.length === 0 && diags.length === 0) setReqTab('params');
+  }, [reqTab, requirements.length, diags.length]);
+
+  // Same for the response tabs that come and go (Pre/Post-Action, History): if the active one is now
+  // empty — e.g. it was just cleared — fall back to the response body.
+  useEffect(() => {
+    const gone =
+      (resTab === 'preActions' && preOutcomes.length === 0) ||
+      (resTab === 'postActions' && postOutcomes.length === 0) ||
+      (resTab === 'history' && history.length === 0);
+    if (gone) setResTab('body');
+  }, [resTab, preOutcomes.length, postOutcomes.length, history.length]);
 
   const dirty = savedSource !== null && JSON.stringify(req) !== savedSource;
   useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
@@ -364,22 +381,32 @@ export function ApiView({
       await client.call('inputState.set', { templateId, values: vals });
       const res = await client.call('http.send', { templateId, request: req, values: vals });
       setResponse(res.response);
-      setActionOutcomes(res.actions ?? []);
       // A "Request" tab is offered only when formulas were actually rendered.
       setRenderedReq(res.rendered && res.request ? res.request : null);
       setResTab('body');
-      setHistory((await client.call('api.history.list', { templateId })).items);
+      // The outcomes are persisted server-side; reload both histories to reflect this run.
+      const [h, a] = await Promise.all([
+        client.call('api.history.list', { templateId }),
+        client.call('api.actions.list', { templateId }),
+      ]);
+      setHistory(h.items);
+      setActionOutcomes(a.outcomes);
     } catch (e) {
       setResponse(null);
       if (e instanceof ApiError) {
         setError(e.swaft.message);
-        // A pre-request action that failed carries what ran before it gave up — show it.
-        const failed = e.swaft.details?.actions;
-        const outcomes = Array.isArray(failed) ? (failed as RequestActionOutcomeDto[]) : [];
+        // A failed pre-action was persisted before the send gave up — reload and jump to its tab.
+        const acts = await client.call('api.actions.list', { templateId }).catch(() => null);
+        const outcomes = acts?.outcomes ?? [];
         setActionOutcomes(outcomes);
         if (outcomes.some((o) => o.trigger === 'pre')) setResTab('preActions');
-        // Missing inputs → jump to the Input tab so the user can fill the required widgets.
-        if (e.swaft.code === 'INPUT_REQUIRED') setReqTab('input');
+        // Missing inputs → surface them (the tab is otherwise hidden) and jump to the Input tab. Seed
+        // the widgets from the error's `pending` so the tab appears at once, before analyze re-runs.
+        if (e.swaft.code === 'INPUT_REQUIRED') {
+          const pending = e.swaft.details?.pending;
+          if (Array.isArray(pending) && pending.length) setRequirements(pending as RequirementDto[]);
+          setReqTab('input');
+        }
       } else {
         setError(String(e));
       }
@@ -389,6 +416,9 @@ export function ApiView({
   }
   async function clearHistory() {
     setHistory((await client.call('api.history.clear', { templateId })).items);
+  }
+  async function clearActions(trigger: 'pre' | 'post') {
+    setActionOutcomes((await client.call('api.actions.clear', { templateId, trigger })).outcomes);
   }
 
   // Hover preview of a `${ … }` formula: render just that slot with the current input values and
@@ -462,7 +492,11 @@ export function ApiView({
                   : t('api.actions'),
               ],
               ['info', t('api.info')],
-              ['input', requirements.length ? `${t('api.input')} (${requirements.length})` : t('api.input')],
+              // The Input tab shows only while the request actually needs inputs (or has a formula
+              // error to report); once everything is filled it disappears.
+              ...(requirements.length || diags.length
+                ? ([['input', requirements.length ? `${t('api.input')} (${requirements.length})` : t('api.input')]] as [string, string][])
+                : []),
             ]}
             active={reqTab}
             onSelect={(k) => setReqTab(k as ReqTab)}
@@ -555,7 +589,8 @@ export function ApiView({
                   : []),
                 ['body', t('api.body')],
                 ['headers', t('api.headers')],
-                ['history', t('api.history')],
+                // History, like the action tabs, appears only when it holds something.
+                ...(history.length ? ([['history', t('api.history')]] as [string, string][]) : []),
                 ...(postOutcomes.length
                   ? ([['postActions', `${t('api.tab.postActions')} (${postOutcomes.length})`]] as [string, string][])
                   : []),
@@ -570,18 +605,20 @@ export function ApiView({
             )}
           </div>
           <div className="api__tabbody">
-            {error ? (
+            {/* The action/history tabs render their own content even when the send errored (a failed
+                pre-action lives here), so they are checked before the error banner. */}
+            {resTab === 'preActions' ? (
+              <ActionOutcomes outcomes={preOutcomes} onClear={() => void clearActions('pre')} />
+            ) : resTab === 'postActions' ? (
+              <ActionOutcomes outcomes={postOutcomes} onClear={() => void clearActions('post')} />
+            ) : resTab === 'history' ? (
+              <HistoryView history={history} onOpen={setDetail} onClear={() => void clearHistory()} />
+            ) : error ? (
               <div className="auth-error" role="alert">
                 {error}
               </div>
-            ) : resTab === 'preActions' ? (
-              <ActionOutcomes outcomes={preOutcomes} />
-            ) : resTab === 'postActions' ? (
-              <ActionOutcomes outcomes={postOutcomes} />
             ) : resTab === 'render' && renderedReq ? (
               <RequestRender request={renderedReq} />
-            ) : resTab === 'history' ? (
-              <HistoryView history={history} onOpen={setDetail} onClear={() => void clearHistory()} />
             ) : !response ? (
               <span className="muted">{t('api.noResponse')}</span>
             ) : resTab === 'headers' ? (
@@ -913,30 +950,44 @@ function Tabs({
 
 
 /** What the request's attached actions did, shown in the Request render tab after a send. */
-function ActionOutcomes({ outcomes }: { outcomes: RequestActionOutcomeDto[] }) {
+function ActionOutcomes({
+  outcomes,
+  onClear,
+}: {
+  outcomes: RequestActionOutcomeDto[];
+  onClear: () => void;
+}) {
   const { t } = useI18n();
-  if (outcomes.length === 0) return null;
+  if (outcomes.length === 0) return <span className="muted">{t('wsset.empty')}</span>;
   return (
-    <ul className="act-outcomes">
-      {outcomes.map((o, i) => (
-        <li key={i} className={`act-outcome act-outcome--${o.status}`}>
-          <div className="act-outcome__head">
-            <span className={`ui-badge act-outcome__status--${o.status}`}>{o.status}</span>
-            <code>{o.ref}</code>
-            <span className="act-outcome__spacer" />
-            {o.envWrites.length > 0 && (
-              <span className="muted">{t('api.actions.wrote', { names: o.envWrites.join(', ') })}</span>
+    <div className="api-hist">
+      <ul className="act-outcomes">
+        {outcomes.map((o, i) => (
+          <li key={i} className={`act-outcome act-outcome--${o.status}`}>
+            <div className="act-outcome__head">
+              <span className={`ui-badge act-outcome__status--${o.status}`}>{o.status}</span>
+              <code>{o.ref}</code>
+              <span className="act-outcome__spacer" />
+              {o.envWrites.length > 0 && (
+                <span className="muted">{t('api.actions.wrote', { names: o.envWrites.join(', ') })}</span>
+              )}
+              {o.createdAt && <span className="api-hist__time muted">{shortTime(o.createdAt)}</span>}
+            </div>
+            {o.error && <div className="act-outcome__error">{o.error}</div>}
+            {o.logs.length > 0 && <pre className="act-outcome__logs">{o.logs.join('\n')}</pre>}
+            {o.output != null && (
+              <pre className="act-outcome__logs">
+                {typeof o.output === 'string' ? o.output : JSON.stringify(o.output, null, 2)}
+              </pre>
             )}
-          </div>
-          {o.error && <div className="act-outcome__error">{o.error}</div>}
-          {o.logs.length > 0 && <pre className="act-outcome__logs">{o.logs.join('\n')}</pre>}
-          {o.output != null && (
-            <pre className="act-outcome__logs">
-              {typeof o.output === 'string' ? o.output : JSON.stringify(o.output, null, 2)}
-            </pre>
-          )}
-        </li>
-      ))}
-    </ul>
+          </li>
+        ))}
+      </ul>
+      <div className="api-hist__foot">
+        <Button variant="ghost" onClick={onClear}>
+          {t('api.clear')}
+        </Button>
+      </div>
+    </div>
   );
 }

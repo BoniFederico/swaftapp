@@ -16,6 +16,7 @@ import {
   ApiIcon,
   Button,
   CapabilityIcon,
+  ConfirmDialog,
   ChevronRightIcon,
   CloseIcon,
   DocumentIcon,
@@ -69,6 +70,8 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
   const [sideWidth, setSideWidth] = useState(280);
   const [batcherEnabled, setBatcherEnabled] = useState(true);
   const [untrusted, setUntrusted] = useState<UntrustedCapabilityDto[]>([]);
+  // The tab awaiting a "discard unsaved changes?" confirmation, or null.
+  const [closing, setClosing] = useState<string | null>(null);
   const resize = useRef<{ startX: number; startW: number } | null>(null);
 
   // The Batcher panel visibility is a workspace restriction; re-read it when Settings close.
@@ -119,13 +122,24 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
   function pinTab(id: string) {
     setTabs((prev) => prev.map((tb) => (tb.id === id ? { ...tb, preview: false } : tb)));
   }
-  function closeTab(id: string) {
+  function removeTab(id: string) {
     setTabs((prev) => {
       const idx = prev.findIndex((tb) => tb.id === id);
       const next = prev.filter((tb) => tb.id !== id);
       if (activeId === id) setActiveId((next[idx] ?? next[idx - 1])?.id ?? null);
       return next;
     });
+  }
+
+  /**
+   * Close a tab. A tab with unsaved edits first asks for confirmation, so the changes are not lost
+   * silently. `force` skips the prompt — used when the underlying template/folder was just deleted,
+   * where its edits are moot and already confirmed.
+   */
+  function closeTab(id: string, force = false) {
+    const tab = tabs.find((tb) => tb.id === id);
+    if (!force && tab?.dirty) setClosing(id);
+    else removeTab(id);
   }
   function setTabFlag(id: string, patch: Partial<Tab>) {
     setTabs((prev) => {
@@ -237,7 +251,7 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
               if (mode === 'pin') pinTab(id); // preference: double-click consolidates the tab
             }}
             onOpenFolder={(folder) => openFolder(folder.id, folder.name)}
-            onCloseTemplate={closeTab}
+            onCloseTemplate={(id) => closeTab(id, true)}
             onCollapse={() => setSideCollapsed(true)}
           />
           {batcherEnabled && <BatcherPanel onLoadInputs={setBatch} />}
@@ -354,6 +368,19 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
         onClose={() => setSettingsOpen(false)}
         client={client}
         initialSection={settingsSection}
+      />
+
+      <ConfirmDialog
+        open={closing !== null}
+        title={t('tab.closeUnsaved.title')}
+        message={t('tab.closeUnsaved.message')}
+        confirmLabel={t('tab.closeUnsaved.confirm')}
+        cancelLabel={t('name.cancel')}
+        onConfirm={() => {
+          if (closing) removeTab(closing);
+          setClosing(null);
+        }}
+        onClose={() => setClosing(null)}
       />
     </div>
     </EnvironmentProvider>

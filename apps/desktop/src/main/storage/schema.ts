@@ -11,7 +11,7 @@
  * reshaped to flat collections) + workspace settings + restrictions.
  */
 
-export const SCHEMA_VERSION = 22;
+export const SCHEMA_VERSION = 23;
 
 /** Sync-metadata columns present on every 🟢 synchronized entity. */
 export const SYNC_META_COLUMNS = [
@@ -41,6 +41,7 @@ export const LOCAL_ONLY_TABLES = [
   'local_input_state',
   'release_selection',
   'api_history',
+  'api_action_runs',
   'receipts',
   'environment_selection',
 ] as const;
@@ -133,6 +134,20 @@ const API_HISTORY_DDL = `CREATE TABLE api_history (
   created_at TEXT NOT NULL
 );`;
 
+// 🔵 local-only: what a request's pre/post actions did, kept as a history alongside api_history.
+const API_ACTION_RUNS_DDL = `CREATE TABLE api_action_runs (
+  id TEXT PRIMARY KEY,
+  template_id TEXT NOT NULL,
+  ref TEXT NOT NULL,
+  trigger TEXT NOT NULL,
+  status TEXT NOT NULL,
+  output TEXT,
+  logs TEXT,
+  env_writes TEXT,
+  error TEXT,
+  created_at TEXT NOT NULL
+);`;
+
 // Tags: 🟢 synchronized many-to-many between templates and the reusable workspace tags.
 const TEMPLATE_TAGS_DDL = `CREATE TABLE template_tags (
   id TEXT PRIMARY KEY,
@@ -221,6 +236,8 @@ CREATE TABLE local_input_state (
 ${RELEASE_SELECTION_DDL}
 
 ${API_HISTORY_DDL}
+
+${API_ACTION_RUNS_DDL}
 
 ${RECEIPTS_DDL}
 
@@ -433,5 +450,10 @@ export const MIGRATIONS: { to: number; sql: string }[] = [
       ALTER TABLE folders ADD COLUMN auth TEXT;
       ALTER TABLE workspace_settings ADD COLUMN batcher_enabled INTEGER NOT NULL DEFAULT 1;
     `,
+  },
+  {
+    to: 23,
+    // v23 keeps a local-only history of what each request's pre/post actions did.
+    sql: API_ACTION_RUNS_DDL,
   },
 ];

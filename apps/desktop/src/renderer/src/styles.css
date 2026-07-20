@@ -1419,6 +1419,34 @@ body {
   flex-direction: column;
   gap: var(--space-3);
 }
+/* The output area above the (optional) Actions panel takes the remaining height. */
+.doc__output-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* The Actions panel keeps its resized height and scrolls; it never pushes the output up. */
+.doc__actions {
+  flex: 0 0 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.doc__actions > .ui-card {
+  height: 100%;
+}
+/* Drag handle between the output and the Actions panel (vertical resize). */
+.doc__asplit {
+  flex: 0 0 auto;
+  height: 8px;
+  margin: calc(-1 * var(--space-2)) 0;
+  cursor: ns-resize;
+  z-index: 2;
+}
+.doc__asplit:hover {
+  background: color-mix(in srgb, var(--primary) 30%, transparent);
+  border-radius: var(--radius-sm);
+}
 /* Drag handle between the Input and Output cards (horizontal resize). */
 .doc__hsplit {
   flex: 0 0 auto;
@@ -1468,7 +1496,7 @@ body {
   padding-right: var(--space-5);
 }
 /* The output card is a flex column so its body (code editor / rendered preview) fills + scrolls. */
-.doc__output > .ui-card:first-child {
+.doc__output-main > .ui-card {
   flex: 1;
   min-height: 0;
   display: flex;

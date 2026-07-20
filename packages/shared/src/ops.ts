@@ -325,6 +325,10 @@ export const secretSetRequestSchema = z
 
 /** Inspect a `capability` template: the name it registers under and whether it is usable. */
 export const userCodeRefRequestSchema = z.object({ templateId: z.string().min(1) }).strict();
+/** Clear a request's persisted action history — optionally just one trigger. */
+export const apiActionsClearRequestSchema = z
+  .object({ templateId: z.string().min(1), trigger: z.enum(['pre', 'post']).optional() })
+  .strict();
 /** Run a `capability` template once from its editor, with the arguments a formula would pass. */
 export const userCodeRunRequestSchema = z
   .object({
@@ -459,6 +463,8 @@ export const OP_NAMES = [
   'usercode.trust',
   'api.history.list',
   'api.history.clear',
+  'api.actions.list',
+  'api.actions.clear',
   'api.history.delete',
   'secret.set',
   'secret.list',
@@ -543,6 +549,8 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'usercode.trust': userCodeRefRequestSchema,
   'api.history.list': templateRefRequestSchema,
   'api.history.clear': templateRefRequestSchema,
+  'api.actions.list': templateRefRequestSchema,
+  'api.actions.clear': apiActionsClearRequestSchema,
   'api.history.delete': idRequestSchema,
   'secret.set': secretSetRequestSchema,
   'secret.list': emptyRequestSchema,
@@ -1037,6 +1045,7 @@ export interface DiagnosticsResponse {
 export type HttpSendRequest = z.infer<typeof httpSendRequestSchema>;
 export type ApiAnalyzeRequest = z.infer<typeof apiAnalyzeRequestSchema>;
 export type UserCodeRefRequest = z.infer<typeof userCodeRefRequestSchema>;
+export type ApiActionsClearRequest = z.infer<typeof apiActionsClearRequestSchema>;
 export type UserCodeRunRequest = z.infer<typeof userCodeRunRequestSchema>;
 export type SecretSetRequest = z.infer<typeof secretSetRequestSchema>;
 
@@ -1071,6 +1080,12 @@ export interface RequestActionOutcomeDto {
   envWrites: string[];
   /** Present when it failed. */
   error: string | null;
+  /** When the run happened (persisted history entries carry it; the fresh send response may omit it). */
+  createdAt?: string;
+}
+/** The persisted pre/post action history for a request template. */
+export interface RequestActionsResponse {
+  outcomes: RequestActionOutcomeDto[];
 }
 
 /** Template kinds whose source is user-authored JavaScript rather than a Seebo template. */
@@ -1204,6 +1219,8 @@ export interface OpContracts {
   'usercode.trust': { request: UserCodeRefRequest; response: UserCapabilityResponse };
   'api.history.list': { request: TemplateRefRequest; response: ApiHistoryResponse };
   'api.history.clear': { request: TemplateRefRequest; response: ApiHistoryResponse };
+  'api.actions.list': { request: TemplateRefRequest; response: RequestActionsResponse };
+  'api.actions.clear': { request: ApiActionsClearRequest; response: RequestActionsResponse };
   'api.history.delete': { request: IdRequest; response: OkResponse };
   'secret.set': { request: SecretSetRequest; response: SecretsResponse };
   'secret.list': { request: EmptyRequest; response: SecretsResponse };
