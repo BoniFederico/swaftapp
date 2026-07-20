@@ -29,9 +29,18 @@ describe('SettingsService', () => {
     const { settings } = await setup();
     const s = await settings.getSettings();
     expect(s.executionMode).toBe('sandbox');
+    expect(s.batcherEnabled).toBe(true);
     expect(s.blockedDomains).toEqual([]);
     expect(s.proxyUrl).toBeNull();
     expect(s.enforcedHeaders).toEqual({});
+  });
+
+  it('toggles the batcher and persists across reopen', async () => {
+    const { ws, settings } = await setup();
+    expect((await settings.updateSettings({ batcherEnabled: false })).batcherEnabled).toBe(false);
+    await ws.close();
+    await ws.open({ path: 'mem://s.swaft' });
+    expect((await settings.getSettings()).batcherEnabled).toBe(false);
   });
 
   it('updates blocked domains + proxy + enforced headers and persists across reopen', async () => {

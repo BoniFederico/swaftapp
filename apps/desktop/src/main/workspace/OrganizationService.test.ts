@@ -248,4 +248,28 @@ describe('OrganizationService', () => {
 
     await expect(org.getFolder('nope')).rejects.toMatchObject({ code: 'FOLDER_NOT_FOUND' });
   });
+
+  it('stores folder auth and exposes the inherited auth from the parent chain', async () => {
+    const { org } = await setup();
+    let tree = await org.createProject({ name: 'P' });
+    const projectId = tree.projects[0]!.id;
+    tree = await org.createFolder({ name: 'Parent', projectId });
+    const parentId = tree.folders[0]!.id;
+    tree = await org.createFolder({ name: 'Child', projectId, parentFolderId: parentId });
+    const childId = tree.folders.find((f) => f.name === 'Child')!.id;
+
+    await org.updateFolderMeta(parentId, { auth: { kind: 'bearer', token: 'T' } });
+
+    const child = await org.getFolder(childId);
+    expect(child.auth).toBeNull(); // unset = inherit
+    expect(child.inheritedAuth).toMatchObject({ kind: 'bearer', token: 'T' });
+
+    // An explicit `none` on the child stops inheritance for its own subtree previews.
+    await org.updateFolderMeta(childId, { auth: { kind: 'none' } });
+    expect((await org.getFolder(childId)).auth).toMatchObject({ kind: 'none' });
+
+    // Saving `inherit` clears back to NULL (transparent).
+    await org.updateFolderMeta(childId, { auth: { kind: 'inherit' } });
+    expect((await org.getFolder(childId)).auth).toBeNull();
+  });
 });

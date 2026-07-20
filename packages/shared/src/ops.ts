@@ -134,6 +134,31 @@ const headerNameSchema = z
   .max(128)
   .regex(/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/, 'Invalid header name.');
 
+/** Where an API-key auth goes on the outgoing request. */
+export const authPlacementSchema = z.enum(['header', 'query']);
+/**
+ * Request/folder authentication (M8, reworked). `inherit` resolves to the nearest folder-defined
+ * auth up the chain at send time. String fields (username/password/token/key/value) may carry Seebo
+ * `${ … }` formulas. `secretRef`/`headerName` are the legacy keychain-backed shape, still honored by
+ * the HTTP client.
+ */
+export const httpAuthSchema = z
+  .object({
+    kind: z.enum(['none', 'inherit', 'bearer', 'basic', 'apikey']),
+    username: z.string().max(1024).optional(),
+    password: z.string().max(4096).optional(),
+    token: z.string().max(4096).optional(),
+    /** API-key name (header name or query-param name, per `placement`). */
+    key: z.string().max(256).optional(),
+    value: z.string().max(4096).optional(),
+    placement: authPlacementSchema.optional(),
+    /** Legacy: reference into the OS keychain — the renderer never sees the secret value. */
+    secretRef: z.string().max(64).optional(),
+    /** Legacy alias of `key` for header API keys. */
+    headerName: z.string().max(64).optional(),
+  })
+  .strict();
+
 /** A folder's propagated proxy for the API calls beneath it (null/absent = direct connection).
  * The hostname may carry Seebo `${ … }` formulas, rendered when the request is resolved. */
 export const folderProxySchema = z
@@ -151,6 +176,8 @@ export const folderUpdateRequestSchema = z
     /** Headers propagated to every API call in the folder; values may carry Seebo formulas. */
     headers: z.record(headerNameSchema, z.string().max(4096)).optional(),
     proxy: folderProxySchema.nullable().optional(),
+    /** Auth propagated to every API call in the folder (null = inherit from the parent chain). */
+    auth: httpAuthSchema.nullable().optional(),
     /** Markdown documentation for the folder. */
     notes: z.string().max(200_000).optional(),
   })
@@ -159,6 +186,8 @@ export const folderUpdateRequestSchema = z
 export const settingsUpdateSchema = z
   .object({
     executionMode: executionModeSchema.optional(),
+    /** Show the Batcher panel under the Working Tree (false hides the whole section). */
+    batcherEnabled: z.boolean().optional(),
     /** Hosts outgoing HTTP requests may NOT target (anchored host match, empty = allow all). */
     blockedDomains: z.array(z.string().trim().min(1).max(253)).optional(),
     /** Proxy every outgoing HTTP request through this URL (null = direct). */
@@ -236,15 +265,6 @@ export const releaseDeleteRequestSchema = z.object({ releaseId: z.string().min(1
 // --- M8: API templates + HTTP client ----------------------------------------
 
 export const httpMethodSchema = z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
-export const httpAuthSchema = z
-  .object({
-    kind: z.enum(['none', 'bearer', 'basic', 'apikey']),
-    /** Reference into the OS keychain — the renderer never sees the secret value. */
-    secretRef: z.string().max(64).optional(),
-    username: z.string().max(256).optional(),
-    headerName: z.string().max(64).optional(),
-  })
-  .strict();
 export const bodyTypeSchema = z.enum(['none', 'json', 'form', 'text', 'xml']);
 export const httpRequestSchema = z
   .object({
@@ -625,12 +645,17 @@ export interface FolderDto {
   parentFolderId: string | null;
 }
 export type FolderProxyDto = z.infer<typeof folderProxySchema>;
+export type AuthPlacement = z.infer<typeof authPlacementSchema>;
 /** Full folder incl. its propagated HTTP policy + markdown notes (the Folder view). */
 export interface FolderDetailDto extends FolderDto {
   /** Headers propagated to every API call in the folder (values may carry Seebo formulas). */
   headers: Record<string, string>;
   /** Proxy propagated to every API call in the folder (null = direct connection). */
   proxy: FolderProxyDto | null;
+  /** Auth propagated to every API call in the folder (null = inherit from the parent chain). */
+  auth: HttpAuth | null;
+  /** The concrete auth this folder would inherit from its ancestors (for `inherit` previews). */
+  inheritedAuth: HttpAuth | null;
   /** Markdown documentation for the folder. */
   notes: string;
 }
@@ -850,6 +875,8 @@ export interface ReceiptDto {
 
 export interface WorkspaceSettingsDto {
   executionMode: ExecutionMode;
+  /** Whether the Batcher panel is shown under the Working Tree. */
+  batcherEnabled: boolean;
   /** Hosts outgoing HTTP requests may NOT target (anchored host match, empty = allow all). */
   blockedDomains: string[];
   /** Proxy every outgoing HTTP request through this URL (null = direct). */

@@ -11,6 +11,7 @@ interface SettingsRow {
   blocked_domains: string;
   proxy_url: string | null;
   enforced_headers: string;
+  batcher_enabled: number;
 }
 
 function parseList(json: string): string[] {
@@ -45,6 +46,7 @@ export class SettingsService extends RepoBase {
     const row = await this.ensureRow();
     return {
       executionMode: row.execution_mode as ExecutionMode,
+      batcherEnabled: row.batcher_enabled !== 0,
       blockedDomains: parseList(row.blocked_domains),
       proxyUrl: row.proxy_url,
       enforcedHeaders: parseMap(row.enforced_headers),
@@ -62,6 +64,7 @@ export class SettingsService extends RepoBase {
     }
     const set: Record<string, SqlParam> = {};
     if (patch.executionMode !== undefined) set.execution_mode = patch.executionMode;
+    if (patch.batcherEnabled !== undefined) set.batcher_enabled = patch.batcherEnabled ? 1 : 0;
     if (patch.blockedDomains !== undefined)
       set.blocked_domains = JSON.stringify(patch.blockedDomains);
     if (patch.proxyUrl !== undefined) set.proxy_url = patch.proxyUrl;

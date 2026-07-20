@@ -161,6 +161,7 @@ export const handlers: Record<OpName, Handler> = {
         folder: await getOrganizationService().updateFolderMeta(r.id, {
           headers: r.headers,
           proxy: r.proxy,
+          auth: r.auth,
           notes: r.notes,
         }),
       };

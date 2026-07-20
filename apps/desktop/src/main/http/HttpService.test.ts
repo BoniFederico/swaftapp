@@ -142,6 +142,48 @@ describe('HttpService', () => {
     ).rejects.toMatchObject({ code: 'PROXY_UNAVAILABLE' });
   });
 
+  it('applies plain basic / bearer / api-key auth (header and query placement)', async () => {
+    let seen: Headers | null = null;
+    let calledUrl = '';
+    const http = new HttpService({
+      fetchFn: fakeFetch((url, init) => {
+        calledUrl = url;
+        seen = init.headers;
+        return new Response('ok', { status: 200 });
+      }),
+      secrets,
+      settings: settings(),
+    });
+
+    await http.send({
+      method: 'GET',
+      url: 'https://example.com/x',
+      auth: { kind: 'basic', username: 'neo', password: 'matrix' },
+    });
+    expect(seen!.get('authorization')).toBe(`Basic ${Buffer.from('neo:matrix').toString('base64')}`);
+
+    await http.send({
+      method: 'GET',
+      url: 'https://example.com/x',
+      auth: { kind: 'bearer', token: 'tok123' },
+    });
+    expect(seen!.get('authorization')).toBe('Bearer tok123');
+
+    await http.send({
+      method: 'GET',
+      url: 'https://example.com/x',
+      auth: { kind: 'apikey', key: 'X-Api', value: 'v1', placement: 'header' },
+    });
+    expect(seen!.get('x-api')).toBe('v1');
+
+    await http.send({
+      method: 'GET',
+      url: 'https://example.com/x',
+      auth: { kind: 'apikey', key: 'api_key', value: 'v2', placement: 'query' },
+    });
+    expect(calledUrl).toContain('api_key=v2');
+  });
+
   it('applies bearer auth from a keychain secret (the value never leaves the main process)', async () => {
     secrets.set('token', 'SUPERSECRET');
     let auth: string | null = null;

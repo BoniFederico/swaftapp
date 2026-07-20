@@ -214,6 +214,24 @@ describe('ApiRequestService — formula fields (Fase 1)', () => {
     expect(out.request.headers).toEqual({ 'X-Token': 'abc' });
   });
 
+  it('resolves inherit auth from the folder chain and renders its formulas', async () => {
+    const { apiRequest, newTemplate, org, folderId } = await setup();
+    await org.updateFolderMeta(folderId, {
+      auth: { kind: 'bearer', token: "Bearer-${ textbox({ id:'tok', type:string() }) }" },
+    });
+    const id = await newTemplate('Call', 'x', { type: 'api', subtype: 'json' });
+
+    const req = GET({ auth: { kind: 'inherit' } });
+    expect((await apiRequest.analyze(id, req, {})).requirements.map((r) => r.id)).toEqual(['tok']);
+    const out = await apiRequest.resolve(id, req, { tok: 'abc' });
+    expect(out.request.auth).toMatchObject({ kind: 'bearer', token: 'Bearer-abc' });
+
+    // No folder auth up the chain → inherit resolves to none.
+    await org.updateFolderMeta(folderId, { auth: null });
+    const none = await apiRequest.resolve(id, req, {});
+    expect(none.request.auth?.kind).toBe('none');
+  });
+
   it('renders Seebo formulas in the proxy hostname (and surfaces their inputs)', async () => {
     const { apiRequest, newTemplate, org, folderId } = await setup();
     await org.updateFolderMeta(folderId, {

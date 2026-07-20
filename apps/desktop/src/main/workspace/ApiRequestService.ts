@@ -2,6 +2,7 @@ import {
   DATA_CAPABILITIES,
   type DiagnosticDto,
   type FolderProxyDto,
+  type HttpAuth,
   type HttpRequestModel,
   type RequirementDto,
 } from '@swaft/shared';
@@ -26,9 +27,19 @@ const ACTIONS_NOT_ALLOWED: DiagnosticDto = {
 
 /** The HTTP policy a template inherits from its folder chain (see OrganizationService). */
 export interface FolderPolicyProvider {
-  folderPolicyOf(
-    templateId: string,
-  ): Promise<{ headers: Record<string, string>; proxy: FolderProxyDto | null }>;
+  folderPolicyOf(templateId: string): Promise<{
+    headers: Record<string, string>;
+    proxy: FolderProxyDto | null;
+    auth: HttpAuth | null;
+  }>;
+}
+
+/** The formula-bearing string fields of an auth (rendered like header values). */
+function authSources(auth: HttpAuth | null | undefined): string[] {
+  if (!auth) return [];
+  return [auth.username, auth.password, auth.token, auth.key, auth.value].filter(
+    (s): s is string => typeof s === 'string',
+  );
 }
 
 export interface ApiAnalysis {
@@ -56,6 +67,7 @@ export class ApiRequestService {
       (await this.folders?.folderPolicyOf(templateId)) ?? {
         headers: {} as Record<string, string>,
         proxy: null,
+        auth: null,
       }
     );
   }
@@ -87,12 +99,14 @@ export class ApiRequestService {
     values: Record<string, unknown> = {},
   ): Promise<ApiAnalysis> {
     const ctx = await this.ctx(templateId);
-    // Folder-propagated header values (and the proxy hostname) are rendered alongside the request's
-    // own fields, so any inputs they `need(...)` surface as widgets too.
+    // Folder-propagated header values, the proxy hostname and the effective auth fields are rendered
+    // alongside the request's own fields, so any inputs they `need(...)` surface as widgets too.
     const policy = await this.policyOf(templateId);
+    const effectiveAuth = req.auth?.kind === 'inherit' ? policy.auth : req.auth;
     const folderHeaderValues = [
       ...Object.values(policy.headers),
       ...(policy.proxy ? [policy.proxy.hostname] : []),
+      ...authSources(effectiveAuth),
     ];
     const byId = new Map<string, RequirementDto>(); // the static universe of input requirements
     const pendingById = new Map<string, RequirementDto>(); // render-resolved (dynamic options/candidates)
@@ -182,6 +196,19 @@ export class ApiRequestService {
     const proxy = policy.proxy
       ? { ...policy.proxy, hostname: await render(policy.proxy.hostname) }
       : null;
+    // Auth: `inherit` resolves to the nearest folder-defined auth; its string fields (username,
+    // password, token, key, value) may carry formulas and are rendered like header values.
+    const baseAuth = req.auth?.kind === 'inherit' ? (policy.auth ?? { kind: 'none' as const }) : req.auth;
+    const auth: HttpAuth | undefined = baseAuth
+      ? {
+          ...baseAuth,
+          username: baseAuth.username != null ? await render(baseAuth.username) : baseAuth.username,
+          password: baseAuth.password != null ? await render(baseAuth.password) : baseAuth.password,
+          token: baseAuth.token != null ? await render(baseAuth.token) : baseAuth.token,
+          key: baseAuth.key != null ? await render(baseAuth.key) : baseAuth.key,
+          value: baseAuth.value != null ? await render(baseAuth.value) : baseAuth.value,
+        }
+      : undefined;
 
     if (diagnostics.length > 0) {
       throw new AppError('REQUEST_RESOLVE_FAILED', 'validation', diagnostics[0]!.message, {
@@ -193,7 +220,7 @@ export class ApiRequestService {
         pending: [...pending.values()],
       });
     }
-    return { request: { ...req, url, headers, query, body }, rendered, proxy };
+    return { request: { ...req, url, headers, query, body, auth }, rendered, proxy };
   }
 }
 

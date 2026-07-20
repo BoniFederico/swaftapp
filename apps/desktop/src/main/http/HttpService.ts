@@ -35,7 +35,7 @@ export class HttpService {
     this.assertNotBlocked(current, blockedDomains);
 
     const headers = new Headers(req.headers ?? {});
-    this.applyAuth(headers, req.auth);
+    this.applyAuth(headers, current, req.auth);
     // Enforced headers win over both the request's own headers and its auth.
     for (const [name, value] of Object.entries(enforcedHeaders)) headers.set(name, value);
 
@@ -106,17 +106,29 @@ export class HttpService {
     }
   }
 
-  private applyAuth(headers: Headers, auth?: HttpAuth): void {
-    if (!auth || auth.kind === 'none') return;
+  /**
+   * Apply the request auth: plain fields (basic username/password, bearer token, API key in a header
+   * or query param) with the legacy keychain `secretRef` as fallback for older saved requests.
+   * `inherit` is resolved upstream (ApiRequestService) — reaching here unresolved means no auth.
+   */
+  private applyAuth(headers: Headers, url: URL, auth?: HttpAuth): void {
+    if (!auth || auth.kind === 'none' || auth.kind === 'inherit') return;
     const secret = auth.secretRef ? this.deps.secrets.get(auth.secretRef) : null;
-    if (!secret) return;
     if (auth.kind === 'bearer') {
-      headers.set('Authorization', `Bearer ${secret}`);
+      const token = auth.token ?? secret;
+      if (token) headers.set('Authorization', `Bearer ${token}`);
     } else if (auth.kind === 'basic') {
-      const token = Buffer.from(`${auth.username ?? ''}:${secret}`).toString('base64');
-      headers.set('Authorization', `Basic ${token}`);
+      const password = auth.password ?? secret ?? '';
+      if (auth.username || password) {
+        const token = Buffer.from(`${auth.username ?? ''}:${password}`).toString('base64');
+        headers.set('Authorization', `Basic ${token}`);
+      }
     } else if (auth.kind === 'apikey') {
-      headers.set(auth.headerName || 'X-API-Key', secret);
+      const key = auth.key || auth.headerName || 'X-API-Key';
+      const value = auth.value ?? secret;
+      if (value == null) return;
+      if (auth.placement === 'query') url.searchParams.set(key, value);
+      else headers.set(key, value);
     }
   }
 }

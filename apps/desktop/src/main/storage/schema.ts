@@ -11,7 +11,7 @@
  * reshaped to flat collections) + workspace settings + restrictions.
  */
 
-export const SCHEMA_VERSION = 21;
+export const SCHEMA_VERSION = 22;
 
 /** Sync-metadata columns present on every 🟢 synchronized entity. */
 export const SYNC_META_COLUMNS = [
@@ -56,7 +56,8 @@ const SYNC_META_DDL = `
 
 // Individual table DDL, reused by both the fresh schema and the migration so they never drift.
 // v21: folders carry a propagated HTTP policy (`headers` JSON object, `proxy` JSON or NULL) applied
-// to every API call beneath them, plus markdown `notes` (the Folder view).
+// to every API call beneath them, plus markdown `notes` (the Folder view). v22 adds `auth` (JSON or
+// NULL = inherit from the parent chain).
 const FOLDERS_DDL = `CREATE TABLE folders (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -64,17 +65,20 @@ const FOLDERS_DDL = `CREATE TABLE folders (
   parent_folder_id TEXT,
   headers TEXT NOT NULL DEFAULT '{}',
   proxy TEXT,
+  auth TEXT,
   notes TEXT NOT NULL DEFAULT '',
   ${SYNC_META_DDL}
 );`;
 
 // v20: outgoing-HTTP restrictions only — blocked domains, enforced proxy and enforced headers.
+// v22 adds `batcher_enabled` (hide the Batcher panel when 0).
 const SETTINGS_DDL = `CREATE TABLE workspace_settings (
   id TEXT PRIMARY KEY,
   execution_mode TEXT NOT NULL,
   blocked_domains TEXT NOT NULL DEFAULT '[]',
   proxy_url TEXT,
   enforced_headers TEXT NOT NULL DEFAULT '{}',
+  batcher_enabled INTEGER NOT NULL DEFAULT 1,
   ${SYNC_META_DDL}
 );`;
 
@@ -420,6 +424,14 @@ export const MIGRATIONS: { to: number; sql: string }[] = [
       ALTER TABLE folders ADD COLUMN headers TEXT NOT NULL DEFAULT '{}';
       ALTER TABLE folders ADD COLUMN proxy TEXT;
       ALTER TABLE folders ADD COLUMN notes TEXT NOT NULL DEFAULT '';
+    `,
+  },
+  {
+    to: 22,
+    // v22 adds folder-propagated auth (NULL = inherit from the parent chain) and the Batcher toggle.
+    sql: `
+      ALTER TABLE folders ADD COLUMN auth TEXT;
+      ALTER TABLE workspace_settings ADD COLUMN batcher_enabled INTEGER NOT NULL DEFAULT 1;
     `,
   },
 ];
