@@ -15,6 +15,12 @@ import { bootstrapWorkspace } from './app-bootstrap';
 
 let mainWindow: BrowserWindow | null = null;
 
+// Test hook: the e2e suite points userData at a temp dir so a test run never touches (or depends
+// on) the real profile — accounts, secrets and the app store all live under userData.
+if (process.env.SWAFT_USER_DATA_DIR) {
+  app.setPath('userData', process.env.SWAFT_USER_DATA_DIR);
+}
+
 const isDev = !!process.env.ELECTRON_RENDERER_URL;
 
 // Production CSP is strict (Vite emits external scripts). In dev, the Vite React plugin injects an
