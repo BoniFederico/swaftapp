@@ -1426,14 +1426,13 @@ body {
   display: flex;
   flex-direction: column;
 }
-/* The Actions panel keeps its resized height and scrolls; it never pushes the output up. */
+/* The Actions panel keeps its resized height and scrolls; it never pushes the output up. The card
+   inside grows with its content and *this* container scrolls — forcing the card to height:100% would
+   make its content overflow the card instead. */
 .doc__actions {
   flex: 0 0 auto;
   min-height: 0;
   overflow-y: auto;
-}
-.doc__actions > .ui-card {
-  height: 100%;
 }
 /* Drag handle between the output and the Actions panel (vertical resize). */
 .doc__asplit {
@@ -3551,6 +3550,18 @@ body {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  /* Wrap rather than overflow when the pane is narrow, so the delete button never spills right. */
+  flex-wrap: wrap;
+}
+/* The two selects share the row and shrink (their default 160px min-width would push the trailing
+   controls out of a narrow request pane). */
+.req-action__head > .ui-field {
+  flex: 1 1 120px;
+  min-width: 0;
+}
+.req-action__head .ui-select {
+  min-width: 0;
+  width: 100%;
 }
 .req-action__spacer {
   flex: 1;
