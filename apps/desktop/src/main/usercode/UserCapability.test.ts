@@ -10,7 +10,7 @@ import { TemplateService } from '../workspace/TemplateService';
 import { WorkspaceService, type WorkspaceFs } from '../workspace/WorkspaceService';
 import type { ScriptRunRequest } from './contract';
 import type { ScriptRuntime } from './ScriptRuntime';
-import { UserCapabilityRegistry } from './UserCapabilityRegistry';
+import { UserCapabilityRegistry, type CodeTrustStore } from './UserCapabilityRegistry';
 
 /** A runtime that records what it was asked to run and replays a scripted answer. */
 class FakeRuntime implements ScriptRuntime {
@@ -25,7 +25,31 @@ class FakeRuntime implements ScriptRuntime {
   }
 }
 
-async function setup(runtime: ScriptRuntime = new FakeRuntime()) {
+/**
+ * Stands in for the app-level store. `deviceId` is what makes the difference between "this install
+ * wrote the code" (auto-trusted) and "the workspace came from somewhere else" (needs approval): the
+ * workspace stamps rows with `dev-1`, so a different id here simulates opening a foreign file.
+ */
+class FakeTrust implements CodeTrustStore {
+  readonly approved = new Map<string, string>();
+  constructor(private readonly deviceId = 'dev-1') {}
+  getDeviceId(): string {
+    return this.deviceId;
+  }
+  isCodeTrusted(workspacePath: string, templateId: string, hash: string): boolean {
+    return this.approved.get(`${workspacePath}|${templateId}`) === hash;
+  }
+  trustCode(workspacePath: string, templateId: string, hash: string): void {
+    this.approved.set(`${workspacePath}|${templateId}`, hash);
+  }
+}
+
+async function setup(
+  runtime: ScriptRuntime = new FakeRuntime(),
+  trust: CodeTrustStore = new FakeTrust(),
+  /** Mutable so a test can write rows "as another install", then switch to this one. */
+  device: { current: string } = { current: 'dev-1' },
+) {
   const files = new Map<string, Uint8Array>();
   const fs: WorkspaceFs = {
     read: (p) => Promise.resolve(files.get(p) ?? null),
@@ -38,7 +62,7 @@ async function setup(runtime: ScriptRuntime = new FakeRuntime()) {
     createBackend: (bytes) => InProcessDbBackend.open(bytes),
     crypto: new CryptoService(),
     fs,
-    deviceId: () => 'dev-1',
+    deviceId: () => device.current,
   });
   await ws.create({ name: 'WS', location: 'mem://uc.swaft', encrypt: false });
   const org = new OrganizationService(ws);
@@ -52,6 +76,7 @@ async function setup(runtime: ScriptRuntime = new FakeRuntime()) {
     environments,
     runtime,
     reservedNames: [...WIDGET_CAPABILITIES, 'template', 'env'],
+    trust,
   });
 
   const tree = await org.createProject({ name: 'P' });
@@ -63,7 +88,7 @@ async function setup(runtime: ScriptRuntime = new FakeRuntime()) {
     return res.templates.find((x) => x.name === name)!.id;
   };
 
-  return { ws, org, templates, releases, environments, registry, folderId, addCapability };
+  return { ws, org, templates, releases, environments, registry, folderId, addCapability, trust, device };
 }
 
 const OK_SOURCE = `export const type = 'object';\nexport default () => ({ ok: true });`;
@@ -189,6 +214,113 @@ describe('UserCapabilityRegistry', () => {
     await expect(registry.runOnce(spaced, {})).rejects.toMatchObject({
       code: 'USER_CODE_REJECTED',
     });
+  });
+});
+
+describe('UserCapabilityRegistry — trust', () => {
+  /**
+   * A workspace whose capability rows were written elsewhere, then opened on this install: rows
+   * carry the author's device stamp, and everything written from now on carries ours.
+   */
+  async function received() {
+    const device = { current: 'their-device' };
+    const s = await setup(new FakeRuntime(), new FakeTrust('my-device'), device);
+    return {
+      ...s,
+      /** Switch to writing as this install, as opening the file locally would. */
+      openHere: () => {
+        device.current = 'my-device';
+      },
+    };
+  }
+  const foreign = async () => {
+    const s = await received();
+    return s;
+  };
+
+  it('runs code written on this install without asking', async () => {
+    const { registry, addCapability } = await setup();
+    const id = await addCapability('cfg', OK_SOURCE);
+
+    expect((await registry.describe(id)).status).toBe('ok');
+    await expect(registry.resolve('cfg', { id: 'x' })).resolves.toBeDefined();
+    expect(await registry.untrusted()).toEqual([]);
+  });
+
+  it('refuses to run code that arrived with someone else’s workspace', async () => {
+    const { registry, addCapability } = await foreign();
+    const id = await addCapability('cfg', OK_SOURCE);
+
+    expect((await registry.describe(id)).status).toBe('untrusted');
+    expect(await registry.untrusted()).toEqual([{ templateId: id, name: 'cfg' }]);
+    await expect(registry.resolve('cfg', { id: 'x' })).rejects.toMatchObject({
+      code: 'USER_CODE_UNTRUSTED',
+    });
+    // Pressing Run in the editor must not be a way around the approval either.
+    await expect(registry.runOnce(id, {})).rejects.toMatchObject({ code: 'USER_CODE_UNTRUSTED' });
+  });
+
+  it('still registers the name, so the failure can explain itself', async () => {
+    const { registry, addCapability } = await foreign();
+    await addCapability('cfg', OK_SOURCE);
+
+    // Left unregistered, Seebo would answer UNKNOWN_FUNCTION, which says nothing about trust.
+    expect((await registry.list()).map((c) => c.name)).toEqual(['cfg']);
+    await expect(registry.resolve('cfg', { id: 'x' })).rejects.toMatchObject({
+      message: expect.stringContaining('approve'),
+    });
+  });
+
+  it('runs it once approved', async () => {
+    const { registry, addCapability } = await foreign();
+    const id = await addCapability('cfg', OK_SOURCE);
+
+    const approved = await registry.trust(id);
+    expect(approved.status).toBe('ok');
+    await expect(registry.resolve('cfg', { id: 'x' })).resolves.toBeDefined();
+    expect(await registry.untrusted()).toEqual([]);
+  });
+
+  it('revokes the approval when the code changes elsewhere', async () => {
+    const { registry, templates, addCapability } = await received();
+    const id = await addCapability('cfg', OK_SOURCE);
+    await registry.trust(id);
+    expect((await registry.describe(id)).status).toBe('ok');
+
+    // A newer version of the same workspace arrives: the approval was bound to the exact source we
+    // reviewed, so the replacement is not covered by it.
+    await templates.updateSource(id, `export default () => ({ ok: 'changed elsewhere' });`);
+
+    expect((await registry.describe(id)).status).toBe('untrusted');
+    await expect(registry.resolve('cfg', { id: 'x' })).rejects.toMatchObject({
+      code: 'USER_CODE_UNTRUSTED',
+    });
+  });
+
+  it('adopts code once this install edits it', async () => {
+    const { registry, templates, addCapability, openHere } = await received();
+    const id = await addCapability('cfg', OK_SOURCE);
+    expect((await registry.describe(id)).status).toBe('untrusted');
+
+    // Editing is done in the capability view, with the code on screen and the approve button next to
+    // it; taking authorship of the source is a deliberate act, so it counts as approving it.
+    openHere();
+    await templates.updateSource(id, `export default () => ({ ok: 'mine now' });`);
+
+    expect((await registry.describe(id)).status).toBe('ok');
+    await expect(registry.resolve('cfg', { id: 'x' })).resolves.toBeDefined();
+  });
+
+  it('scopes an approval to the one template that was approved', async () => {
+    const { registry, addCapability } = await foreign();
+    const one = await addCapability('one', OK_SOURCE);
+    const two = await addCapability('two', OK_SOURCE);
+
+    await registry.trust(one);
+
+    expect((await registry.describe(one)).status).toBe('ok');
+    expect((await registry.describe(two)).status).toBe('untrusted');
+    expect(await registry.untrusted()).toEqual([{ templateId: two, name: 'two' }]);
   });
 });
 

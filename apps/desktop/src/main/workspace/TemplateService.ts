@@ -154,12 +154,15 @@ export class TemplateService extends RepoBase {
   }
 
   /**
-   * Live templates of one kind, ordered by name. Used by the user-capability registry to find the
-   * `capability` templates without walking the whole tree.
+   * Live templates of one kind, ordered by name, with the device that last wrote each. Used by the
+   * user-capability registry: the device stamp tells code written on this install apart from code
+   * that arrived with someone else's workspace.
    */
-  async listByType(type: TemplateType): Promise<{ id: string; name: string }[]> {
-    return this.adapter.all<{ id: string; name: string }>(
-      `SELECT id, name FROM templates
+  async listByType(
+    type: TemplateType,
+  ): Promise<{ id: string; name: string; updated_by_device_id: string | null }[]> {
+    return this.adapter.all<{ id: string; name: string; updated_by_device_id: string | null }>(
+      `SELECT id, name, updated_by_device_id FROM templates
         WHERE type = ? AND deleted_at IS NULL
         ORDER BY name COLLATE NOCASE`,
       [type],

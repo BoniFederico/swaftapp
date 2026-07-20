@@ -131,6 +131,9 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
     environments,
     runtime: scriptRuntime,
     reservedNames: [...WIDGET_CAPABILITIES, ...DATA_CAPABILITIES],
+    // Approvals live in the app-level store, never in the `.swaft` — a workspace must not vouch
+    // for the code it carries.
+    trust: appStore,
   });
   const host = new SeeboHost({}, { templateData, envData: environments, userCapabilities });
   const render = new RenderService(workspaceService, templates, host, releases);

@@ -335,6 +335,12 @@ export const handlers: Record<OpName, Handler> = {
       const r = p as UserCodeRunRequest;
       return getUserCapabilityRegistry().runOnce(r.templateId, r.args ?? {});
     }),
+  'usercode.untrusted': () =>
+    svc(async () => ({ items: await getUserCapabilityRegistry().untrusted() })),
+  'usercode.trust': (p) =>
+    svc(async () => ({
+      capability: await getUserCapabilityRegistry().trust((p as UserCodeRefRequest).templateId),
+    })),
   'api.history.list': (p) =>
     svc(async () => ({ items: await getApiHistoryService().list((p as TemplateRefRequest).templateId) })),
   'api.history.clear': (p) =>

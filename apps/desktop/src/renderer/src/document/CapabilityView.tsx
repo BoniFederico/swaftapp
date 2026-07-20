@@ -105,6 +105,18 @@ export function CapabilityView({
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
+  async function trust() {
+    try {
+      const res = await client.call('usercode.trust', { templateId });
+      setCapability(res.capability);
+      setError(null);
+      toast.show(t('cap.trusted'), 'success');
+      notifyTreeChanged();
+    } catch (e) {
+      toast.show(e instanceof ApiError ? e.swaft.message : String(e), 'error');
+    }
+  }
+
   async function run() {
     let parsed: unknown;
     try {
@@ -150,8 +162,19 @@ export function CapabilityView({
 
       {statusKey && (
         <div className="auth-error cap-view__problem" role="alert">
-          {t(statusKey as TranslationKey)}
-          {capability?.message ? ` ${capability.message}` : ''}
+          <span>
+            {t(statusKey as TranslationKey)}
+            {capability?.status !== 'untrusted' && capability?.message ? ` ${capability.message}` : ''}
+          </span>
+          {/* Approval sits under the code, not in a dialog: the point is to read it first. */}
+          {capability?.status === 'untrusted' && (
+            <>
+              <span className="cap-view__spacer" />
+              <Button variant="danger" onClick={() => void trust()}>
+                {t('cap.trust')}
+              </Button>
+            </>
+          )}
         </div>
       )}
 
@@ -176,7 +199,12 @@ export function CapabilityView({
             <span className="field-hint">{t('cap.argsHint')}</span>
           </div>
 
-          <Button variant="primary" disabled={running} onClick={() => void run()}>
+          {/* Approving is the way forward while untrusted, so Run would only ever fail. */}
+          <Button
+            variant="primary"
+            disabled={running || capability?.status === 'untrusted'}
+            onClick={() => void run()}
+          >
             {running ? t('cap.running') : t('cap.run')}
           </Button>
 
@@ -201,6 +229,10 @@ export function CapabilityView({
               <span className="ui-field__label">{t('cap.usage')}</span>
               <code className="cap-view__usage">{`\${ ${capability.name}({ id: 'demo' }) }`}</code>
             </div>
+          )}
+
+          {capability?.status === 'untrusted' && (
+            <span className="field-hint">{t('cap.reviewFirst')}</span>
           )}
 
           <span className="field-hint">{t('cap.sandboxNote')}</span>

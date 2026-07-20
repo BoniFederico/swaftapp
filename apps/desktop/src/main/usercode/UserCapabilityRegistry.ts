@@ -28,6 +28,13 @@ interface Snapshot {
   byTemplate: Map<string, Entry>;
 }
 
+/** The local record of which user code has been approved to run on this install. */
+export interface CodeTrustStore {
+  isCodeTrusted(workspacePath: string, templateId: string, sourceHash: string): boolean;
+  trustCode(workspacePath: string, templateId: string, sourceHash: string): void;
+  getDeviceId(): string;
+}
+
 export interface UserCapabilityRegistryDeps {
   templates: TemplateService;
   releases: ReleaseService;
@@ -35,6 +42,7 @@ export interface UserCapabilityRegistryDeps {
   runtime: ScriptRuntime;
   /** Capability names Swaft owns (widgets + built-in data capabilities); may not be shadowed. */
   reservedNames: readonly string[];
+  trust: CodeTrustStore;
 }
 
 /**
@@ -48,6 +56,12 @@ export interface UserCapabilityRegistryDeps {
  *
  * Nothing here executes user code. The declared `type` is read statically from the source, so
  * `validate` — which runs on every keystroke in the editor — never has a reason to run a script.
+ *
+ * **Trust.** A workspace is a file people exchange, so opening one must not run its author's code.
+ * A capability may run only when this install wrote it (the row's device stamp) or the user approved
+ * this exact source. Untrusted capabilities are still *registered* — the name resolves and fails
+ * with a clear reason — because the alternative, an `UNKNOWN_FUNCTION` from Seebo, tells the reader
+ * nothing about what is actually wrong.
  */
 export class UserCapabilityRegistry implements UserCapabilityProvider {
   private snapshot: Snapshot | null = null;
@@ -58,21 +72,44 @@ export class UserCapabilityRegistry implements UserCapabilityProvider {
     private readonly deps: UserCapabilityRegistryDeps,
   ) {}
 
-  /** The capabilities the engine may register: valid, unambiguous, non-reserved names only. */
+  /**
+   * The capabilities the engine registers: those whose name is usable. Untrusted ones are included
+   * on purpose — see the class note — and refuse to run when called.
+   */
   async list(): Promise<UserCapabilityRegistration[]> {
     const snapshot = await this.load();
+    return [...snapshot.byName.values()].map((e) => ({ name: e.name, type: e.type }));
+  }
+
+  /** Capabilities waiting for approval, for the review banner. */
+  async untrusted(): Promise<{ templateId: string; name: string }[]> {
+    const snapshot = await this.load();
     return snapshot.entries
-      .filter((e) => e.status === 'ok')
-      .map((e) => ({ name: e.name, type: e.type }));
+      .filter((e) => e.status === 'untrusted')
+      .map((e) => ({ templateId: e.templateId, name: e.name }));
+  }
+
+  /** Approve the capability's current source, so it may run on this install from now on. */
+  async trust(templateId: string): Promise<UserCapabilityDto> {
+    const snapshot = await this.load();
+    const entry = snapshot.byTemplate.get(templateId);
+    if (!entry) {
+      throw new AppError('TEMPLATE_NOT_FOUND', 'not_found', 'Capability template not found.');
+    }
+    this.deps.trust.trustCode(this.workspacePath(), templateId, entry.hash);
+    // Approving changes the verdict, so drop the snapshot rather than wait for the next save.
+    this.snapshot = null;
+    return this.describe(templateId);
   }
 
   /** Resolve one capability call. `requirement` is the descriptor the engine flattened for us. */
   async resolve(name: string, requirement: Record<string, unknown>): Promise<unknown> {
     const snapshot = await this.load();
     const entry = snapshot.byName.get(name);
-    if (!entry || entry.status !== 'ok') {
+    if (!entry) {
       throw new AppError('USER_CODE_NOT_FOUND', 'not_found', `Capability "${name}" is not available.`);
     }
+    this.assertRunnable(entry);
     return this.invoke(entry, capabilityArgs(requirement));
   }
 
@@ -100,9 +137,41 @@ export class UserCapabilityRegistry implements UserCapabilityProvider {
     if (entry.status === 'invalid-name' || entry.status === 'reserved-name') {
       throw new AppError('USER_CODE_REJECTED', 'validation', entry.message ?? 'Invalid capability.');
     }
+    // Pressing Run must not be a way around approval: the editor shows the code, then the button.
+    this.assertRunnable(entry);
     const startedAt = Date.now();
     const value = await this.invoke(entry, args);
     return { value, durationMs: Date.now() - startedAt };
+  }
+
+  private assertRunnable(entry: Entry): void {
+    if (entry.status === 'untrusted') {
+      throw new AppError('USER_CODE_UNTRUSTED', 'policy', entry.message ?? 'Capability not approved.');
+    }
+  }
+
+  /**
+   * Code written on this install runs without ceremony — the user is the author, and asking on every
+   * save would train them to click through the prompt. Everything else needs an explicit approval of
+   * *that exact source*, so a newer version arriving with an updated workspace is not covered by the
+   * approval given to the version that was actually read.
+   *
+   * Consequence worth knowing: editing received code adopts it, because the row then carries this
+   * install's stamp. That is deliberate — editing happens in the capability view, with the source on
+   * screen and the approve button beside it — but it does mean authorship, not just approval, is a
+   * way to make code runnable.
+   */
+  private isTrusted(row: { id: string; updated_by_device_id: string | null }, hash: string): boolean {
+    if (row.updated_by_device_id && row.updated_by_device_id === this.deps.trust.getDeviceId()) {
+      return true;
+    }
+    return this.deps.trust.isCodeTrusted(this.workspacePath(), row.id, hash);
+  }
+
+  private workspacePath(): string {
+    const path = this.ws.current()?.path;
+    if (!path) throw new AppError('WORKSPACE_REQUIRED', 'policy', 'No workspace is open.');
+    return path;
   }
 
   private async invoke(entry: Entry, args: Record<string, unknown>): Promise<unknown> {
@@ -165,6 +234,9 @@ export class UserCapabilityRegistry implements UserCapabilityProvider {
         // would bind to whichever happened to load first, so neither is registered until it is fixed.
         entry.status = 'duplicate-name';
         entry.message = `More than one capability is named "${row.name}"; rename one so a formula resolves to exactly one.`;
+      } else if (!this.isTrusted(row, entry.hash)) {
+        entry.status = 'untrusted';
+        entry.message = `"${row.name}" was written on another install. Review the code and approve it before it can run.`;
       }
       entries.push(entry);
     }
@@ -172,7 +244,10 @@ export class UserCapabilityRegistry implements UserCapabilityProvider {
     this.snapshot = {
       revision,
       entries,
-      byName: new Map(entries.filter((e) => e.status === 'ok').map((e) => [e.name, e])),
+      // Untrusted capabilities keep their name registered so the failure can explain itself.
+      byName: new Map(
+        entries.filter((e) => e.status === 'ok' || e.status === 'untrusted').map((e) => [e.name, e]),
+      ),
       byTemplate: new Map(entries.map((e) => [e.templateId, e])),
     };
     return this.snapshot;

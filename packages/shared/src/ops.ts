@@ -434,6 +434,8 @@ export const OP_NAMES = [
   'api.analyze',
   'usercode.describe',
   'usercode.run',
+  'usercode.untrusted',
+  'usercode.trust',
   'api.history.list',
   'api.history.clear',
   'api.history.delete',
@@ -516,6 +518,8 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'api.analyze': apiAnalyzeRequestSchema,
   'usercode.describe': userCodeRefRequestSchema,
   'usercode.run': userCodeRunRequestSchema,
+  'usercode.untrusted': emptyRequestSchema,
+  'usercode.trust': userCodeRefRequestSchema,
   'api.history.list': templateRefRequestSchema,
   'api.history.clear': templateRefRequestSchema,
   'api.history.delete': idRequestSchema,
@@ -1023,7 +1027,13 @@ export interface ApiHistoryResponse {
 }
 
 /** Why a `capability` template is (not) registered — shown in its editor header. */
-export type UserCapabilityStatus = 'ok' | 'invalid-name' | 'duplicate-name' | 'reserved-name';
+export type UserCapabilityStatus =
+  | 'ok'
+  | 'invalid-name'
+  | 'duplicate-name'
+  | 'reserved-name'
+  /** Written on another install and not approved here yet — the code will not run. */
+  | 'untrusted';
 export interface UserCapabilityDto {
   /** The name formulas call it by: the template name (see analisi_codice_utente.md §5.1). */
   name: string;
@@ -1035,6 +1045,14 @@ export interface UserCapabilityDto {
 }
 export interface UserCapabilityResponse {
   capability: UserCapabilityDto;
+}
+/** A capability awaiting approval, for the "review before it runs" banner. */
+export interface UntrustedCapabilityDto {
+  templateId: string;
+  name: string;
+}
+export interface UntrustedCapabilitiesResponse {
+  items: UntrustedCapabilityDto[];
 }
 /** One test run from the capability editor. */
 export interface UserCodeRunResponse {
@@ -1125,6 +1143,8 @@ export interface OpContracts {
   'api.analyze': { request: ApiAnalyzeRequest; response: ApiAnalyzeResponse };
   'usercode.describe': { request: UserCodeRefRequest; response: UserCapabilityResponse };
   'usercode.run': { request: UserCodeRunRequest; response: UserCodeRunResponse };
+  'usercode.untrusted': { request: EmptyRequest; response: UntrustedCapabilitiesResponse };
+  'usercode.trust': { request: UserCodeRefRequest; response: UserCapabilityResponse };
   'api.history.list': { request: TemplateRefRequest; response: ApiHistoryResponse };
   'api.history.clear': { request: TemplateRefRequest; response: ApiHistoryResponse };
   'api.history.delete': { request: IdRequest; response: OkResponse };

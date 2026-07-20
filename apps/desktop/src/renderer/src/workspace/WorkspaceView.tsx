@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { TemplateType } from '@swaft/shared';
+import type { TemplateType, UntrustedCapabilityDto } from '@swaft/shared';
 import type { ApiClient } from '../api-client/client';
 import { useAuth } from '../auth/AuthProvider';
 import { BatchDocumentView } from '../batcher/BatchDocumentView';
@@ -14,6 +14,7 @@ import { useI18n } from '../i18n/I18nProvider';
 import { SettingsModal, type SettingsSectionId } from '../settings/SettingsModal';
 import {
   ApiIcon,
+  Button,
   CapabilityIcon,
   ChevronRightIcon,
   CloseIcon,
@@ -26,6 +27,7 @@ import {
   SettingsIcon,
 } from '../ui';
 import { FolderView } from './FolderView';
+import { subscribeTreeChanged } from './treeBus';
 import { WorkingTree } from './WorkingTree';
 import { useWorkspace } from './WorkspaceProvider';
 
@@ -66,6 +68,7 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
   const [sideCollapsed, setSideCollapsed] = useState(false);
   const [sideWidth, setSideWidth] = useState(280);
   const [batcherEnabled, setBatcherEnabled] = useState(true);
+  const [untrusted, setUntrusted] = useState<UntrustedCapabilityDto[]>([]);
   const resize = useRef<{ startX: number; startW: number } | null>(null);
 
   // The Batcher panel visibility is a workspace restriction; re-read it when Settings close.
@@ -79,6 +82,18 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
       })
       .catch(() => undefined);
   }, [client, settingsOpen]);
+
+  // Capabilities awaiting approval. Re-checked whenever the tree changes, so approving one (or
+  // editing code, which revokes its approval) updates the banner without a reload.
+  useEffect(() => {
+    const refresh = () =>
+      void client
+        .call('usercode.untrusted')
+        .then((res) => setUntrusted(res.items))
+        .catch(() => setUntrusted([]));
+    refresh();
+    return subscribeTreeChanged(refresh);
+  }, [client]);
 
   // Open an item in a tab. A single click opens (or reuses) a *preview* tab — at most one exists,
   // and the next single-clicked item replaces it. An already-open item is just re-activated.
@@ -234,6 +249,19 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
           />
         </div>
         <main className="ws-main">
+          {/* Code that arrived with this workspace is inert until reviewed; this is how it is found. */}
+          {untrusted.length > 0 && (
+            <div className="ws-trust" role="status">
+              <span>{t('trust.banner', { n: untrusted.length })}</span>
+              <span className="ws-trust__names">{untrusted.map((c) => c.name).join(', ')}</span>
+              <Button
+                variant="ghost"
+                onClick={() => openTab(untrusted[0]!.templateId, 'capability', untrusted[0]!.name)}
+              >
+                {t('trust.review')}
+              </Button>
+            </div>
+          )}
           {tabs.length > 0 && (
             <div className="ws-tabs" role="tablist" aria-label={t('ws.openTabs')}>
               {tabs.map((tb) => {

@@ -3381,6 +3381,9 @@ body {
   flex: 1;
 }
 .cap-view__problem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   margin: var(--space-3) var(--space-3) 0;
 }
 .cap-view__body {
@@ -3433,4 +3436,24 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   word-break: break-all;
+}
+
+/* Untrusted user code awaiting review (Fase B). */
+.ws-trust {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  font-size: var(--fs-sm);
+}
+.ws-trust__names {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

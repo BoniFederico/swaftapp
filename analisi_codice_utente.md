@@ -6,11 +6,16 @@ nelle API request.
 
 Riferimenti verificati sul codice al 2026-07-20 (schema v22, seebo 0.4.0).
 
-**Stato: Fase A implementata** (branch `feature/user_custom_code`). Le capability read-only in
-sandbox funzionano end-to-end: nuovo tipo di template `capability`, script host su `utilityProcess`
-con timeout e kill, `swaft.env.get`, uso nei document e nei campi API, vista dedicata con test-run.
-Fasi B (trust del workspace), C (action + sezione Actions API) e D (profilo developer) da fare — la
-Fase B resta il prerequisito prima di qualunque condivisione di workspace con codice.
+**Stato: Fasi A e B implementate** (branch `feature/user_custom_code`).
+
+- **Fase A** — capability read-only in sandbox: nuovo tipo di template `capability`, script host su
+  `utilityProcess` con timeout e kill, `swaft.env.get`, uso nei document e nei campi API, vista
+  dedicata con test-run.
+- **Fase B** — trust del workspace: il codice arrivato da un altro dispositivo non gira finché non
+  viene approvato leggendolo; le approvazioni stanno in `AppStore` (mai nel `.swaft`) e sono legate
+  all'hash della sorgente.
+
+Fasi C (action + sezione Actions API) e D (profilo developer) da fare.
 
 Scostamenti dalla proposta, decisi durante l'implementazione:
 
@@ -25,6 +30,17 @@ Scostamenti dalla proposta, decisi durante l'implementazione:
   importare il modulo per conoscerlo avrebbe significato eseguire codice utente durante `validate`.
 - **`executionMode` non è ancora onorato**: il profilo è sempre `sandbox`. Onorarlo prima della Fase D
   concederebbe permessi che nulla è pronto a controllare.
+- **Il trust è per template, non per workspace** (§7 diceva "per workspace"): la granularità del
+  workspace obbligherebbe a riapprovare tutto quando ne cambia una sola, e soprattutto un'unica
+  approvazione coprirebbe anche le capability aggiunte dopo. Un banner elenca comunque tutte quelle
+  in attesa, quindi la revisione resta un'operazione sola.
+- **Nessun pulsante "approva tutto"**, deliberatamente: l'approvazione sta nella vista della
+  capability, sotto il codice, così approvare implica averlo davanti.
+- **Il codice scritto su questa installazione è fidato d'ufficio** (stamp `updated_by_device_id`),
+  altrimenti ogni salvataggio chiederebbe conferma e l'utente imparerebbe a cliccare senza leggere.
+  Conseguenza da conoscere: **modificare codice ricevuto lo adotta**, perché la riga passa a portare
+  il nostro stamp. È voluto — si modifica dalla vista, col sorgente a schermo — ma significa che
+  anche la paternità, non solo l'approvazione, rende eseguibile il codice.
 
 ---
 
