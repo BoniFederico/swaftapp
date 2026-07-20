@@ -106,6 +106,14 @@ export interface UserCapabilityProvider {
   list(): Promise<UserCapabilityRegistration[]>;
   /** Run one call; `requirement` is the descriptor the engine flattened (id plus author fields). */
   resolve(name: string, requirement: Record<string, unknown>): Promise<unknown>;
+  /** Registrable action types, so `action({ type: 'myAction' })` is a known effect. */
+  listActions(): Promise<{ name: string }[]>;
+  /** Perform (or dry-run) one action; the returned value becomes its receipt payload. */
+  runAction(
+    name: string,
+    input: Record<string, unknown>,
+    opts: { api?: unknown; dryRun?: boolean },
+  ): Promise<{ value: unknown }>;
 }
 
 /** Collaborators a host needs for data capabilities; omitted in pure (widget-only) engines/tests. */
@@ -259,6 +267,19 @@ export class SeeboHost {
     // Register the code-defined action handlers so `validate`/execution know the types.
     for (const [type, handler] of Object.entries(BUILTIN_ACTION_HANDLERS)) {
       engine.defineAction(type, handler);
+    }
+    // User-authored actions become action types of their own. Confirmation, policy and receipts stay
+    // with Seebo's execution layer (ActionService); this only says what the effect *is*. A built-in
+    // type always wins, as with capabilities.
+    if (userCapabilities) {
+      for (const { name } of await userCapabilities.listActions()) {
+        if (name in BUILTIN_ACTION_HANDLERS) continue;
+        engine.defineAction(name, {
+          allowedEnvironments: ['test', 'preprod', 'prod'],
+          dryRun: (input) => userCapabilities.runAction(name, input, { dryRun: true }),
+          execute: (input) => userCapabilities.runAction(name, input, { dryRun: false }),
+        });
+      }
     }
     return engine;
   }

@@ -1,13 +1,14 @@
 import { utilityProcess, type UtilityProcess } from 'electron';
 import {
   DEFAULT_SCRIPT_TIMEOUT_MS,
+  type ScriptRunOutcome,
   type ScriptRunReply,
   type ScriptRunRequest,
 } from './contract';
 import { scriptError, type ScriptRuntime } from './ScriptRuntime';
 
 interface Pending {
-  resolve: (value: unknown) => void;
+  resolve: (value: ScriptRunOutcome) => void;
   reject: (err: Error) => void;
   timer: NodeJS.Timeout;
   name: string;
@@ -33,10 +34,10 @@ export class UtilityProcessRuntime implements ScriptRuntime {
     private readonly timeoutMs: number = DEFAULT_SCRIPT_TIMEOUT_MS,
   ) {}
 
-  run(request: ScriptRunRequest): Promise<unknown> {
+  run(request: ScriptRunRequest): Promise<ScriptRunOutcome> {
     const child = this.ensureChild();
     const id = ++this.seq;
-    return new Promise<unknown>((resolve, reject) => {
+    return new Promise<ScriptRunOutcome>((resolve, reject) => {
       const timer = setTimeout(() => {
         // The host is wedged inside user code; only killing it frees us.
         this.failAll(
@@ -79,8 +80,12 @@ export class UtilityProcessRuntime implements ScriptRuntime {
     if (!entry) return;
     this.pending.delete(reply.id);
     clearTimeout(entry.timer);
-    if (reply.ok) entry.resolve(reply.value);
-    else entry.reject(scriptError(reply.code, reply.message, entry.name));
+    if (reply.ok) {
+      entry.resolve({ value: reply.value, logs: reply.logs, envWrites: reply.envWrites });
+    } else {
+      // Logs travel with the failure too: they are usually how the author diagnoses it.
+      entry.reject(scriptError(reply.code, reply.message, entry.name, reply.logs));
+    }
   }
 
   /** Fail every in-flight call and drop the host, so the next call starts from a clean process. */

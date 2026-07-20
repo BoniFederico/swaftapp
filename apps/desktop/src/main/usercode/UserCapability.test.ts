@@ -8,17 +8,25 @@ import { OrganizationService } from '../workspace/OrganizationService';
 import { ReleaseService } from '../workspace/ReleaseService';
 import { TemplateService } from '../workspace/TemplateService';
 import { WorkspaceService, type WorkspaceFs } from '../workspace/WorkspaceService';
-import type { ScriptRunRequest } from './contract';
+import type { ScriptRunOutcome, ScriptRunRequest } from './contract';
 import type { ScriptRuntime } from './ScriptRuntime';
-import { UserCapabilityRegistry, type CodeTrustStore } from './UserCapabilityRegistry';
+import { UserCodeRegistry, type CodeTrustStore } from './UserCodeRegistry';
 
 /** A runtime that records what it was asked to run and replays a scripted answer. */
 class FakeRuntime implements ScriptRuntime {
   readonly calls: ScriptRunRequest[] = [];
-  constructor(private readonly reply: (req: ScriptRunRequest) => unknown = () => ({ ok: true })) {}
-  run(request: ScriptRunRequest): Promise<unknown> {
+  constructor(
+    private readonly reply: (req: ScriptRunRequest) => unknown = () => ({ ok: true }),
+    /** What the script would have asked to write to the environment. */
+    private readonly envWrites: (req: ScriptRunRequest) => Record<string, string> = () => ({}),
+  ) {}
+  run(request: ScriptRunRequest): Promise<ScriptRunOutcome> {
     this.calls.push(request);
-    return Promise.resolve(this.reply(request));
+    return Promise.resolve({
+      value: this.reply(request),
+      logs: [],
+      envWrites: this.envWrites(request),
+    });
   }
   dispose(): Promise<void> {
     return Promise.resolve();
@@ -70,7 +78,7 @@ async function setup(
   const templates = new TemplateService(ws, org, changelog);
   const releases = new ReleaseService(ws, templates, changelog);
   const environments = new EnvironmentService(ws, () => 'alice');
-  const registry = new UserCapabilityRegistry(ws, {
+  const registry = new UserCodeRegistry(ws, {
     templates,
     releases,
     environments,
@@ -88,12 +96,46 @@ async function setup(
     return res.templates.find((x) => x.name === name)!.id;
   };
 
-  return { ws, org, templates, releases, environments, registry, folderId, addCapability, trust, device };
+  const addAction = async (name: string, source: string): Promise<string> => {
+    const res = await templates.createTemplate({ folderId, name, type: 'action', source });
+    return res.templates.find((x) => x.name === name)!.id;
+  };
+
+  /**
+   * Insert a template row directly, bypassing the service's name guard — how a row with an unusable
+   * name reaches us in practice: written by another tool, or by a version that had no guard.
+   */
+  const addRawCapability = async (name: string, source: string): Promise<string> => {
+    const id = `raw-${name}`;
+    const now = ws.nowIso();
+    await ws.requireAdapter().run(
+      `INSERT INTO templates (id, folder_id, project_id, name, type, subtype, source, has_draft,
+                              created_at, updated_at, updated_by_device_id, revision, deleted_at)
+       VALUES (?, ?, NULL, ?, 'capability', 'javascript', ?, 1, ?, ?, ?, 1, NULL)`,
+      [id, folderId, name, source, now, now, device.current],
+    );
+    return id;
+  };
+
+  return {
+    ws,
+    org,
+    templates,
+    releases,
+    environments,
+    registry,
+    folderId,
+    addCapability,
+    addAction,
+    addRawCapability,
+    trust,
+    device,
+  };
 }
 
 const OK_SOURCE = `export const type = 'object';\nexport default () => ({ ok: true });`;
 
-describe('UserCapabilityRegistry', () => {
+describe('UserCodeRegistry', () => {
   it('registers a capability under the template name, with its declared type', async () => {
     const { registry, addCapability } = await setup();
     await addCapability('cfg', OK_SOURCE);
@@ -115,8 +157,8 @@ describe('UserCapabilityRegistry', () => {
   });
 
   it('keeps unusable names out of the engine and explains why', async () => {
-    const { registry, addCapability } = await setup();
-    const spaced = await addCapability('my cap', OK_SOURCE);
+    const { registry, addCapability, addRawCapability } = await setup();
+    const spaced = await addRawCapability('my cap', OK_SOURCE);
     const shadowing = await addCapability('env', OK_SOURCE);
     const usable = await addCapability('fine', OK_SOURCE);
 
@@ -203,40 +245,53 @@ describe('UserCapabilityRegistry', () => {
     expect(res.durationMs).toBeGreaterThanOrEqual(0);
   });
 
-  it('lets a name clash be tested in place but refuses an unusable name', async () => {
-    const { registry, addCapability } = await setup();
-    await addCapability('dup', OK_SOURCE);
-    const duplicate = await addCapability('dup', OK_SOURCE);
-    const spaced = await addCapability('my cap', OK_SOURCE);
+  it('refuses to run code whose name is unusable', async () => {
+    const { registry, addRawCapability } = await setup();
+    const spaced = await addRawCapability('my cap', OK_SOURCE);
 
-    // A clash is fixed by renaming, so the author must still be able to run the code they see.
-    await expect(registry.runOnce(duplicate, {})).resolves.toBeDefined();
     await expect(registry.runOnce(spaced, {})).rejects.toMatchObject({
       code: 'USER_CODE_REJECTED',
     });
   });
+
+  it('refuses a name that is not an identifier at create and at rename', async () => {
+    const { templates, folderId, addCapability } = await setup();
+
+    // Catching it here beats letting it through to become code that silently never registers.
+    await expect(
+      templates.createTemplate({ folderId, name: 'my cap', type: 'capability' }),
+    ).rejects.toMatchObject({ code: 'INVALID_CODE_NAME' });
+
+    const id = await addCapability('fine', OK_SOURCE);
+    await expect(templates.renameTemplate(id, 'not an identifier')).rejects.toMatchObject({
+      code: 'INVALID_CODE_NAME',
+    });
+
+    // Documents are unaffected: their names are free text.
+    await expect(
+      templates.createTemplate({ folderId, name: 'My Document', type: 'document' }),
+    ).resolves.toBeDefined();
+  });
 });
 
-describe('UserCapabilityRegistry — trust', () => {
-  /**
-   * A workspace whose capability rows were written elsewhere, then opened on this install: rows
-   * carry the author's device stamp, and everything written from now on carries ours.
-   */
-  async function received() {
-    const device = { current: 'their-device' };
-    const s = await setup(new FakeRuntime(), new FakeTrust('my-device'), device);
-    return {
-      ...s,
-      /** Switch to writing as this install, as opening the file locally would. */
-      openHere: () => {
-        device.current = 'my-device';
-      },
-    };
-  }
-  const foreign = async () => {
-    const s = await received();
-    return s;
+/**
+ * A workspace whose code rows were written elsewhere, then opened on this install: rows carry the
+ * author's device stamp, and everything written from now on carries ours.
+ */
+async function received() {
+  const device = { current: 'their-device' };
+  const s = await setup(new FakeRuntime(), new FakeTrust('my-device'), device);
+  return {
+    ...s,
+    /** Switch to writing as this install, as opening the file locally would. */
+    openHere: () => {
+      device.current = 'my-device';
+    },
   };
+}
+
+describe('UserCodeRegistry — trust', () => {
+  const foreign = received;
 
   it('runs code written on this install without asking', async () => {
     const { registry, addCapability } = await setup();
@@ -324,6 +379,111 @@ describe('UserCapabilityRegistry — trust', () => {
   });
 });
 
+describe('UserCodeRegistry — actions', () => {
+  const ACTION_SOURCE = `export default ({ input }) => ({ done: input.what });`;
+
+  it('registers an action as an action type, not as a capability', async () => {
+    const { registry, addCapability, addAction } = await setup();
+    await addCapability('cfg', OK_SOURCE);
+    await addAction('notify', ACTION_SOURCE);
+
+    expect((await registry.list()).map((c) => c.name)).toEqual(['cfg']);
+    expect(await registry.listActions()).toEqual([{ name: 'notify' }]);
+  });
+
+  it('shares one namespace with capabilities, so a name means one thing', async () => {
+    const { registry, addCapability, addAction } = await setup();
+    await addCapability('same', OK_SOURCE);
+    const clashing = await addAction('same', ACTION_SOURCE);
+
+    expect(await registry.list()).toEqual([]);
+    expect(await registry.listActions()).toEqual([]);
+    expect((await registry.describe(clashing)).status).toBe('duplicate-name');
+  });
+
+  it('runs an action with its input and reports what it logged', async () => {
+    const runtime = new FakeRuntime((req) => ({ echo: req.args, kind: req.kind }));
+    const { registry, addAction } = await setup(runtime);
+    await addAction('notify', ACTION_SOURCE);
+
+    const res = await registry.runAction('notify', { what: 'ticket' });
+
+    expect(res.value).toEqual({ echo: { what: 'ticket' }, kind: 'action' });
+    expect(runtime.calls.at(-1)!.kind).toBe('action');
+  });
+
+  it('hands an action the request/response it operates on', async () => {
+    const runtime = new FakeRuntime((req) => ({ seen: req.api }));
+    const { registry, addAction } = await setup(runtime);
+    await addAction('notify', ACTION_SOURCE);
+
+    const api = { request: { method: 'GET', url: 'https://x' }, response: { status: 200 } };
+    await registry.runAction('notify', {}, { api });
+
+    expect(runtime.calls.at(-1)!.api).toEqual(api);
+  });
+
+  it('applies the environment writes an action asked for, once it succeeded', async () => {
+    const runtime = new FakeRuntime(
+      () => ({ ok: true }),
+      () => ({ TOKEN: 'abc123' }),
+    );
+    const { registry, environments, addAction } = await setup(runtime);
+    await addAction('login', ACTION_SOURCE);
+    const env = await environments.create({ name: 'Staging', ownerKind: 'workspace' });
+    await environments.update(env.id, { vars: { BASE_URL: 'https://api.test' } });
+    await environments.setSelection(env.id);
+
+    const res = await registry.runAction('login', {});
+
+    expect(await environments.snapshot()).toEqual({ BASE_URL: 'https://api.test', TOKEN: 'abc123' });
+    // Only the names are reported back — values are routinely tokens.
+    expect(res.envWrites).toEqual(['TOKEN']);
+  });
+
+  it('does not write anything on a dry run', async () => {
+    const runtime = new FakeRuntime(
+      () => ({ would: true }),
+      () => ({ TOKEN: 'abc123' }),
+    );
+    const { registry, environments, addAction } = await setup(runtime);
+    await addAction('login', ACTION_SOURCE);
+    const env = await environments.create({ name: 'Staging', ownerKind: 'workspace' });
+    await environments.setSelection(env.id);
+
+    const res = await registry.runAction('login', {}, { dryRun: true });
+
+    expect(runtime.calls.at(-1)!.dryRun).toBe(true);
+    expect(await environments.snapshot()).toEqual({});
+    // The intent is still reported, so a dry run tells you what it *would* change.
+    expect(res.envWrites).toEqual(['TOKEN']);
+  });
+
+  it('leaves the environment untouched when the action fails', async () => {
+    const runtime: ScriptRuntime = {
+      run: () => Promise.reject(new Error('boom')),
+      dispose: () => Promise.resolve(),
+    };
+    const { registry, environments, addAction } = await setup(runtime);
+    await addAction('login', ACTION_SOURCE);
+    const env = await environments.create({ name: 'Staging', ownerKind: 'workspace' });
+    await environments.setSelection(env.id);
+
+    await expect(registry.runAction('login', {})).rejects.toThrow('boom');
+    expect(await environments.snapshot()).toEqual({});
+  });
+
+  it('refuses an action that arrived unapproved', async () => {
+    const { registry, addAction } = await received();
+    const id = await addAction('notify', ACTION_SOURCE);
+
+    expect((await registry.describe(id)).status).toBe('untrusted');
+    await expect(registry.runAction('notify', {})).rejects.toMatchObject({
+      code: 'USER_CODE_UNTRUSTED',
+    });
+  });
+});
+
 describe('SeeboHost with user capabilities', () => {
   /** A provider standing in for the registry: no workspace, no process. */
   const provider = (value: unknown, type = 'object') => ({
@@ -333,6 +493,8 @@ describe('SeeboHost with user capabilities', () => {
       this.seen.push(requirement);
       return Promise.resolve(value);
     },
+    listActions: () => Promise.resolve([]),
+    runAction: () => Promise.resolve({ value: null }),
   });
 
   it('resolves a user capability inside a formula', async () => {
@@ -364,6 +526,8 @@ describe('SeeboHost with user capabilities', () => {
         userCapabilities: {
           list: () => Promise.resolve([{ name: 'cfg', type: 'object' }]),
           resolve: () => Promise.reject(new Error('boom')),
+          listActions: () => Promise.resolve([]),
+          runAction: () => Promise.resolve({ value: null }),
         },
       },
     );
@@ -381,6 +545,8 @@ describe('SeeboHost with user capabilities', () => {
         userCapabilities: {
           list: () => Promise.resolve([{ name: 'env', type: 'string' }]),
           resolve: () => Promise.resolve('from-user-code'),
+          listActions: () => Promise.resolve([]),
+          runAction: () => Promise.resolve({ value: null }),
         },
       },
     );

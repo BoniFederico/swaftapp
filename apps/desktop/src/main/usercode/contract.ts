@@ -15,10 +15,17 @@
  */
 export type ScriptProfile = 'sandbox' | 'developer';
 
-/** A capability invocation: the compiled module plus the descriptor fields the formula passed. */
+/**
+ * What kind of user code this is. The two differ in what they are handed and what they may do:
+ * a capability resolves data and must stay pure, an action is the effect channel and may write.
+ */
+export type ScriptKind = 'capability' | 'action';
+
+/** An invocation: the compiled module plus what the caller passes in. */
 export interface ScriptRunRequest {
-  /** Capability name, used for error messages and module identity. */
+  /** Capability/action name, used for error messages and module identity. */
   name: string;
+  kind: ScriptKind;
   /** The module source (the template's effective source). */
   code: string;
   /** Content hash — lets the host reuse an already-imported module without re-parsing. */
@@ -28,12 +35,28 @@ export interface ScriptRunRequest {
   args: Record<string, unknown>;
   /** Snapshot of the active environment, so `swaft.env.get` stays synchronous inside user code. */
   env: Record<string, string>;
+  /** Actions only: the request (and, after a send, the response) the action operates on. */
+  api?: unknown;
+  /** Actions only: a dry run must describe what it would do instead of doing it. */
+  dryRun?: boolean;
+}
+
+/** Everything one run produced besides its return value. */
+export interface ScriptRunOutcome {
+  value: unknown;
+  /** Lines the code emitted with `swaft.log(...)`, in order. */
+  logs: string[];
+  /**
+   * Environment writes an action asked for, applied by the host **after** it succeeds — a failure
+   * half-way must not leave half the variables changed.
+   */
+  envWrites: Record<string, string>;
 }
 
 /** What the host reports back for one run. */
 export type ScriptRunReply =
-  | { id: number; ok: true; value: unknown }
-  | { id: number; ok: false; code: ScriptErrorCode; message: string };
+  | ({ id: number; ok: true } & ScriptRunOutcome)
+  | { id: number; ok: false; code: ScriptErrorCode; message: string; logs: string[] };
 
 /** Messages main → host. `ready` flows the other way at startup. */
 export type ScriptHostMessage = { id: number; run: ScriptRunRequest };

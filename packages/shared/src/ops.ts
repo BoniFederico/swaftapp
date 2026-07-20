@@ -202,9 +202,9 @@ export const settingsUpdateSchema = z
 // --- M6: templates + Seebo rendering ----------------------------------------
 
 // Template kinds. `render` was folded into `document` (its subtypes — mermaid/swagger/echarts — are
-// now document subtypes that render in the output). `capability` is user-authored JavaScript that
-// registers a Seebo data capability (see analisi_codice_utente.md).
-export const templateTypeSchema = z.enum(['document', 'api', 'capability']);
+// now document subtypes that render in the output). `capability` and `action` are user-authored
+// JavaScript: the first resolves data for a formula, the second is an effect (analisi_codice_utente.md).
+export const templateTypeSchema = z.enum(['document', 'api', 'capability', 'action']);
 
 export const templateCreateRequestSchema = z
   .object({
@@ -310,8 +310,10 @@ export const userCodeRefRequestSchema = z.object({ templateId: z.string().min(1)
 export const userCodeRunRequestSchema = z
   .object({
     templateId: z.string().min(1),
-    /** The capability call's descriptor fields (`id` plus whatever the author reads). */
+    /** A capability call's descriptor fields, or an action's `input`. */
     args: z.record(z.unknown()).optional(),
+    /** Actions: ask what it *would* do instead of doing it. */
+    dryRun: z.boolean().optional(),
   })
   .strict();
 
@@ -824,12 +826,14 @@ export const SUBTYPES: Record<TemplateType, string[]> = {
   ],
   api: ['json'],
   capability: ['javascript'],
+  action: ['javascript'],
 };
 /** Default subtype assigned to a new template (and used to group subtype-less ones in the tree). */
 export const DEFAULT_SUBTYPE: Record<TemplateType, string> = {
   document: 'text',
   api: 'json',
   capability: 'javascript',
+  action: 'javascript',
 };
 /** Subtypes the Document output shows rendered (not as code). */
 export const RENDERABLE_SUBTYPES = new Set(['html', 'markdown', 'eml', 'mermaid', 'swagger', 'echarts']);
@@ -1026,6 +1030,12 @@ export interface ApiHistoryResponse {
   items: ApiHistoryItem[];
 }
 
+/** Template kinds whose source is user-authored JavaScript rather than a Seebo template. */
+export const CODE_TEMPLATE_TYPES: TemplateType[] = ['capability', 'action'];
+export function isCodeTemplateType(type: string): boolean {
+  return (CODE_TEMPLATE_TYPES as string[]).includes(type);
+}
+
 /** Why a `capability` template is (not) registered — shown in its editor header. */
 export type UserCapabilityStatus =
   | 'ok'
@@ -1054,10 +1064,14 @@ export interface UntrustedCapabilityDto {
 export interface UntrustedCapabilitiesResponse {
   items: UntrustedCapabilityDto[];
 }
-/** One test run from the capability editor. */
+/** One test run from the capability/action editor. */
 export interface UserCodeRunResponse {
   value: unknown;
   durationMs: number;
+  /** Lines the code emitted with `swaft.log(...)`. */
+  logs: string[];
+  /** Names of the environment variables an action wrote (values are never echoed back). */
+  envWrites: string[];
 }
 export interface SecretsResponse {
   refs: string[];

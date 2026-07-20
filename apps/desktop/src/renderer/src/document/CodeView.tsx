@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { UserCapabilityDto } from '@swaft/shared';
+import type { UserCapabilityDto, UserCodeRunResponse } from '@swaft/shared';
 import { ApiClient, ApiError } from '../api-client/client';
 import { CodeEditor } from '../editor/CodeEditor';
 import { useI18n } from '../i18n/I18nProvider';
@@ -9,25 +9,37 @@ import { notifyTreeChanged, subscribeTreeChanged } from '../workspace/treeBus';
 
 const DEFAULT_ARGS = '{ "id": "demo" }';
 
+/** How a template would reference this code, shown once it is actually registered. */
+function usageSnippet(kind: 'capability' | 'action', name: string): string {
+  return kind === 'action'
+    ? "${ action({ id: 'run', type: '" + name + "', input: {}, confirm: true }) }"
+    : '${ ' + name + "({ id: 'demo' }) }";
+}
+
 /**
- * Editor for a `capability` template: the JavaScript on the left, a test run on the right.
+ * Editor for the two user-code template kinds: the JavaScript on the left, a test run on the right.
+ * Capabilities and actions differ only in what the test panel sends (`args` vs `input`) and in what
+ * a run may do, so they share one view rather than two near-identical ones.
  *
  * The code is edited in place (like the API view's request) rather than through the Template Editor
- * modal, because for a capability the source *is* the document. The header states the name formulas
- * will call it by — the template's own name — and why it may not be registered, so a clash is
- * visible here instead of surfacing as a puzzling `UNKNOWN_FUNCTION` in some other template.
+ * modal, because here the source *is* the document. The header states the name it is registered
+ * under — the template's own name — and why it may be idle, so a clash shows up here instead of
+ * surfacing as a puzzling `UNKNOWN_FUNCTION` in some other template.
  */
-export function CapabilityView({
+export function CodeView({
   client,
   templateId,
+  kind,
   onDirtyChange,
   onTitleChange,
 }: {
   client: ApiClient;
   templateId: string;
+  kind: 'capability' | 'action';
   onDirtyChange?: (dirty: boolean) => void;
   onTitleChange?: (name: string) => void;
 }) {
+  const isAction = kind === 'action';
   const { t } = useI18n();
   const toast = useToast();
   const [source, setSource] = useState('');
@@ -41,7 +53,7 @@ export function CapabilityView({
   const savedSourceRef = useRef<string | null>(null);
   const [capability, setCapability] = useState<UserCapabilityDto | null>(null);
   const [args, setArgs] = useState(DEFAULT_ARGS);
-  const [result, setResult] = useState<{ value: unknown; durationMs: number } | null>(null);
+  const [result, setResult] = useState<UserCodeRunResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
 
@@ -117,7 +129,7 @@ export function CapabilityView({
     }
   }
 
-  async function run() {
+  async function run(dryRun = false) {
     let parsed: unknown;
     try {
       parsed = JSON.parse(args);
@@ -136,7 +148,13 @@ export function CapabilityView({
     try {
       // Test the code as written: an unsaved draft would otherwise run its last-saved version.
       if (dirty) await save();
-      setResult(await client.call('usercode.run', { templateId, args: parsed as Record<string, unknown> }));
+      setResult(
+        await client.call('usercode.run', {
+          templateId,
+          args: parsed as Record<string, unknown>,
+          dryRun,
+        }),
+      );
     } catch (e) {
       setResult(null);
       setError(e instanceof ApiError ? e.swaft.message : String(e));
@@ -150,10 +168,14 @@ export function CapabilityView({
   return (
     <div className="doc-view cap-view" ref={rootRef}>
       <header className="cap-view__bar">
-        <span className="cap-view__label">{t('cap.registeredAs')}</span>
+        <span className="cap-view__label">{t(isAction ? 'act.registeredAs' : 'cap.registeredAs')}</span>
         <code className="cap-view__name">{capability?.name ?? '—'}</code>
-        <span className="cap-view__label">{t('cap.returns')}</span>
-        <span className="ui-badge">{capability?.type ?? '—'}</span>
+        {!isAction && (
+          <>
+            <span className="cap-view__label">{t('cap.returns')}</span>
+            <span className="ui-badge">{capability?.type ?? '—'}</span>
+          </>
+        )}
         <span className="cap-view__spacer" />
         <IconButton label={t('name.save')} disabled={!dirty} onClick={() => void save()}>
           <SaveIcon />
@@ -186,7 +208,7 @@ export function CapabilityView({
         <aside className="cap-view__panel">
           <div className="ui-field">
             <label className="ui-field__label" htmlFor={`cap-args-${templateId}`}>
-              {t('cap.args')}
+              {t(isAction ? 'act.input' : 'cap.args')}
             </label>
             <textarea
               id={`cap-args-${templateId}`}
@@ -196,17 +218,29 @@ export function CapabilityView({
               value={args}
               onChange={(e) => setArgs(e.target.value)}
             />
-            <span className="field-hint">{t('cap.argsHint')}</span>
+            <span className="field-hint">{t(isAction ? 'act.inputHint' : 'cap.argsHint')}</span>
           </div>
 
           {/* Approving is the way forward while untrusted, so Run would only ever fail. */}
-          <Button
-            variant="primary"
-            disabled={running || capability?.status === 'untrusted'}
-            onClick={() => void run()}
-          >
-            {running ? t('cap.running') : t('cap.run')}
-          </Button>
+          <div className="row" style={{ gap: 'var(--space-2)' }}>
+            <Button
+              variant="primary"
+              disabled={running || capability?.status === 'untrusted'}
+              onClick={() => void run()}
+            >
+              {running ? t('cap.running') : t('cap.run')}
+            </Button>
+            {/* An action's test run really performs; the dry run is how to check it without effects. */}
+            {isAction && (
+              <Button
+                variant="ghost"
+                disabled={running || capability?.status === 'untrusted'}
+                onClick={() => void run(true)}
+              >
+                {t('act.dryRun')}
+              </Button>
+            )}
+          </div>
 
           <div className="ui-field">
             <span className="ui-field__label">{t('cap.result')}</span>
@@ -224,10 +258,24 @@ export function CapabilityView({
             )}
           </div>
 
+          {result && result.logs.length > 0 && (
+            <div className="ui-field">
+              <span className="ui-field__label">{t('code.logs')}</span>
+              <pre className="cap-view__result cap-view__logs">{result.logs.join('\n')}</pre>
+            </div>
+          )}
+
+          {result && result.envWrites.length > 0 && (
+            <div className="ui-field">
+              <span className="ui-field__label">{t('act.effects')}</span>
+              <code className="cap-view__usage">{result.envWrites.join(', ')}</code>
+            </div>
+          )}
+
           {capability?.status === 'ok' && (
             <div className="ui-field">
-              <span className="ui-field__label">{t('cap.usage')}</span>
-              <code className="cap-view__usage">{`\${ ${capability.name}({ id: 'demo' }) }`}</code>
+              <span className="ui-field__label">{t(isAction ? 'act.usage' : 'cap.usage')}</span>
+              <code className="cap-view__usage">{usageSnippet(kind, capability.name)}</code>
             </div>
           )}
 
@@ -235,7 +283,7 @@ export function CapabilityView({
             <span className="field-hint">{t('cap.reviewFirst')}</span>
           )}
 
-          <span className="field-hint">{t('cap.sandboxNote')}</span>
+          <span className="field-hint">{t(isAction ? 'act.sandboxNote' : 'cap.sandboxNote')}</span>
         </aside>
       </div>
     </div>

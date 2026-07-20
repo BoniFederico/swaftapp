@@ -5,7 +5,7 @@ import { useAuth } from '../auth/AuthProvider';
 import { BatchDocumentView } from '../batcher/BatchDocumentView';
 import { BatcherPanel } from '../batcher/BatcherPanel';
 import { ApiView } from '../document/ApiView';
-import { CapabilityView } from '../document/CapabilityView';
+import { CodeView } from '../document/CodeView';
 import { DocumentView } from '../document/DocumentView';
 import { TemplateEditorModal } from '../document/TemplateEditorModal';
 import { EnvironmentPicker } from '../environment/EnvironmentPicker';
@@ -45,7 +45,7 @@ type Tab = { id: string; type: TabKind; name: string; preview: boolean; dirty: b
 function TabIcon({ type }: { type: TabKind }) {
   const className = `ws-tab__type ws-tab__type--${type}`;
   if (type === 'api') return <ApiIcon className={className} />;
-  if (type === 'capability') return <CapabilityIcon className={className} />;
+  if (type === 'capability' || type === 'action') return <CapabilityIcon className={className} />;
   if (type === 'folder') return <FolderIcon className={className} />;
   return <DocumentIcon className={className} />;
 }
@@ -328,8 +328,8 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
                     />
                   ) : tb.type === 'api' ? (
                     <ApiView {...shared} />
-                  ) : tb.type === 'capability' ? (
-                    <CapabilityView {...shared} />
+                  ) : tb.type === 'capability' || tb.type === 'action' ? (
+                    <CodeView {...shared} kind={tb.type} />
                   ) : (
                     <DocumentView {...shared} />
                   )}

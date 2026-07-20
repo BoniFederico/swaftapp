@@ -146,6 +146,25 @@ export class EnvironmentService extends RepoBase implements EnvDataProvider {
   }
 
   /**
+   * Merge variables into the active environment, in one write. Used by user-authored actions, whose
+   * `swaft.env.set(...)` calls are buffered and applied only once the action has succeeded — a
+   * failure part-way must not leave some variables changed and others not.
+   */
+  async applyWrites(vars: Record<string, string>): Promise<void> {
+    if (Object.keys(vars).length === 0) return;
+    const activeId = await this.getSelection();
+    if (!activeId) {
+      throw new AppError(
+        'ENV_NO_ACTIVE',
+        'validation',
+        'No active environment — select one before writing variables.',
+      );
+    }
+    const row = await this.requireRow(activeId);
+    await this.update(activeId, { vars: { ...parseVars(row.vars), ...vars } });
+  }
+
+  /**
    * Resolve `env('KEY')` to the active environment's value for `key`. Runs during the Seebo drive
    * loop (no user prompt). Throws when there is no active environment or the key is absent, so the
    * render surfaces a clear diagnostic instead of a silent empty string.

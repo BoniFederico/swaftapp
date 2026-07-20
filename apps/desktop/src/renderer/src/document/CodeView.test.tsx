@@ -5,7 +5,7 @@ import { ok, type ResultEnvelope } from '@swaft/shared';
 import { AppProviders } from '../AppProviders';
 import { ApiClient } from '../api-client/client';
 import type { Transport } from '../api-client/transport/types';
-import { CapabilityView } from './CapabilityView';
+import { CodeView } from './CodeView';
 
 const SOURCE = `export default () => ({ ok: true });`;
 
@@ -35,9 +35,10 @@ function Host({ client }: { client: ApiClient }) {
   return (
     <AppProviders>
       <button onClick={() => force((n) => n + 1)}>rerender</button>
-      <CapabilityView
+      <CodeView
         client={client}
         templateId="t1"
+        kind="capability"
         onDirtyChange={() => force((n) => n + 1)}
         onTitleChange={() => undefined}
       />
@@ -45,7 +46,7 @@ function Host({ client }: { client: ApiClient }) {
   );
 }
 
-describe('CapabilityView', () => {
+describe('CodeView', () => {
   it('does not reload the source when the parent re-renders with new callbacks', async () => {
     const calls: string[] = [];
     render(<Host client={new ApiClient(makeTransport(calls))} />);

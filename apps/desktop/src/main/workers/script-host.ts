@@ -44,19 +44,56 @@ function harden(): void {
   }
 }
 
-/** The `swaft` object handed to user code: data in, nothing back out. */
-function makeSwaft(env: Record<string, string>): unknown {
-  const vars = Object.freeze({ ...env });
+const MAX_LOGS = 100;
+const MAX_LOG_CHARS = 2000;
+
+/** One run's collectable side outputs: log lines, and (actions only) requested env writes. */
+interface Collector {
+  logs: string[];
+  envWrites: Record<string, string>;
+}
+
+/**
+ * The `swaft` object handed to user code. Capabilities get a read-only view; actions additionally
+ * get `env.set`, which only *records* the intent — the host applies the writes once the action has
+ * succeeded, so a failure part-way cannot leave half the variables changed.
+ */
+function makeSwaft(req: ScriptRunRequest, out: Collector): unknown {
+  const vars = Object.freeze({ ...req.env });
+  const env: Record<string, unknown> = {
+    /** The active environment's value for `name`, or undefined when it is not defined. */
+    get: (name: string): string | undefined => vars[name],
+    has: (name: string): boolean => Object.hasOwn(vars, name),
+    keys: (): string[] => Object.keys(vars),
+  };
+  if (req.kind === 'action') {
+    env.set = (name: string, value: unknown): void => {
+      if (typeof name !== 'string' || !name.trim()) throw new Error('env.set needs a variable name');
+      out.envWrites[name] = String(value);
+    };
+  }
   return Object.freeze({
-    env: Object.freeze({
-      /** The active environment's value for `name`, or undefined when it is not defined. */
-      get: (name: string): string | undefined => vars[name],
-      has: (name: string): boolean => Object.hasOwn(vars, name),
-      keys: (): string[] => Object.keys(vars),
-    }),
+    env: Object.freeze(env),
     /** ISO-8601 now. A `Date` could not cross back into the render state, so we hand over a string. */
     now: (): string => new Date().toISOString(),
+    /** Debug output, returned with the run: user code has no console to write to. */
+    log: (...parts: unknown[]): void => {
+      if (out.logs.length >= MAX_LOGS) return;
+      const line = parts.map(stringify).join(' ');
+      out.logs.push(line.length > MAX_LOG_CHARS ? `${line.slice(0, MAX_LOG_CHARS)}…` : line);
+    },
+    /** True when the caller only wants to know what would happen (actions). */
+    dryRun: req.dryRun === true,
   });
+}
+
+function stringify(value: unknown): string {
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    return String(value);
+  }
 }
 
 function loadModule(req: ScriptRunRequest): Promise<Record<string, unknown>> {
@@ -71,7 +108,7 @@ function loadModule(req: ScriptRunRequest): Promise<Record<string, unknown>> {
   return loading;
 }
 
-async function run(req: ScriptRunRequest): Promise<unknown> {
+async function run(req: ScriptRunRequest, out: Collector): Promise<unknown> {
   const rejected = findForbiddenSyntax(req.code, req.profile);
   if (rejected) throw new HostError('USER_CODE_REJECTED', rejected);
 
@@ -82,22 +119,34 @@ async function run(req: ScriptRunRequest): Promise<unknown> {
     throw new HostError('USER_CODE_LOAD_FAILED', messageOf(err));
   }
 
-  const fn = module.default;
+  // A dry run prefers the module's own `dryRun` export; without one the default runs with
+  // `swaft.dryRun === true` and it is the author's job to honour it.
+  const fn = (req.dryRun && typeof module.dryRun === 'function' ? module.dryRun : module.default) as
+    | ((ctx: unknown) => unknown)
+    | undefined;
   if (typeof fn !== 'function') {
     throw new HostError(
       'USER_CODE_REJECTED',
-      'a capability must `export default` a function taking ({ args, swaft })',
+      req.kind === 'action'
+        ? 'an action must `export default` a function taking ({ input, api, swaft })'
+        : 'a capability must `export default` a function taking ({ args, swaft })',
     );
   }
 
+  const swaft = makeSwaft(req, out);
   let value: unknown;
   try {
-    value = await (fn as (ctx: unknown) => unknown)({ args: req.args, swaft: makeSwaft(req.env) });
+    value =
+      req.kind === 'action'
+        ? await fn({ input: req.args, api: req.api ?? null, swaft })
+        : await fn({ args: req.args, swaft });
   } catch (err) {
     throw new HostError('USER_CODE_FAILED', messageOf(err));
   }
 
+  // An action that returns nothing is fine — it ran for its effect. A capability must resolve.
   if (value === undefined) {
+    if (req.kind === 'action') return null;
     throw new HostError(
       'USER_CODE_INVALID_RESULT',
       'returned undefined; a capability must resolve to a value',
@@ -130,14 +179,24 @@ harden();
 
 parentPort.on('message', (event: { data: ScriptHostMessage }) => {
   const { id, run: request } = event.data;
-  void run(request).then(
-    (value) => parentPort.postMessage({ id, ok: true, value } satisfies ScriptRunReply),
+  // Logs are collected even on failure — they are usually how the failure gets diagnosed.
+  const out: Collector = { logs: [], envWrites: {} };
+  void run(request, out).then(
+    (value) =>
+      parentPort.postMessage({
+        id,
+        ok: true,
+        value,
+        logs: out.logs,
+        envWrites: out.envWrites,
+      } satisfies ScriptRunReply),
     (err: unknown) =>
       parentPort.postMessage({
         id,
         ok: false,
         code: err instanceof HostError ? err.code : 'USER_CODE_FAILED',
         message: messageOf(err),
+        logs: out.logs,
       } satisfies ScriptRunReply),
   );
 });

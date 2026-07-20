@@ -9,8 +9,9 @@ import { SafeStorageCipher } from './auth/cipher';
 import { getAuthService } from './auth/registry';
 import { HttpService } from './http/HttpService';
 import { SecretService } from './secret/SecretService';
+import { BUILTIN_ACTION_HANDLERS } from './seebo/action-handlers';
 import { SeeboHost, WIDGET_CAPABILITIES } from './seebo/SeeboHost';
-import { UserCapabilityRegistry } from './usercode/UserCapabilityRegistry';
+import { UserCodeRegistry } from './usercode/UserCodeRegistry';
 import { UtilityProcessRuntime } from './usercode/UtilityProcessRuntime';
 import {
   setActionService,
@@ -28,7 +29,7 @@ import {
   setSecretService,
   setSettingsService,
   setTemplateService,
-  setUserCapabilityRegistry,
+  setUserCodeRegistry,
   setWorkspaceService,
   type PlatformDialogs,
 } from './services';
@@ -45,6 +46,8 @@ import { SettingsService } from './workspace/SettingsService';
 import { TemplateDataProvider } from './workspace/TemplateDataProvider';
 import { TemplateService } from './workspace/TemplateService';
 import { WorkspaceService } from './workspace/WorkspaceService';
+
+const BUILTIN_ACTION_TYPES = Object.keys(BUILTIN_ACTION_HANDLERS);
 
 const SWAFT_FILTER = { name: 'Swaft Workspace', extensions: ['swaft'] };
 
@@ -125,12 +128,12 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
   // User-authored capabilities run in a dedicated process (never in main): losing that isolation
   // must fail loudly, so there is no in-process fallback here.
   const scriptRuntime = new UtilityProcessRuntime(join(__dirname, 'scriptHost.js'));
-  const userCapabilities = new UserCapabilityRegistry(workspaceService, {
+  const userCapabilities = new UserCodeRegistry(workspaceService, {
     templates,
     releases,
     environments,
     runtime: scriptRuntime,
-    reservedNames: [...WIDGET_CAPABILITIES, ...DATA_CAPABILITIES],
+    reservedNames: [...WIDGET_CAPABILITIES, ...DATA_CAPABILITIES, ...BUILTIN_ACTION_TYPES],
     // Approvals live in the app-level store, never in the `.swaft` — a workspace must not vouch
     // for the code it carries.
     trust: appStore,
@@ -182,7 +185,7 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
   setHttpService(httpService);
   setApiHistoryService(apiHistory);
   setApiRequestService(apiRequest);
-  setUserCapabilityRegistry(userCapabilities);
+  setUserCodeRegistry(userCapabilities);
   setBatcherService(batcher);
   setActionService(actionService);
   setEnvironmentService(environments);

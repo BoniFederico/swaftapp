@@ -81,6 +81,7 @@ function TypeIcon({ type }: { type: TemplateType }) {
     case 'api':
       return <ApiIcon className={className} />;
     case 'capability':
+    case 'action':
       return <CapabilityIcon className={className} />;
     default:
       return <DocumentIcon className={className} />;
@@ -558,7 +559,7 @@ export function WorkingTree({
   }
 
   function renderTypeView() {
-    const types: TemplateType[] = ['document', 'api', 'capability'];
+    const types: TemplateType[] = ['document', 'api', 'capability', 'action'];
     return types.map((type) => {
       const ofType = projectTemplates.filter((tpl) => tpl.type === type);
       if (ofType.length === 0) return null;

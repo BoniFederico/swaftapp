@@ -2,7 +2,7 @@ import type { ActionService } from './actions/ActionService';
 import type { AppStore } from './app-store/AppStore';
 import type { HttpService } from './http/HttpService';
 import type { SecretService } from './secret/SecretService';
-import type { UserCapabilityRegistry } from './usercode/UserCapabilityRegistry';
+import type { UserCodeRegistry } from './usercode/UserCodeRegistry';
 import type { ApiHistoryService } from './workspace/ApiHistoryService';
 import type { ApiRequestService } from './workspace/ApiRequestService';
 import type { BatcherService } from './workspace/BatcherService';
@@ -152,13 +152,13 @@ export function getApiRequestService(): ApiRequestService {
   return apiRequest;
 }
 
-let userCapabilities: UserCapabilityRegistry | null = null;
+let userCapabilities: UserCodeRegistry | null = null;
 
-export function setUserCapabilityRegistry(value: UserCapabilityRegistry | null): void {
+export function setUserCodeRegistry(value: UserCodeRegistry | null): void {
   userCapabilities = value;
 }
-export function getUserCapabilityRegistry(): UserCapabilityRegistry {
-  if (!userCapabilities) throw new Error('UserCapabilityRegistry not initialized');
+export function getUserCodeRegistry(): UserCodeRegistry {
+  if (!userCapabilities) throw new Error('UserCodeRegistry not initialized');
   return userCapabilities;
 }
 

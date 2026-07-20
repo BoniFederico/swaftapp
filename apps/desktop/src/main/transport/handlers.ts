@@ -53,7 +53,7 @@ import {
   getActionService,
   getApiHistoryService,
   getApiRequestService,
-  getUserCapabilityRegistry,
+  getUserCodeRegistry,
   getAppStore,
   getBatcherService,
   getChangelogService,
@@ -328,18 +328,18 @@ export const handlers: Record<OpName, Handler> = {
     }),
   'usercode.describe': (p) =>
     svc(async () => ({
-      capability: await getUserCapabilityRegistry().describe((p as UserCodeRefRequest).templateId),
+      capability: await getUserCodeRegistry().describe((p as UserCodeRefRequest).templateId),
     })),
   'usercode.run': (p) =>
     svc(async () => {
       const r = p as UserCodeRunRequest;
-      return getUserCapabilityRegistry().runOnce(r.templateId, r.args ?? {});
+      return getUserCodeRegistry().runOnce(r.templateId, r.args ?? {}, { dryRun: r.dryRun });
     }),
   'usercode.untrusted': () =>
-    svc(async () => ({ items: await getUserCapabilityRegistry().untrusted() })),
+    svc(async () => ({ items: await getUserCodeRegistry().untrusted() })),
   'usercode.trust': (p) =>
     svc(async () => ({
-      capability: await getUserCapabilityRegistry().trust((p as UserCodeRefRequest).templateId),
+      capability: await getUserCodeRegistry().trust((p as UserCodeRefRequest).templateId),
     })),
   'api.history.list': (p) =>
     svc(async () => ({ items: await getApiHistoryService().list((p as TemplateRefRequest).templateId) })),

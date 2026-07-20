@@ -6,14 +6,21 @@ import type { EnvironmentService } from '../workspace/EnvironmentService';
 import type { ReleaseService } from '../workspace/ReleaseService';
 import type { TemplateService } from '../workspace/TemplateService';
 import type { WorkspaceService } from '../workspace/WorkspaceService';
-import { DEFAULT_CAPABILITY_TYPE, type ScriptProfile } from './contract';
+import {
+  DEFAULT_CAPABILITY_TYPE,
+  type ScriptKind,
+  type ScriptProfile,
+  type ScriptRunOutcome,
+} from './contract';
 import { capabilityArgs, isValidCapabilityName, normalizeCapabilityType } from './guard';
 import type { ScriptRuntime } from './ScriptRuntime';
 
-/** A capability template, with the verdict on whether it may be registered. */
+/** A capability or action template, with the verdict on whether it may be registered. */
 interface Entry {
   templateId: string;
+  kind: ScriptKind;
   name: string;
+  /** Capabilities only: the Seebo base type the resolved value is validated against. */
   type: string;
   hash: string;
   code: string;
@@ -35,7 +42,7 @@ export interface CodeTrustStore {
   getDeviceId(): string;
 }
 
-export interface UserCapabilityRegistryDeps {
+export interface UserCodeRegistryDeps {
   templates: TemplateService;
   releases: ReleaseService;
   environments: EnvironmentService;
@@ -46,7 +53,9 @@ export interface UserCapabilityRegistryDeps {
 }
 
 /**
- * Knows which user-authored capabilities exist and hands the engine a resolver for each.
+ * Knows which user-authored capabilities and actions exist, and hands the engine a resolver (or an
+ * action handler) for each. Both kinds share this registry because they share everything that is
+ * hard: name resolution, the compiled snapshot, and trust.
  *
  * Registration is **pull-based**, not push: `SeeboHost` builds a fresh engine for every analyze /
  * validate / render, so there is no long-lived engine to register into on save. Instead this
@@ -63,13 +72,13 @@ export interface UserCapabilityRegistryDeps {
  * with a clear reason — because the alternative, an `UNKNOWN_FUNCTION` from Seebo, tells the reader
  * nothing about what is actually wrong.
  */
-export class UserCapabilityRegistry implements UserCapabilityProvider {
+export class UserCodeRegistry implements UserCapabilityProvider {
   private snapshot: Snapshot | null = null;
   private envCache: { revision: number; vars: Record<string, string> } | null = null;
 
   constructor(
     private readonly ws: WorkspaceService,
-    private readonly deps: UserCapabilityRegistryDeps,
+    private readonly deps: UserCodeRegistryDeps,
   ) {}
 
   /**
@@ -78,10 +87,46 @@ export class UserCapabilityRegistry implements UserCapabilityProvider {
    */
   async list(): Promise<UserCapabilityRegistration[]> {
     const snapshot = await this.load();
-    return [...snapshot.byName.values()].map((e) => ({ name: e.name, type: e.type }));
+    return [...snapshot.byName.values()]
+      .filter((e) => e.kind === 'capability')
+      .map((e) => ({ name: e.name, type: e.type }));
   }
 
-  /** Capabilities waiting for approval, for the review banner. */
+  /** The action types the engine registers, so `action({ type: 'myAction' })` is known to it. */
+  async listActions(): Promise<{ name: string }[]> {
+    const snapshot = await this.load();
+    return [...snapshot.byName.values()]
+      .filter((e) => e.kind === 'action')
+      .map((e) => ({ name: e.name }));
+  }
+
+  /**
+   * Run one action. Unlike a capability this is an effect, so the environment writes it asked for
+   * are applied here — after it succeeded, in one go, never half-way. A dry run is told so and its
+   * writes are reported but not applied.
+   */
+  async runAction(
+    name: string,
+    input: Record<string, unknown>,
+    opts: { api?: unknown; dryRun?: boolean } = {},
+  ): Promise<{ value: unknown; logs: string[]; envWrites: string[] }> {
+    const snapshot = await this.load();
+    const entry = snapshot.byName.get(name);
+    if (!entry || entry.kind !== 'action') {
+      throw new AppError('USER_CODE_NOT_FOUND', 'not_found', `Action "${name}" is not available.`);
+    }
+    this.assertRunnable(entry);
+    const outcome = await this.invokeRaw(entry, input, opts);
+    const written = Object.keys(outcome.envWrites);
+    if (!opts.dryRun && written.length > 0) {
+      await this.deps.environments.applyWrites(outcome.envWrites);
+      this.envCache = null;
+    }
+    // Only the names come back: values are routinely tokens, and receipts are persisted.
+    return { value: outcome.value, logs: outcome.logs, envWrites: written };
+  }
+
+  /** Capabilities and actions waiting for approval, for the review banner. */
   async untrusted(): Promise<{ templateId: string; name: string }[]> {
     const snapshot = await this.load();
     return snapshot.entries
@@ -94,7 +139,7 @@ export class UserCapabilityRegistry implements UserCapabilityProvider {
     const snapshot = await this.load();
     const entry = snapshot.byTemplate.get(templateId);
     if (!entry) {
-      throw new AppError('TEMPLATE_NOT_FOUND', 'not_found', 'Capability template not found.');
+      throw new AppError('TEMPLATE_NOT_FOUND', 'not_found', 'Code template not found.');
     }
     this.deps.trust.trustCode(this.workspacePath(), templateId, entry.hash);
     // Approving changes the verdict, so drop the snapshot rather than wait for the next save.
@@ -106,19 +151,19 @@ export class UserCapabilityRegistry implements UserCapabilityProvider {
   async resolve(name: string, requirement: Record<string, unknown>): Promise<unknown> {
     const snapshot = await this.load();
     const entry = snapshot.byName.get(name);
-    if (!entry) {
+    if (!entry || entry.kind !== 'capability') {
       throw new AppError('USER_CODE_NOT_FOUND', 'not_found', `Capability "${name}" is not available.`);
     }
     this.assertRunnable(entry);
-    return this.invoke(entry, capabilityArgs(requirement));
+    return (await this.invokeRaw(entry, capabilityArgs(requirement))).value;
   }
 
-  /** What the capability editor shows in its header: the registered name and why it may be idle. */
+  /** What the code editor shows in its header: the registered name and why it may be idle. */
   async describe(templateId: string): Promise<UserCapabilityDto> {
     const snapshot = await this.load();
     const entry = snapshot.byTemplate.get(templateId);
     if (!entry) {
-      throw new AppError('TEMPLATE_NOT_FOUND', 'not_found', 'Capability template not found.');
+      throw new AppError('TEMPLATE_NOT_FOUND', 'not_found', 'Code template not found.');
     }
     return { name: entry.name, type: entry.type, status: entry.status, message: entry.message };
   }
@@ -127,26 +172,35 @@ export class UserCapabilityRegistry implements UserCapabilityProvider {
   async runOnce(
     templateId: string,
     args: Record<string, unknown>,
-  ): Promise<{ value: unknown; durationMs: number }> {
+    opts: { dryRun?: boolean } = {},
+  ): Promise<{ value: unknown; durationMs: number; logs: string[]; envWrites: string[] }> {
     const snapshot = await this.load();
     const entry = snapshot.byTemplate.get(templateId);
     if (!entry) {
-      throw new AppError('TEMPLATE_NOT_FOUND', 'not_found', 'Capability template not found.');
+      throw new AppError('TEMPLATE_NOT_FOUND', 'not_found', 'Code template not found.');
     }
-    // A name clash keeps a capability out of the engine but must not block testing it in place.
+    // A name clash keeps code out of the engine but must not block testing it in place.
     if (entry.status === 'invalid-name' || entry.status === 'reserved-name') {
-      throw new AppError('USER_CODE_REJECTED', 'validation', entry.message ?? 'Invalid capability.');
+      throw new AppError('USER_CODE_REJECTED', 'validation', entry.message ?? 'Invalid code template.');
     }
     // Pressing Run must not be a way around approval: the editor shows the code, then the button.
     this.assertRunnable(entry);
     const startedAt = Date.now();
-    const value = await this.invoke(entry, args);
-    return { value, durationMs: Date.now() - startedAt };
+    // Testing an action from its editor is a real run, environment writes included — that is the
+    // point of the button — so it goes through the same path a trigger would use.
+    const outcome =
+      entry.kind === 'action'
+        ? await this.runAction(entry.name, args, { dryRun: opts.dryRun })
+        : { ...(await this.invokeRaw(entry, args)), envWrites: [] as string[] };
+    return { ...outcome, durationMs: Date.now() - startedAt };
   }
 
   private assertRunnable(entry: Entry): void {
     if (entry.status === 'untrusted') {
-      throw new AppError('USER_CODE_UNTRUSTED', 'policy', entry.message ?? 'Capability not approved.');
+      throw new AppError('USER_CODE_UNTRUSTED', 'policy', entry.message ?? 'Code not approved.');
+    }
+    if (entry.status === 'duplicate-name') {
+      throw new AppError('USER_CODE_REJECTED', 'validation', entry.message ?? 'Ambiguous name.');
     }
   }
 
@@ -174,14 +228,21 @@ export class UserCapabilityRegistry implements UserCapabilityProvider {
     return path;
   }
 
-  private async invoke(entry: Entry, args: Record<string, unknown>): Promise<unknown> {
+  private async invokeRaw(
+    entry: Entry,
+    args: Record<string, unknown>,
+    opts: { api?: unknown; dryRun?: boolean } = {},
+  ): Promise<ScriptRunOutcome> {
     return this.deps.runtime.run({
       name: entry.name,
+      kind: entry.kind,
       code: entry.code,
       hash: entry.hash,
       profile: this.profile(),
       args,
       env: await this.envVars(),
+      api: opts.api,
+      dryRun: opts.dryRun,
     });
   }
 
@@ -206,7 +267,12 @@ export class UserCapabilityRegistry implements UserCapabilityProvider {
     const revision = this.ws.revision;
     if (this.snapshot?.revision === revision) return this.snapshot;
 
-    const rows = await this.deps.templates.listByType('capability');
+    // Capabilities and actions share one namespace: `cfg` must mean one thing whether a formula
+    // resolves it or an action plan names it.
+    const rows = [
+      ...(await this.deps.templates.listByType('capability')).map((r) => ({ ...r, kind: 'capability' as const })),
+      ...(await this.deps.templates.listByType('action')).map((r) => ({ ...r, kind: 'action' as const })),
+    ];
     const reserved = new Set(this.deps.reservedNames);
     const timesUsed = new Map<string, number>();
     for (const row of rows) timesUsed.set(row.name, (timesUsed.get(row.name) ?? 0) + 1);
@@ -216,6 +282,7 @@ export class UserCapabilityRegistry implements UserCapabilityProvider {
       const { source } = await this.deps.releases.resolveSource(row.id);
       const entry: Entry = {
         templateId: row.id,
+        kind: row.kind,
         name: row.name,
         type: readDeclaredType(source),
         hash: createHash('sha256').update(source).digest('hex'),
@@ -230,10 +297,10 @@ export class UserCapabilityRegistry implements UserCapabilityProvider {
         entry.status = 'reserved-name';
         entry.message = `"${row.name}" is a built-in capability; pick another name so existing templates keep their meaning.`;
       } else if ((timesUsed.get(row.name) ?? 0) > 1) {
-        // Ambiguity is never resolved silently: with two capabilities of the same name a formula
-        // would bind to whichever happened to load first, so neither is registered until it is fixed.
+        // Ambiguity is never resolved silently: with two of the same name a formula (or an action
+        // plan) would bind to whichever loaded first, so neither is registered until it is fixed.
         entry.status = 'duplicate-name';
-        entry.message = `More than one capability is named "${row.name}"; rename one so a formula resolves to exactly one.`;
+        entry.message = `More than one capability or action is named "${row.name}"; rename one so a reference resolves to exactly one.`;
       } else if (!this.isTrusted(row, entry.hash)) {
         entry.status = 'untrusted';
         entry.message = `"${row.name}" was written on another install. Review the code and approve it before it can run.`;

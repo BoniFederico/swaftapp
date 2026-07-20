@@ -58,6 +58,7 @@ export function CreateTemplateDialog({
             { value: 'document', label: t('tpl.document') },
             { value: 'api', label: t('tpl.api') },
             { value: 'capability', label: t('tpl.capability') },
+            { value: 'action', label: t('tpl.action') },
           ]}
         />
       </form>

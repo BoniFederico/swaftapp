@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   DEFAULT_SUBTYPE,
+  isCodeTemplateType,
   type TemplateCreateRequest,
   type TemplateDto,
   type TemplateType,
@@ -47,9 +48,45 @@ export default async function ({ args, swaft }) {
 }
 `;
 
+/**
+ * Starter source for a fresh `action` template: an effect, with the two things that make it one —
+ * the environment write and the value that becomes its receipt.
+ */
+const STARTER_ACTION_SOURCE = `// An action is an effect. Declare it in a document with
+//   \${ action({ id: 'save', type: 'myAction', input: { … }, confirm: true }) }
+// or attach it to an API request as a pre/post trigger. It never runs without confirmation.
+
+export default async function ({ input, api, swaft }) {
+  swaft.log('running with', input);
+
+  // Environment writes are applied only if this action succeeds.
+  // swaft.env.set('TOKEN', api?.response?.json?.token);
+
+  return { ok: true, seen: Object.keys(input ?? {}) }; // becomes the receipt
+}
+`;
+
 /** The source a new template starts from, by kind. */
 function starterSource(type: TemplateType): string {
-  return type === 'capability' ? STARTER_CAPABILITY_SOURCE : STARTER_SOURCE;
+  if (type === 'capability') return STARTER_CAPABILITY_SOURCE;
+  if (type === 'action') return STARTER_ACTION_SOURCE;
+  return STARTER_SOURCE;
+}
+
+/**
+ * A capability/action is called by its template name, so the name must be a JS identifier. Checked
+ * on create and rename: letting an unusable name through would only surface later, as code that
+ * silently never registers.
+ */
+function assertUsableCodeName(type: string, name: string): void {
+  if (!isCodeTemplateType(type)) return;
+  if (!/^[A-Za-z_$][\w$]*$/.test(name.trim())) {
+    throw new AppError(
+      'INVALID_CODE_NAME',
+      'validation',
+      'A capability or action is called by its name, so it must be a valid identifier: letters, digits and _ , not starting with a digit.',
+    );
+  }
 }
 
 /** Best-effort HTTP method for an `api` template (its source is the JSON request model). */
@@ -75,7 +112,9 @@ export class TemplateService extends RepoBase {
     super(ws);
   }
 
-  createTemplate(req: TemplateCreateRequest): Promise<WorkspaceTree> {
+  // `async` so a rejected validation is a rejected promise: throwing synchronously from a method
+  // that advertises a Promise escapes `await`-based error handling at the call site.
+  async createTemplate(req: TemplateCreateRequest): Promise<WorkspaceTree> {
     // A template lives either in a folder (`folderId`) or at the project root (`projectId`).
     if (!req.folderId && !req.projectId) {
       throw new AppError(
@@ -85,6 +124,7 @@ export class TemplateService extends RepoBase {
       );
     }
     const type = req.type ?? 'document';
+    assertUsableCodeName(type, req.name);
     return this.commitTree(() =>
       this.insertEntity('templates', {
         id: randomUUID(),
@@ -99,7 +139,9 @@ export class TemplateService extends RepoBase {
     );
   }
 
-  renameTemplate(id: string, name: string): Promise<WorkspaceTree> {
+  async renameTemplate(id: string, name: string): Promise<WorkspaceTree> {
+    const tpl = await this.requireTemplate(id);
+    assertUsableCodeName(tpl.type, name);
     return this.commitTree(() => this.updateEntity('templates', id, { name: name.trim() }));
   }
 
