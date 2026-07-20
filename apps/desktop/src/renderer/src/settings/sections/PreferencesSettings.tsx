@@ -44,6 +44,7 @@ export function PreferencesSettings({ client }: { client: ApiClient }) {
       })
       .catch(() => setSaved({ mode, primaryColor, font, language, dblClick: 'edit' }));
     // Seed once per client: re-running on a previewed change would defeat the dirty check.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client]);
 
   async function save() {

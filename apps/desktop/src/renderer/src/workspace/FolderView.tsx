@@ -136,7 +136,7 @@ export function FolderView({
       cancelled = true;
       unsubscribe();
     };
-  }, [client, folderId]);
+  }, [client, folderId, onTitleChange]);
 
   const subfolders = useMemo(
     () => (tree?.folders ?? []).filter((f) => f.parentFolderId === folderId),

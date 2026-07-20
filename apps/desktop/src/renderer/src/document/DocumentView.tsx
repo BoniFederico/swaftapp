@@ -97,7 +97,7 @@ export function DocumentView({
       cancelled = true;
       unsubscribe();
     };
-  }, [client, templateId]);
+  }, [client, templateId, onTitleChange]);
 
   // Resolve the owning project (root templates carry it; foldered ones derive it from the folder) so
   // the layout can be persisted per project.

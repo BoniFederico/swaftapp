@@ -225,6 +225,7 @@ export function CodeEditor({
       view.current = null;
     };
     // Init once; value/language are synced by the effects below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Sync external value changes (e.g. switching release) into the doc, avoiding the onChange echo.

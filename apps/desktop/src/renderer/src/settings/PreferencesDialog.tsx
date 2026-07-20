@@ -27,6 +27,7 @@ export function PreferencesDialog({ open, onClose }: { open: boolean; onClose: (
     if (open) snapshot.current = { mode, primaryColor, font, language };
     // Deliberately keyed on `open` alone: re-snapshotting on a previewed change would lose the
     // original state Cancel has to restore.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   function cancel() {

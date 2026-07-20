@@ -111,6 +111,7 @@ export function SeeboField({
       view.current = null;
     };
     // Init once; value is synced by the effect below (mirrors CodeEditor).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Sync external value changes into the doc, avoiding the onChange echo.

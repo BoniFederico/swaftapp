@@ -251,7 +251,7 @@ export function ApiView({
       cancelled = true;
       unsubscribe();
     };
-  }, [client, templateId]);
+  }, [client, templateId, onTitleChange]);
 
   function patch(p: Partial<HttpRequestModel>) {
     setReq((r) => ({ ...r, ...p }));

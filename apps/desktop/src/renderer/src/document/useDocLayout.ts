@@ -64,6 +64,8 @@ export function useDocLayout(
       /* ignore */
     }
     setLoaded(true);
+    // Re-load only when the storage key changes; defaultPanelWidth is a fallback, not a trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey]);
 
   // Persist on change.
