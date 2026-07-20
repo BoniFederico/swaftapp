@@ -26,6 +26,7 @@ import {
   SaveIcon,
   Select,
   useFocusTrap,
+  useSaveShortcut,
   useToast,
 } from '../ui';
 import { notifyTreeChanged, subscribeTreeChanged } from '../workspace/treeBus';
@@ -369,20 +370,8 @@ export function ApiView({
     }
   }
   // Ctrl/Cmd+S saves the request — only for the visible API view (tabs stay mounted hidden).
-  const saveShortcutRef = useRef(() => {});
-  saveShortcutRef.current = () => void saveRequest();
   const rootRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key.toLowerCase() !== 's' || !(e.ctrlKey || e.metaKey)) return;
-      if (rootRef.current?.offsetParent == null) return; // not the active tab
-      if (document.querySelector('[aria-modal="true"]')) return; // a modal owns the shortcut
-      e.preventDefault();
-      saveShortcutRef.current();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  useSaveShortcut(() => void saveRequest(), rootRef);
   async function send() {
     setBusy(true);
     setError(null);

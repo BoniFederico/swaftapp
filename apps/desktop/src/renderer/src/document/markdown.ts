@@ -11,12 +11,20 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
+/** Allow only harmless link targets; `javascript:`/`data:` and friends render as plain text. */
+function safeHref(href: string): string | null {
+  return /^(https?:|mailto:|#|\/)/i.test(href.trim()) ? href : null;
+}
+
 function inline(s: string): string {
   return escapeHtml(s)
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text: string, href: string) =>
+      // The preview iframe is sandboxed, so this is defense in depth, not the only barrier.
+      safeHref(href) ? `<a href="${href}">${text}</a>` : match,
+    );
 }
 
 export function markdownToHtml(md: string): string {

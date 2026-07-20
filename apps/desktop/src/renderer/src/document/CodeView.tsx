@@ -4,7 +4,7 @@ import { ApiClient, ApiError } from '../api-client/client';
 import { CodeEditor } from '../editor/CodeEditor';
 import { useI18n } from '../i18n/I18nProvider';
 import type { TranslationKey } from '../i18n/catalogs';
-import { Button, SaveIcon, IconButton, useToast } from '../ui';
+import { Button, SaveIcon, IconButton, useSaveShortcut, useToast } from '../ui';
 import { notifyTreeChanged, subscribeTreeChanged } from '../workspace/treeBus';
 
 const DEFAULT_ARGS = '{ "id": "demo" }';
@@ -108,20 +108,8 @@ export function CodeView({
   }, [client, templateId, source, describe, toast, t]);
 
   // Ctrl/Cmd+S saves — only when this tab is the visible one (tabs stay mounted while hidden).
-  const saveRef = useRef(save);
-  saveRef.current = save;
   const rootRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key.toLowerCase() !== 's' || !(e.ctrlKey || e.metaKey)) return;
-      if (rootRef.current?.offsetParent == null) return;
-      if (document.querySelector('[aria-modal="true"]')) return;
-      e.preventDefault();
-      void saveRef.current();
-    }
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, []);
+  useSaveShortcut(() => void save(), rootRef);
 
   async function trust() {
     try {

@@ -23,6 +23,7 @@ import {
   IconButton,
   Select,
   useFocusTrap,
+  useSaveShortcut,
   useToast,
 } from '../ui';
 import { CodeEditor } from '../editor/CodeEditor';
@@ -195,17 +196,7 @@ export function TemplateEditorModal({
   }
 
   // Ctrl/Cmd+S saves to the selected release/draft, same as the Save button.
-  const saveShortcutRef = useRef(() => {});
-  saveShortcutRef.current = () => void save();
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key.toLowerCase() !== 's' || !(e.ctrlKey || e.metaKey)) return;
-      e.preventDefault();
-      saveShortcutRef.current();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  useSaveShortcut(() => void save());
 
   async function format() {
     try {

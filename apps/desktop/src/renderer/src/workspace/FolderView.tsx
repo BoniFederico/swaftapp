@@ -23,24 +23,12 @@ import {
   Select,
   TextField,
   useToast,
+  useSaveShortcut,
 } from '../ui';
+import { badgeColor, rowBadge } from './badges';
 import { notifyTreeChanged, subscribeTreeChanged } from './treeBus';
 
 type FolderTab = 'content' | 'headers' | 'auth' | 'actions' | 'proxy' | 'notes';
-
-/** Per-HTTP-method / per-subtype badge colors — mirrors the Working Tree rows. */
-const BADGE_COLORS: Record<string, string> = {
-  GET: '#1a9c4f',
-  POST: '#c9810a',
-  PUT: '#2563c9',
-  PATCH: '#8b5cf6',
-  DELETE: '#dd3333',
-  HEAD: '#0891b2',
-  OPTIONS: '#6b7280',
-  capability: '#00897b',
-  action: '#e8590c',
-};
-const badgeColor = (v: string): string => BADGE_COLORS[v] ?? 'var(--text-muted)';
 
 function TypeIcon({ type }: { type: TemplateType }) {
   const className = `fold-card__icon fold-card__icon--${type}`;
@@ -228,26 +216,14 @@ export function FolderView({
   }
 
   // Ctrl/Cmd+S saves every dirty tab — only for the visible folder view (tabs stay mounted hidden).
-  const saveAllRef = useRef(() => {});
-  saveAllRef.current = () => {
+  const rootRef = useRef<HTMLDivElement>(null);
+  useSaveShortcut(() => {
     if (headersDirty) void saveHeaders();
     if (authDirty) void saveAuth();
     if (actionsDirty) void saveActions();
     if (proxyDirty) void saveProxy();
     if (notesDirty) void saveNotes();
-  };
-  const rootRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key.toLowerCase() !== 's' || !(e.ctrlKey || e.metaKey)) return;
-      if (rootRef.current?.offsetParent == null) return; // not the active tab
-      if (document.querySelector('[aria-modal="true"]')) return; // a modal owns the shortcut
-      e.preventDefault();
-      saveAllRef.current();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, rootRef);
 
   if (gone) {
     return (
@@ -313,14 +289,7 @@ export function FolderView({
                   </button>
                 ))}
                 {templates.map((tpl) => {
-                  // User code is always subtype "javascript"; show the kind so a capability and an
-                  // action are not identical (mirrors the Working Tree rows).
-                  const badge =
-                    tpl.type === 'api'
-                      ? (tpl.method ?? 'GET')
-                      : tpl.type === 'capability' || tpl.type === 'action'
-                        ? tpl.type
-                        : tpl.subtype;
+                  const badge = rowBadge(tpl);
                   return (
                     <button
                       key={tpl.id}
