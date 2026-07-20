@@ -44,7 +44,7 @@ async function createWorkspace(name = 'Field Service') {
     expect(screen.getByTestId('wizard-location').textContent).toBe('mem://demo.swaft'),
   );
   fireEvent.click(screen.getByRole('button', { name: 'Create' }));
-  await screen.findByText('Working Tree');
+  await screen.findByLabelText('Working Tree');
 }
 
 describe('Workspace shell (M5)', () => {
@@ -68,7 +68,7 @@ describe('Workspace shell (M5)', () => {
     await createWorkspace();
 
     expect(screen.getByText('Field Service')).toBeInTheDocument();
-    expect(screen.getByText('Working Tree')).toBeInTheDocument();
+    expect(screen.getByLabelText('Working Tree')).toBeInTheDocument();
     expect(screen.getByText('Workspace ready')).toBeInTheDocument();
   });
 
@@ -128,8 +128,9 @@ describe('Workspace shell (M5)', () => {
     fireEvent.click(screen.getByRole('option', { name: 'Developer' }));
     expect(await screen.findByText(/relaxes safety checks/i)).toBeInTheDocument();
 
-    // Confirm → warning clears.
+    // Confirm unlocks Save; the warning clears only once the change is actually saved.
     fireEvent.click(screen.getByRole('button', { name: 'I understand — enable developer mode' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(screen.queryByText(/relaxes safety checks/i)).toBeNull());
   });
 
@@ -210,6 +211,6 @@ describe('Workspace shell (M5)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
 
     expect(await screen.findByText('The passwords do not match.')).toBeInTheDocument();
-    expect(screen.queryByText('Working Tree')).toBeNull();
+    expect(screen.queryByLabelText('Working Tree')).toBeNull();
   });
 });
