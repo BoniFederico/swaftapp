@@ -12,10 +12,11 @@ test('first run: sign up locally and land on the homepage', async () => {
   const userData = mkdtempSync(join(tmpdir(), 'swaft-e2e-'));
   // Strip ELECTRON_RUN_AS_NODE (set e.g. when the runner itself lives inside an Electron host):
   // inherited, it would start the app as plain Node and the launch would fail.
-  const { ELECTRON_RUN_AS_NODE: _ignored, ...baseEnv } = process.env;
+  const baseEnv = { ...process.env, SWAFT_USER_DATA_DIR: userData };
+  delete baseEnv.ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
     args: [resolve(__dirname, '../apps/desktop/out/main/index.js')],
-    env: { ...baseEnv, SWAFT_USER_DATA_DIR: userData } as Record<string, string>,
+    env: baseEnv as Record<string, string>,
   });
   const window = await app.firstWindow();
 
