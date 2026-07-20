@@ -66,16 +66,22 @@ export function CodeView({
 
   useEffect(() => {
     let cancelled = false;
-    void client.call('template.get', { id: templateId }).then((res) => {
-      if (cancelled) return;
-      onTitleRef.current?.(res.template.name);
-      // Only adopt the stored source when it is genuinely different from what we last saved —
-      // never overwrite edits in progress (e.g. after an external save of the same template).
-      if (res.template.source === savedSourceRef.current) return;
-      savedSourceRef.current = res.template.source;
-      setSource(res.template.source);
-      setSavedSource(res.template.source);
-    });
+    void client
+      .call('template.get', { id: templateId })
+      .then((res) => {
+        if (cancelled) return;
+        onTitleRef.current?.(res.template.name);
+        // Only adopt the stored source when it is genuinely different from what we last saved —
+        // never overwrite edits in progress (e.g. after an external save of the same template).
+        if (res.template.source === savedSourceRef.current) return;
+        savedSourceRef.current = res.template.source;
+        setSource(res.template.source);
+        setSavedSource(res.template.source);
+      })
+      .catch((e: unknown) => {
+        // A failed load must surface, not stay a blank editor + unhandled rejection.
+        if (!cancelled) setError(e instanceof ApiError ? e.swaft.message : String(e));
+      });
     describe();
     // A rename changes the capability's name, so re-read the header when the tree moves.
     const unsubscribe = subscribeTreeChanged(describe);
