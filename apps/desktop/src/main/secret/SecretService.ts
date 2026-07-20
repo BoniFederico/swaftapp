@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { writeFileAtomicSync } from '../storage/atomic-file';
 import type { SecureCipher } from '../auth/types';
 
 interface SecretFile {
@@ -32,8 +32,7 @@ export class SecretService {
   }
 
   private persist(): void {
-    mkdirSync(dirname(this.filePath), { recursive: true });
-    writeFileSync(this.filePath, JSON.stringify(this.data, null, 2), { encoding: 'utf8', mode: 0o600 });
+    writeFileAtomicSync(this.filePath, JSON.stringify(this.data, null, 2), { mode: 0o600 });
   }
 
   set(ref: string, value: string): void {

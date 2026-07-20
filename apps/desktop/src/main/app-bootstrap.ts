@@ -1,5 +1,6 @@
 import { join } from 'node:path';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
+import { writeFileAtomic } from './storage/atomic-file';
 import { app, dialog, session, type BrowserWindow } from 'electron';
 import { DATA_CAPABILITIES, httpRequestSchema, type FolderProxyDto } from '@swaft/shared';
 import { ActionService } from './actions/ActionService';
@@ -93,7 +94,8 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
           return null;
         }
       },
-      write: (path, bytes) => writeFile(path, bytes),
+      // Atomic (temp + rename): a crash mid-save must never leave a torn `.swaft` behind.
+      write: (path, bytes) => writeFileAtomic(path, bytes),
     },
     deviceId: () => appStore.getDeviceId(),
     onOpened: (summary) => appStore.recordRecent(summary),

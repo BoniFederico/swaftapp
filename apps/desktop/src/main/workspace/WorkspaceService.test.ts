@@ -119,6 +119,25 @@ describe('WorkspaceService', () => {
     await expectAppError(svc.open({ path: 'mem://missing.swaft' }), 'WORKSPACE_NOT_FOUND');
   });
 
+  it('bumps the revision on every lifecycle transition, including create', async () => {
+    const { fs } = makeFs();
+    const svc = makeService(fs);
+
+    // Regression: `create` used to leave `revision` untouched, so revision-keyed caches
+    // (e.g. the user-code registry) could serve the previous workspace's data.
+    const r0 = svc.revision;
+    await svc.create({ name: 'A', location: 'mem://a.swaft', encrypt: false });
+    const afterCreate = svc.revision;
+    expect(afterCreate).toBeGreaterThan(r0);
+
+    await svc.save();
+    const afterSave = svc.revision;
+    expect(afterSave).toBeGreaterThan(afterCreate);
+
+    await svc.close();
+    expect(svc.revision).toBeGreaterThan(afterSave);
+  });
+
   it('records opened workspaces via the onOpened hook', async () => {
     const { fs } = makeFs();
     const opened: string[] = [];

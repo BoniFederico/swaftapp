@@ -18,6 +18,8 @@ type Reply =
 
 export class WorkerDbBackend implements DbBackend {
   private seq = 0;
+  /** Set once the worker errors or exits; from then on every call fails fast instead of hanging. */
+  private failure: Error | null = null;
   private readonly pending = new Map<
     number,
     { resolve: (v: DbResult) => void; reject: (e: Error) => void }
@@ -32,10 +34,15 @@ export class WorkerDbBackend implements DbBackend {
       if (msg.ok) entry.resolve(msg.result);
       else entry.reject(new Error(msg.error));
     });
-    worker.on('error', (err) => this.failAll(err));
-    worker.on('exit', (code) => {
-      if (code !== 0) this.failAll(new Error(`DB worker exited with code ${code}`));
-    });
+    worker.on('error', (err) => this.markDead(err));
+    worker.on('exit', (code) => this.markDead(new Error(`DB worker exited with code ${code}`)));
+  }
+
+  /** A dead worker can never answer: reject everything in flight and tear the thread down. */
+  private markDead(err: Error): void {
+    if (!this.failure) this.failure = err;
+    this.failAll(this.failure);
+    void this.worker.terminate().catch(() => undefined);
   }
 
   /** Spawn the worker and resolve once it signals readiness (or reject on early failure/timeout). */
@@ -69,10 +76,16 @@ export class WorkerDbBackend implements DbBackend {
   }
 
   private send(cmd: DbCommand): Promise<DbResult> {
+    if (this.failure) return Promise.reject(this.failure);
     const id = ++this.seq;
     return new Promise<DbResult>((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
-      this.worker.postMessage({ id, cmd });
+      try {
+        this.worker.postMessage({ id, cmd });
+      } catch (err) {
+        this.pending.delete(id);
+        reject(err instanceof Error ? err : new Error(String(err)));
+      }
     });
   }
 
@@ -99,7 +112,7 @@ export class WorkerDbBackend implements DbBackend {
   }
   async close(): Promise<void> {
     try {
-      await this.send({ kind: 'close' });
+      if (!this.failure) await this.send({ kind: 'close' });
     } finally {
       await this.worker.terminate();
     }
