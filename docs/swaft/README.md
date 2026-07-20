@@ -21,6 +21,7 @@ below elaborate it into implementation-ready specifications.
 | 7 | [`SWAFT_MVP_SCOPE.md`](SWAFT_MVP_SCOPE.md) | Product, eng leads, QA | MVP scope, milestone phases, acceptance criteria, risks, spikes, test-gated strategy, CI, release readiness. |
 | 8 | [`MVP_STEPS.md`](MVP_STEPS.md) | Implementers (LLM/human) | **Step-by-step, per-milestone prompts** to implement the MVP end-to-end (one prompt per milestone, test-gated). |
 | 9 | [`NEXT_STEPS.md`](NEXT_STEPS.md) | Implementers (LLM/human) | **Post-MVP** milestone prompts for everything deferred (P2P, server, SSO/MFA, plugins, web app, …). |
+| 10 | [`../../analisi_codice_utente.md`](../../analisi_codice_utente.md) | Eng, security | **User-authored code** (capability/action templates): feasibility analysis, security model and the implemented design (Fasi A–D). |
 
 ## Consolidated Decisions (quick reference)
 
@@ -31,7 +32,7 @@ below elaborate it into implementation-ready specifications.
 | Authentication | Sign-up/sign-in + session; **local account** (Argon2id verifier in secure storage) in MVP; SSO/OIDC/MFA future. |
 | Storage modes | `local` (MVP), `p2p` (future), `server` (reserved) — **immutable** after creation. |
 | Local storage | Single SQLite-based `.swaft` file; optional whole-file encryption (unrecoverable if key lost); app-level store for account/preferences. |
-| Template types | `document`, `api`, `render` — each maps to one view; Working Tree always visible. |
+| Template types | `document`, `api`, `capability`, `action` — each maps to one view; the original `render` type was folded into `document` subtypes; Working Tree always visible. |
 | Releases | Immutable, linear semantic snapshots; release selection is personal/local-only. |
 | HTTP | Real backend client; structured model (not cURL); Bearer/Basic/API-key; allowed domains; proxy. |
 | Database | SQLite + PostgreSQL; read-only default; dangerous statements blocked; CSV/JSON export; metadata-only history. |

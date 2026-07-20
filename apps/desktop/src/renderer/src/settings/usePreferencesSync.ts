@@ -48,5 +48,7 @@ export function usePreferencesSync(client: ApiClient): void {
     return () => {
       cancelled = true;
     };
+    // Hydrate once per client; the setters/lists from the providers are intentionally not triggers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client]);
 }

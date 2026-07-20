@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ApiClient } from '../api-client/client';
 import { useI18n } from '../i18n/I18nProvider';
+import { useFocusTrap } from '../ui';
 import type { TranslationKey } from '../i18n/catalogs';
 import { EnvironmentsSettings } from './sections/EnvironmentsSettings';
 import { GeneralSettings } from './sections/GeneralSettings';
@@ -35,6 +36,8 @@ export function SettingsModal({
 }) {
   const { t } = useI18n();
   const [section, setSection] = useState<SettingsSectionId>('general');
+  const modalRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(modalRef, open);
 
   // Jump to the requested section each time the modal is (re)opened.
   useEffect(() => {
@@ -59,7 +62,14 @@ export function SettingsModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="settings-modal" role="dialog" aria-modal="true" aria-label={t('wsset.title')}>
+      <div
+        ref={modalRef}
+        className="settings-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('wsset.title')}
+        tabIndex={-1}
+      >
         <header className="settings-modal__head">
           <span className="settings-modal__title">{t('wsset.title')}</span>
           <button type="button" className="settings-modal__close" aria-label={t('name.cancel')} onClick={onClose}>

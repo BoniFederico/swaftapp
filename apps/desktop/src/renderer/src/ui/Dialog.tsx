@@ -1,4 +1,5 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
+import { useFocusTrap } from './useFocusTrap';
 
 interface DialogProps {
   open: boolean;
@@ -8,8 +9,11 @@ interface DialogProps {
   onClose: () => void;
 }
 
-/** Shared modal Dialog (role=dialog, Esc to close, backdrop click closes). */
+/** Shared modal Dialog (role=dialog, Esc to close, backdrop click closes, focus trapped). */
 export function Dialog({ open, title, children, footer, onClose }: DialogProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(ref, open);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -24,9 +28,11 @@ export function Dialog({ open, title, children, footer, onClose }: DialogProps) 
   return (
     <div className="ui-dialog__backdrop" onClick={onClose}>
       <div
+        ref={ref}
         className="ui-dialog"
         role="dialog"
         aria-modal="true"
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
       >
         {title != null && <h2 className="ui-dialog__title">{title}</h2>}

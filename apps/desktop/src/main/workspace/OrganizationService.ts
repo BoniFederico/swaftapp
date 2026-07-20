@@ -13,6 +13,7 @@ import type {
 } from '@swaft/shared';
 import { AppError } from '../errors';
 import { RepoBase } from './RepoBase';
+import { extractHttpMethod } from './template-source';
 
 /** A small, muted palette; a tag's color is picked deterministically from its name. */
 const TAG_PALETTE = [
@@ -29,16 +30,6 @@ function pickTagColor(name: string): string {
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
   return TAG_PALETTE[hash % TAG_PALETTE.length]!;
-}
-
-/** Best-effort HTTP method for an `api` template (its source is the JSON request model). */
-function extractHttpMethod(source: string): string | null {
-  try {
-    const parsed = JSON.parse(source) as { method?: unknown };
-    return typeof parsed.method === 'string' ? parsed.method.toUpperCase() : null;
-  } catch {
-    return null;
-  }
 }
 
 interface ProjectRow {

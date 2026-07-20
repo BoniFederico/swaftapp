@@ -1,5 +1,7 @@
 import { join } from 'node:path';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
+import { writeFileAtomic } from './storage/atomic-file';
+import { parseJsonOr } from './util/json';
 import { app, dialog, session, type BrowserWindow } from 'electron';
 import { DATA_CAPABILITIES, httpRequestSchema, type FolderProxyDto } from '@swaft/shared';
 import { ActionService } from './actions/ActionService';
@@ -9,7 +11,7 @@ import { SafeStorageCipher } from './auth/cipher';
 import { getAuthService } from './auth/registry';
 import { HttpService } from './http/HttpService';
 import { SecretService } from './secret/SecretService';
-import { BUILTIN_ACTION_HANDLERS } from './seebo/action-handlers';
+import { BUILTIN_ACTION_TYPES } from './seebo/action-handlers';
 import { SeeboHost, WIDGET_CAPABILITIES } from './seebo/SeeboHost';
 import { UserCodeRegistry } from './usercode/UserCodeRegistry';
 import { UtilityProcessRuntime } from './usercode/UtilityProcessRuntime';
@@ -50,17 +52,6 @@ import { TemplateDataProvider } from './workspace/TemplateDataProvider';
 import { TemplateService } from './workspace/TemplateService';
 import { WorkspaceService } from './workspace/WorkspaceService';
 
-const BUILTIN_ACTION_TYPES = Object.keys(BUILTIN_ACTION_HANDLERS);
-
-/** Parse a response body for user code, without making a bad body an error. */
-function safeJson(body: string): unknown {
-  try {
-    return JSON.parse(body);
-  } catch {
-    return undefined;
-  }
-}
-
 const SWAFT_FILTER = { name: 'Swaft Workspace', extensions: ['swaft'] };
 
 /**
@@ -93,7 +84,8 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
           return null;
         }
       },
-      write: (path, bytes) => writeFile(path, bytes),
+      // Atomic (temp + rename): a crash mid-save must never leave a torn `.swaft` behind.
+      write: (path, bytes) => writeFileAtomic(path, bytes),
     },
     deviceId: () => appStore.getDeviceId(),
     onOpened: (summary) => appStore.recordRecent(summary),
@@ -145,7 +137,7 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
     http: async (payload) => {
       const parsed = httpRequestSchema.parse(payload);
       const response = await getHttpService().send(parsed);
-      return { ...response, json: safeJson(response.body) };
+      return { ...response, json: parseJsonOr<unknown>(response.body, undefined) };
     },
   });
   const userCapabilities = new UserCodeRegistry(workspaceService, {

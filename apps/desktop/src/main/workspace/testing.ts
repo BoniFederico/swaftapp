@@ -1,18 +1,21 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DATA_CAPABILITIES } from '@swaft/shared';
 import { ActionService } from '../actions/ActionService';
 import { AppStore } from '../app-store/AppStore';
 import { getAuthService } from '../auth/registry';
 import { IdentityCipher } from '../auth/testing';
 import { CryptoService } from '../crypto/CryptoService';
 import { HttpService } from '../http/HttpService';
+import { BUILTIN_ACTION_TYPES } from '../seebo/action-handlers';
 import { SecretService } from '../secret/SecretService';
-import { SeeboHost } from '../seebo/SeeboHost';
+import { SeeboHost, WIDGET_CAPABILITIES } from '../seebo/SeeboHost';
 import {
   setActionService,
   setApiHistoryService,
   setApiRequestService,
+  setApiRunService,
   setAppStore,
   setBatcherService,
   setChangelogService,
@@ -25,12 +28,16 @@ import {
   setSecretService,
   setSettingsService,
   setTemplateService,
+  setUserCodeRegistry,
   setWorkspaceService,
   type PlatformDialogs,
 } from '../services';
 import { InProcessDbBackend } from '../storage/db-backend';
+import type { ScriptRuntime } from '../usercode/ScriptRuntime';
+import { UserCodeRegistry } from '../usercode/UserCodeRegistry';
 import { ApiHistoryService } from './ApiHistoryService';
 import { ApiRequestService } from './ApiRequestService';
+import { ApiRunService } from './ApiRunService';
 import { BatcherService } from './BatcherService';
 import { ChangelogService } from './ChangelogService';
 import { EnvironmentService } from './EnvironmentService';
@@ -86,7 +93,22 @@ export function installTestWorkspaceBackend(
   const releases = new ReleaseService(workspace, templates, changelog);
   const templateData = new TemplateDataProvider(workspace, releases);
   const environments = new EnvironmentService(workspace, currentUsername);
-  const host = new SeeboHost({}, { templateData, envData: environments });
+  // Component tests never execute user JS; the registry is wired (like production) so ops such as
+  // usercode.untrusted and api.run resolve, but an actual run fails loudly.
+  const runtime: ScriptRuntime = {
+    run: () => Promise.reject(new Error('no script runtime in component tests')),
+    dispose: () => Promise.resolve(),
+  };
+  const userCapabilities = new UserCodeRegistry(workspace, {
+    templates,
+    releases,
+    environments,
+    settings,
+    runtime,
+    reservedNames: [...WIDGET_CAPABILITIES, ...DATA_CAPABILITIES, ...BUILTIN_ACTION_TYPES],
+    trust: appStore,
+  });
+  const host = new SeeboHost({}, { templateData, envData: environments, userCapabilities });
   const render = new RenderService(workspace, templates, host, releases);
   const apiRequest = new ApiRequestService(templates, host, organization);
   const batcher = new BatcherService(templates, releases, host);
@@ -115,6 +137,10 @@ export function installTestWorkspaceBackend(
   setHttpService(http);
   setApiHistoryService(apiHistory);
   setApiRequestService(apiRequest);
+  setApiRunService(
+    new ApiRunService({ requests: apiRequest, http, history: apiHistory, code: userCapabilities }),
+  );
+  setUserCodeRegistry(userCapabilities);
   setBatcherService(batcher);
   setActionService(actions);
   setEnvironmentService(environments);
@@ -135,6 +161,8 @@ export function resetTestWorkspaceBackend(): void {
   setHttpService(null);
   setApiHistoryService(null);
   setApiRequestService(null);
+  setApiRunService(null);
+  setUserCodeRegistry(null);
   setBatcherService(null);
   setActionService(null);
   setEnvironmentService(null);

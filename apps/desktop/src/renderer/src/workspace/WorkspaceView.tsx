@@ -123,6 +123,7 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
     setTabs((prev) => prev.map((tb) => (tb.id === id ? { ...tb, preview: false } : tb)));
   }
   function removeTab(id: string) {
+    tabCallbacks.current.delete(id);
     setTabs((prev) => {
       const idx = prev.findIndex((tb) => tb.id === id);
       const next = prev.filter((tb) => tb.id !== id);
@@ -157,6 +158,24 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
       // that effect and loop.
       return changed ? next : prev;
     });
+  }
+
+  // Stable per-tab callbacks: the views report dirty/title from effects that depend on these, so
+  // their identity must survive shell re-renders — a fresh arrow per render would re-fire those
+  // effects on every unrelated state change (this is the loop `setTabFlag` guards against).
+  const tabCallbacks = useRef(
+    new Map<string, { onDirtyChange: (dirty: boolean) => void; onTitleChange: (name: string) => void }>(),
+  );
+  function callbacksFor(id: string) {
+    let cbs = tabCallbacks.current.get(id);
+    if (!cbs) {
+      cbs = {
+        onDirtyChange: (dirty: boolean) => setTabFlag(id, { dirty }),
+        onTitleChange: (name: string) => setTabFlag(id, { name }),
+      };
+      tabCallbacks.current.set(id, cbs);
+    }
+    return cbs;
   }
 
   function openSettings(section: SettingsSectionId) {
@@ -323,12 +342,7 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
                 Document input configs — survive switching tabs and tools. */}
             {tabs.map((tb) => {
               const visible = !batch && tb.id === activeId;
-              const shared = {
-                client,
-                templateId: tb.id,
-                onDirtyChange: (dirty: boolean) => setTabFlag(tb.id, { dirty }),
-                onTitleChange: (name: string) => setTabFlag(tb.id, { name }),
-              };
+              const shared = { client, templateId: tb.id, ...callbacksFor(tb.id) };
               return (
                 <div key={tb.id} className="ws-pane" hidden={!visible}>
                   {tb.type === 'folder' ? (

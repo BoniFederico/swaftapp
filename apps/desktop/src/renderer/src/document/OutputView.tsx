@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { RENDERABLE_SUBTYPES, type RenderResultDto } from '@swaft/shared';
 import { CodeEditor } from '../editor/CodeEditor';
@@ -12,6 +12,7 @@ import {
   EmptyState,
   FullscreenIcon,
   IconButton,
+  useFocusTrap,
   useToast,
 } from '../ui';
 import { parseEml } from './eml';
@@ -113,6 +114,8 @@ export function OutputView({
   const { t } = useI18n();
   const toast = useToast();
   const [full, setFull] = useState(false);
+  const fullOverlayRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(fullOverlayRef, full);
 
   const output = result?.status === 'completed' ? (result.output ?? '') : '';
   const hasOutput = output !== '';
@@ -191,7 +194,14 @@ export function OutputView({
       </div>
       {full &&
         createPortal(
-          <div className="editor-overlay" role="dialog" aria-modal="true" aria-label={t('doc.output')}>
+          <div
+            ref={fullOverlayRef}
+            className="editor-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('doc.output')}
+            tabIndex={-1}
+          >
             <div className="editor-modal output-modal">
               <header className="editor-modal__bar">
                 <span className="output-modal__title">{t('doc.output')}</span>

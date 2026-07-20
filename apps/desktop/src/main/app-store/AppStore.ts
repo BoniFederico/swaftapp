@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { writeFileAtomicSync } from '../storage/atomic-file';
 import type { Preferences, RecentWorkspace, WorkspaceSummary } from '@swaft/shared';
 
 /**
@@ -57,8 +57,7 @@ export class AppStore {
   }
 
   private persist(): void {
-    mkdirSync(dirname(this.filePath), { recursive: true });
-    writeFileSync(this.filePath, JSON.stringify(this.data, null, 2), 'utf8');
+    writeFileAtomicSync(this.filePath, JSON.stringify(this.data, null, 2));
   }
 
   getDeviceId(): string {

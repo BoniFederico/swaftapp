@@ -3,7 +3,14 @@ import { SeeboField } from '../editor/SeeboField';
 import { useI18n } from '../i18n/I18nProvider';
 import { CopyIcon, IconButton, TrashIcon } from '../ui';
 
-type Pair = { k: string; v: string };
+type Pair = { id: number; k: string; v: string };
+
+// Row identity must survive removing a middle row: keying rows by array index would make React
+// reuse the inputs by position, misplacing focus (and uncommitted edits) after a delete.
+let nextRowId = 0;
+function newPair(k = '', v = ''): Pair {
+  return { id: nextRowId++, k, v };
+}
 
 /** Shallow record equality (same keys + values), used to tell our own echo from an external change. */
 function recordsEqual(a: Record<string, string>, b: Record<string, string>): boolean {
@@ -66,8 +73,8 @@ export function KeyValueEditor({
   // Raw text the bulk editor shows — kept separate from `pairs` so re-parsing never fights the cursor.
   const [batchText, setBatchText] = useState('');
   const [pairs, setPairs] = useState<Pair[]>(() => {
-    const seed = Object.entries(value).map(([k, v]) => ({ k, v }));
-    return [...seed, { k: '', v: '' }];
+    const seed = Object.entries(value).map(([k, v]) => newPair(k, v));
+    return [...seed, newPair()];
   });
   // The record we last emitted via onChange, so we can tell our own echo from an external change.
   const lastEmitted = useRef(value);
@@ -78,8 +85,8 @@ export function KeyValueEditor({
   useEffect(() => {
     if (recordsEqual(value, lastEmitted.current)) return;
     lastEmitted.current = value;
-    const seed = Object.entries(value).map(([k, v]) => ({ k, v }));
-    setPairs([...seed, { k: '', v: '' }]);
+    const seed = Object.entries(value).map(([k, v]) => newPair(k, v));
+    setPairs([...seed, newPair()]);
     if (batch) setBatchText(toText(seed));
   }, [value, batch]);
 
@@ -100,7 +107,7 @@ export function KeyValueEditor({
       trimmed[trimmed.length - 1]!.k !== '' ||
       trimmed[trimmed.length - 1]!.v !== ''
     ) {
-      trimmed.push({ k: '', v: '' });
+      trimmed.push(newPair());
     }
     setPairs(trimmed);
     const rec: Record<string, string> = {};
@@ -117,7 +124,7 @@ export function KeyValueEditor({
 
   function applyBatch(text: string) {
     const rec = fromText(text);
-    setPairs([...Object.entries(rec).map(([k, v]) => ({ k, v })), { k: '', v: '' }]);
+    setPairs([...Object.entries(rec).map(([k, v]) => newPair(k, v)), newPair()]);
     emit(rec);
   }
 
@@ -161,7 +168,7 @@ export function KeyValueEditor({
           {pairs.map((p, i) => {
             const isTrailing = i === pairs.length - 1;
             return (
-              <div className="env-vars__row" key={i}>
+              <div className="env-vars__row" key={p.id}>
                 <input
                   className="env-vars__input env-vars__key"
                   aria-label={kLabel}

@@ -46,7 +46,16 @@
 > surfacing `analyze()` requirements and rendering via `stebo()`; per-template **input state** (🔵
 > local-only); Document View = **Input Panel** (one widget per capability, options-aware) + output/
 > diagnostics/waiting states).
-> Passes `npm run verify` + `npm run build` (90 tests green). Continue from **M7**.
+> Passes `npm run verify` + `npm run build`.
+>
+> **Status beyond M6:** **M7** (Template Editor, releases, changelog, selection — the standalone
+> Render View was folded into `document` subtypes), **M8** (API templates + HTTP client + API View,
+> with a **blocked-domains** list instead of the originally specced allow-list), and **M10**
+> (actions + Action Panel + Batcher) are implemented, as are post-MVP additions: **environments**
+> (`env.*` ops), folder policy chains (headers/auth/proxy/actions), API request/action history, and
+> **user-authored capability/action templates** (see `analisi_codice_utente.md`). **M9 (Database
+> View) is not implemented** — no `db.*` ops exist. Schema is at **v24** (forward-only migrations).
+> The suite is ~300 unit/component tests plus a Playwright e2e smoke over the built app.
 >
 > **Resolved OD-M6-SEEBO.** Seebo is the published `seebo` npm package (ESM-only, no types). The main
 > process loads it via dynamic `import('seebo')` (kept external by the bundler) and types it through a

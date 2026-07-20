@@ -22,6 +22,8 @@ import {
   HistoryIcon,
   IconButton,
   Select,
+  useFocusTrap,
+  useSaveShortcut,
   useToast,
 } from '../ui';
 import { CodeEditor } from '../editor/CodeEditor';
@@ -61,6 +63,9 @@ export function TemplateEditorModal({
   const [previewOutput, setPreviewOutput] = useState('');
   const [historyOpen, setHistoryOpen] = useState(false);
   const [full, setFull] = useState(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  // Active only once the template has loaded — before that the component renders nothing.
+  useFocusTrap(overlayRef, template != null);
   const [busy, setBusy] = useState(false);
   const [askName, setAskName] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ReleaseDto | 'draft' | null>(null);
@@ -191,17 +196,7 @@ export function TemplateEditorModal({
   }
 
   // Ctrl/Cmd+S saves to the selected release/draft, same as the Save button.
-  const saveShortcutRef = useRef(() => {});
-  saveShortcutRef.current = () => void save();
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key.toLowerCase() !== 's' || !(e.ctrlKey || e.metaKey)) return;
-      e.preventDefault();
-      saveShortcutRef.current();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  useSaveShortcut(() => void save());
 
   async function format() {
     try {
@@ -242,7 +237,14 @@ export function TemplateEditorModal({
   const subtypeOptions = SUBTYPES[template.type];
 
   return (
-    <div className="editor-overlay" role="dialog" aria-modal="true" aria-label={t('editor.title')}>
+    <div
+      ref={overlayRef}
+      className="editor-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('editor.title')}
+      tabIndex={-1}
+    >
       <div className={`editor-modal${full ? ' editor-modal--full' : ''}`}>
         <header className="editor-modal__bar">
           <input

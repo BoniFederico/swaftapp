@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { writeFileAtomicSync } from '../storage/atomic-file';
 import type { AccountRecord, AccountStore } from './types';
 
 interface AccountFile {
@@ -32,9 +32,8 @@ export class FileAccountStore implements AccountStore {
   }
 
   private writeAll(accounts: AccountRecord[]): void {
-    mkdirSync(dirname(this.filePath), { recursive: true });
     const data: AccountFile = { accounts };
-    writeFileSync(this.filePath, JSON.stringify(data, null, 2), { encoding: 'utf8', mode: 0o600 });
+    writeFileAtomicSync(this.filePath, JSON.stringify(data, null, 2), { mode: 0o600 });
   }
 
   list(): AccountRecord[] {

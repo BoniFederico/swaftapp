@@ -1,6 +1,7 @@
 import type { ExecutionMode, WorkspaceSettingsDto, WorkspaceSettingsUpdate } from '@swaft/shared';
 import { AppError } from '../errors';
 import type { SqlParam } from '../storage/sqlite';
+import { parseStringList, parseStringMap } from '../util/json';
 import { RepoBase } from './RepoBase';
 
 const SETTINGS_ID = 'settings';
@@ -12,27 +13,6 @@ interface SettingsRow {
   proxy_url: string | null;
   enforced_headers: string;
   batcher_enabled: number;
-}
-
-function parseList(json: string): string[] {
-  try {
-    const value: unknown = JSON.parse(json);
-    return Array.isArray(value) ? value.map(String) : [];
-  } catch {
-    return [];
-  }
-}
-
-function parseMap(json: string): Record<string, string> {
-  try {
-    const value: unknown = JSON.parse(json);
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-    const out: Record<string, string> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = String(v);
-    return out;
-  } catch {
-    return {};
-  }
 }
 
 /**
@@ -47,9 +27,9 @@ export class SettingsService extends RepoBase {
     return {
       executionMode: row.execution_mode as ExecutionMode,
       batcherEnabled: row.batcher_enabled !== 0,
-      blockedDomains: parseList(row.blocked_domains),
+      blockedDomains: parseStringList(row.blocked_domains),
       proxyUrl: row.proxy_url,
-      enforcedHeaders: parseMap(row.enforced_headers),
+      enforcedHeaders: parseStringMap(row.enforced_headers),
     };
   }
 

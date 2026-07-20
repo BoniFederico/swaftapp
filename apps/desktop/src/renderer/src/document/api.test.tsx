@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { EditorView } from '@codemirror/view';
 import type { ResultEnvelope } from '@swaft/shared';
 import { App } from '../App';
@@ -50,7 +50,7 @@ async function signUpToWorkspaceApiTemplate() {
     expect(screen.getByTestId('wizard-location').textContent).toBe('mem://demo.swaft'),
   );
   fireEvent.click(screen.getByRole('button', { name: 'Create' }));
-  await screen.findByText('Working Tree');
+  await screen.findByLabelText('Working Tree');
 
   // project → folder → select folder
   fireEvent.click(screen.getByRole('button', { name: 'Select project' }));
@@ -85,17 +85,27 @@ describe('API View (M8)', () => {
     resetTestWorkspaceBackend();
   });
 
-  it('blocks a request to a non-allow-listed domain', async () => {
+  it('blocks a request to a domain on the workspace block-list', async () => {
     installTestWorkspaceBackend({ createPath: 'mem://demo.swaft' });
     renderApp();
     await signUpToWorkspaceApiTemplate();
 
+    // Block example.com from Settings → Restrictions, then save.
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Restrictions' }));
+    const settingsModal = screen.getByRole('dialog');
+    const domains = await within(settingsModal).findByLabelText('Blocked HTTP domains');
+    fireEvent.change(domains, { target: { value: 'example.com' } });
+    fireEvent.keyDown(domains, { key: 'Enter' });
+    fireEvent.click(within(settingsModal).getByRole('button', { name: 'Save' }));
+    fireEvent.keyDown(document, { key: 'Escape' }); // close the settings modal
+
     setUrl('https://example.com/x');
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-    await waitFor(() => expect(screen.getByText(/Domain not allowed/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Domain is blocked/i)).toBeInTheDocument());
   });
 
-  it('sends to an allow-listed domain and shows the response', async () => {
+  it('sends to a non-blocked domain and shows the response', async () => {
     installTestWorkspaceBackend({
       createPath: 'mem://demo.swaft',
       fetchFn: (() =>

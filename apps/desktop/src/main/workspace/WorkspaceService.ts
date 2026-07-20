@@ -44,6 +44,7 @@ interface OpenState {
 export class WorkspaceService {
   private state: OpenState | null = null;
   private rev = 0;
+  private queue: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly deps: WorkspaceServiceDeps) {}
 
@@ -51,7 +52,22 @@ export class WorkspaceService {
     return (this.deps.now?.() ?? new Date()).toISOString();
   }
 
-  async create(req: WorkspaceCreateRequest): Promise<WorkspaceSummary> {
+  /**
+   * Lifecycle transitions and saves run one at a time. IPC handlers are not serialized by Electron,
+   * so without this two concurrent saves could write serialized images out of order (older image
+   * wins), or a close could tear the adapter out from under an in-flight save.
+   */
+  private locked<T>(fn: () => Promise<T>): Promise<T> {
+    const result = this.queue.then(fn, fn);
+    this.queue = result.catch(() => undefined);
+    return result;
+  }
+
+  create(req: WorkspaceCreateRequest): Promise<WorkspaceSummary> {
+    return this.locked(() => this.doCreate(req));
+  }
+
+  private async doCreate(req: WorkspaceCreateRequest): Promise<WorkspaceSummary> {
     const password = req.password;
     if (req.encrypt && (!password || password.length < 8)) {
       throw new AppError(
@@ -84,11 +100,16 @@ export class WorkspaceService {
       encrypted: Boolean(req.encrypt),
     };
     this.state = { summary, adapter, password: req.encrypt ? password : undefined };
+    this.rev++;
     this.deps.onOpened?.(summary);
     return summary;
   }
 
-  async open(req: WorkspaceOpenRequest): Promise<WorkspaceSummary> {
+  open(req: WorkspaceOpenRequest): Promise<WorkspaceSummary> {
+    return this.locked(() => this.doOpen(req));
+  }
+
+  private async doOpen(req: WorkspaceOpenRequest): Promise<WorkspaceSummary> {
     const file = await this.deps.fs.read(req.path);
     if (!file) {
       throw new AppError('WORKSPACE_NOT_FOUND', 'not_found', 'Workspace file not found.');
@@ -144,24 +165,28 @@ export class WorkspaceService {
   }
 
   /** Re-serialize (and re-encrypt) the open workspace to disk. Used by editing flows (M5+). */
-  async save(): Promise<void> {
-    if (!this.state) return;
-    this.rev++;
-    const image = await this.state.adapter.serialize();
-    const out = this.state.password
-      ? await this.deps.crypto.encrypt(image, this.state.password)
-      : image;
-    await this.deps.fs.write(this.state.summary.path, out);
+  save(): Promise<void> {
+    return this.locked(async () => {
+      if (!this.state) return;
+      this.rev++;
+      const image = await this.state.adapter.serialize();
+      const out = this.state.password
+        ? await this.deps.crypto.encrypt(image, this.state.password)
+        : image;
+      await this.deps.fs.write(this.state.summary.path, out);
+    });
   }
 
-  async close(): Promise<void> {
-    this.rev++;
-    await this.closeCurrent();
+  close(): Promise<void> {
+    return this.locked(async () => {
+      this.rev++;
+      await this.closeCurrent();
+    });
   }
 
   /**
    * Monotonic counter bumped whenever the workspace content may have changed (every `save`, plus
-   * open/close). Read-through caches over workspace data — e.g. the user-capability registry, which
+   * create/open/close). Read-through caches over workspace data — e.g. the user-capability registry, which
    * would otherwise re-read and re-hash every capability template on each render — use it as a cheap
    * invalidation signal instead of subscribing to per-table events.
    */
@@ -210,7 +235,9 @@ export class WorkspaceService {
 
   private async closeCurrent(): Promise<void> {
     if (this.state) {
-      await this.state.adapter.close();
+      // Best-effort: closing a dead backend (e.g. a crashed DB worker) must not wedge the
+      // lifecycle — the point of closing is to let the user open/create the next workspace.
+      await this.state.adapter.close().catch(() => undefined);
       this.state = null;
     }
   }
