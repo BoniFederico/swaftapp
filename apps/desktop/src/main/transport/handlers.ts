@@ -163,7 +163,7 @@ export const handlers: Record<OpName, Handler> = {
   'git.clone': (p) =>
     svc(async () => {
       const req = p as GitCloneRequest;
-      return { path: await getGitOpsService().clone(req.url, req.parentDir) };
+      return { workspace: await getGitOpsService().clone(req.url, req.parentDir) };
     }),
   'git.publish': (p) =>
     svc(async () => ({ status: await getGitOpsService().publish((p as GitPublishRequest).url) })),

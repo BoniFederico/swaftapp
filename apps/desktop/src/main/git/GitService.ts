@@ -45,6 +45,8 @@ export interface GitService {
   version(): Promise<string | null>;
   /** Whether `dir` is inside a git work tree. Never throws. */
   isRepo(dir: string): Promise<boolean>;
+  /** Whether the repo has no commits yet (e.g. a freshly cloned empty remote). Never throws. */
+  isEmptyRepo(dir: string): Promise<boolean>;
   /** Initialize a new repository at `dir` (no-op if already one). */
   init(dir: string): Promise<void>;
   status(dir: string): Promise<GitStatus>;
@@ -132,6 +134,15 @@ export class SystemGitService implements GitService {
       return out.trim() === 'true';
     } catch {
       return false;
+    }
+  }
+
+  async isEmptyRepo(dir: string): Promise<boolean> {
+    try {
+      await this.git(dir, ['rev-parse', '--verify', 'HEAD']);
+      return false; // HEAD resolves → at least one commit
+    } catch {
+      return true; // unborn branch → no commits yet
     }
   }
 

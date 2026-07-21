@@ -1,4 +1,6 @@
-import type { GitStatusDto } from '@swaft/shared';
+import { existsSync } from 'node:fs';
+import { basename, join } from 'node:path';
+import type { GitStatusDto, WorkspaceSummary } from '@swaft/shared';
 import { AppError } from '../errors';
 import type { WorkspaceService } from '../workspace/WorkspaceService';
 import type { GitService } from './GitService';
@@ -38,9 +40,32 @@ export class GitOpsService {
     return { ...status, branches, remoteUrl };
   }
 
-  /** Clone `url` into a subfolder of `parentDir`; returns the created repo path to open next. */
-  clone(url: string, parentDir: string): Promise<string> {
-    return this.git.clone(url, parentDir);
+  /**
+   * Clone `url` into a subfolder of `parentDir` and turn it into an open workspace:
+   *  - an existing Swaft workspace repo (has `workspace.json`) is **opened**;
+   *  - an **empty** repo (no commits — e.g. a freshly created remote) is **initialized** as a new
+   *    Swaft workspace in place, keeping the `origin` remote so it can be pushed;
+   *  - a non-empty repo that is not a Swaft workspace is rejected with a clear error.
+   */
+  async clone(url: string, parentDir: string): Promise<WorkspaceSummary> {
+    const path = await this.git.clone(url, parentDir);
+    if (existsSync(join(path, 'workspace.json'))) {
+      return this.ws.open({ path });
+    }
+    if (!(await this.git.isEmptyRepo(path))) {
+      throw new AppError(
+        'NOT_A_SWAFT_WORKSPACE',
+        'validation',
+        'The cloned repository is not empty and is not a Swaft workspace.',
+      );
+    }
+    // Empty remote: start a fresh workspace in the clone (origin is preserved for the first push).
+    return this.ws.create({
+      name: basename(path),
+      storageMode: 'git',
+      location: path,
+      encrypt: false,
+    });
   }
 
   /** Connect a local Git workspace to a remote and push it (first publish). */

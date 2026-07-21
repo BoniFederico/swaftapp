@@ -1,5 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { GitService, GitStatus } from './GitService';
+import { SystemGitService } from './GitService';
 import { InProcessDbBackend } from '../storage/db-backend';
 import type { SqlParam } from '../storage/sqlite';
 import { CryptoService } from '../crypto/CryptoService';
@@ -31,6 +37,7 @@ class FakeGit implements GitService {
   isAvailable = () => Promise.resolve(true);
   version = () => Promise.resolve('git version fake');
   isRepo = () => Promise.resolve(true);
+  isEmptyRepo = () => Promise.resolve(true);
   init = () => Promise.resolve();
   status = () => Promise.resolve(STATUS);
   currentBranch = () => Promise.resolve('main');
@@ -147,17 +154,101 @@ describe('GitOpsService', () => {
     expect(git.calls).toContain('push');
   });
 
-  it('clones without needing an open workspace', async () => {
-    const { git, ops } = await setup();
-    const path = await ops.clone('https://example.test/acme/ws.git', '/parent');
-    expect(path).toBe('/parent/repo');
-    expect(git.calls).toContain('clone');
-  });
-
   it('rejects git ops when the open workspace is not git-backed', async () => {
     const { ws, git } = await setup();
     await ws.close();
     const ops = new GitOpsService(ws, git);
     await expect(ops.status()).rejects.toMatchObject({ code: 'GIT_WORKSPACE_REQUIRED' });
+  });
+});
+
+// --- Clone orchestration against the real git binary + filesystem -----------
+
+let gitAvailable = true;
+try {
+  execFileSync('git', ['--version'], { stdio: 'ignore' });
+} catch {
+  gitAvailable = false;
+}
+
+describe.skipIf(!gitAvailable)('GitOpsService.clone (real git)', () => {
+  let root: string;
+  const git = new SystemGitService();
+  const backend = (bytes?: Uint8Array) => InProcessDbBackend.open(bytes);
+
+  function makeOps(): GitOpsService {
+    const ws = new WorkspaceService({
+      createBackend: backend,
+      crypto: new CryptoService(),
+      fs: { read: () => Promise.resolve(null), write: () => Promise.resolve() },
+      deviceId: () => 'dev-1',
+      git: new GitPersistence({ createBackend: backend, git, deviceId: () => 'dev-1' }),
+      probePath: async (p) => {
+        try {
+          return (await stat(p)).isDirectory() ? 'dir' : 'file';
+        } catch {
+          return 'missing';
+        }
+      },
+    });
+    return new GitOpsService(ws, git);
+  }
+
+  /** An empty directory usable as a clone parent. */
+  function parent(name: string): string {
+    return mkdtempSync(join(root, `${name}-`));
+  }
+
+  beforeAll(() => {
+    root = mkdtempSync(join(tmpdir(), 'swaft-cloneops-'));
+  });
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
+
+  it('initializes a new workspace when cloning an empty repository', async () => {
+    const remote = join(root, 'empty.git');
+    execFileSync('git', ['init', '--bare', '--initial-branch=main', remote]);
+
+    const summary = await makeOps().clone(remote, parent('p-empty'));
+
+    expect(summary.storageMode).toBe('git');
+    // A real workspace was scaffolded and committed into the clone (folder = repo name "empty").
+    expect(existsSync(join(summary.path, 'workspace.json'))).toBe(true);
+    // origin is preserved from the clone, so the first push can target the empty remote.
+    expect(await git.originUrl(summary.path)).toContain('empty.git');
+    expect((await git.status(summary.path)).clean).toBe(true);
+  });
+
+  it('opens an existing Swaft workspace repository (does not re-initialize)', async () => {
+    // Build a workspace repo on disk to act as the clone source.
+    const src = join(root, 'ws-src');
+    mkdirSync(src);
+    const persistence = new GitPersistence({ createBackend: backend, git, deviceId: () => 'dev-1' });
+    const setup = await persistence.create({
+      name: 'Shared WS',
+      executionMode: 'sandbox',
+      deviceId: 'dev-1',
+      now: '2024-01-01T00:00:00.000Z',
+      location: src,
+    });
+    await setup.adapter.close();
+
+    const summary = await makeOps().clone(src, parent('p-ws'));
+    expect(summary.name).toBe('Shared WS');
+    expect(summary.storageMode).toBe('git');
+  });
+
+  it('rejects a non-empty repository that is not a Swaft workspace', async () => {
+    const other = join(root, 'other');
+    execFileSync('git', ['init', '--initial-branch=main', other]);
+    execFileSync('git', ['config', 'user.email', 't@swaft.test'], { cwd: other });
+    execFileSync('git', ['config', 'user.name', 'T'], { cwd: other });
+    execFileSync('git', ['config', 'commit.gpgsign', 'false'], { cwd: other });
+    writeFileSync(join(other, 'README.md'), '# not swaft');
+    execFileSync('git', ['add', '-A'], { cwd: other });
+    execFileSync('git', ['commit', '-m', 'init'], { cwd: other });
+
+    await expect(makeOps().clone(other, parent('p-other'))).rejects.toMatchObject({
+      code: 'NOT_A_SWAFT_WORKSPACE',
+    });
   });
 });

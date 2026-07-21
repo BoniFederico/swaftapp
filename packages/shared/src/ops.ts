@@ -775,11 +775,6 @@ export type GitCreateBranchRequest = z.infer<typeof gitCreateBranchRequestSchema
 export type GitCloneRequest = z.infer<typeof gitCloneRequestSchema>;
 export type GitPublishRequest = z.infer<typeof gitPublishRequestSchema>;
 
-export interface GitCloneResponse {
-  /** Absolute path of the cloned repository directory (open it as a workspace next). */
-  path: string;
-}
-
 /** A single changed path in the Git working tree (for the Git panel). */
 export interface GitFileChange {
   path: string;
@@ -1448,7 +1443,7 @@ export interface OpContracts {
   'git.checkout': { request: GitCheckoutRequest; response: GitStatusResponse };
   'git.createBranch': { request: GitCreateBranchRequest; response: GitStatusResponse };
   'git.discard': { request: EmptyRequest; response: GitStatusResponse };
-  'git.clone': { request: GitCloneRequest; response: GitCloneResponse };
+  'git.clone': { request: GitCloneRequest; response: WorkspaceResponse };
   'git.publish': { request: GitPublishRequest; response: GitStatusResponse };
   'tree.get': { request: EmptyRequest; response: TreeResponse };
   'project.create': { request: ProjectCreateRequest; response: TreeResponse };

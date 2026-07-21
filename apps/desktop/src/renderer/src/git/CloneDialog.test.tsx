@@ -24,8 +24,6 @@ function makeTransport(calls: { op: string; payload: unknown }[]): Transport {
         case 'dialog.pickDirectory':
           return Promise.resolve(ok({ path: '/dest' }));
         case 'git.clone':
-          return Promise.resolve(ok({ path: '/dest/ws' }));
-        case 'workspace.open':
           return Promise.resolve(ok({ workspace: GIT_SUMMARY }));
         case 'workspace.current':
           return Promise.resolve(ok({ workspace: GIT_SUMMARY }));
@@ -63,6 +61,5 @@ describe('CloneDialog', () => {
       url: 'https://example.test/acme/ws.git',
       parentDir: '/dest',
     });
-    expect(calls.find((c) => c.op === 'workspace.open')?.payload).toEqual({ path: '/dest/ws' });
   });
 });

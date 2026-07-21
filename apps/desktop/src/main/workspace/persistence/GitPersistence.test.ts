@@ -27,6 +27,7 @@ class FakeGit implements GitService {
   isAvailable = () => Promise.resolve(true);
   version = () => Promise.resolve('git version fake');
   isRepo = () => Promise.resolve(true);
+  isEmptyRepo = () => Promise.resolve(false);
   init = () => (this.calls.push('init'), Promise.resolve());
   status = () => Promise.resolve(CLEAN);
   currentBranch = () => Promise.resolve('main');

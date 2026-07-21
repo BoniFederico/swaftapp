@@ -121,8 +121,9 @@ export function WorkspaceProvider({
         }),
       cloneAndOpen: (url, parentDir) =>
         run(async () => {
-          const { path } = await client.call('git.clone', { url, parentDir });
-          const res = await client.call('workspace.open', { path });
+          // The backend opens an existing Swaft repo, or initializes a fresh workspace into an
+          // empty remote (keeping origin for the first push).
+          const res = await client.call('git.clone', { url, parentDir });
           setCurrent(res.workspace);
           await refresh();
         }),
