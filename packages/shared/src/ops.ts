@@ -223,7 +223,7 @@ export const settingsUpdateSchema = z
 // Template kinds. `render` was folded into `document` (its subtypes — mermaid/swagger/echarts — are
 // now document subtypes that render in the output). `capability` and `action` are user-authored
 // JavaScript: the first resolves data for a formula, the second is an effect (analisi_codice_utente.md).
-export const templateTypeSchema = z.enum(['document', 'api', 'capability', 'action']);
+export const templateTypeSchema = z.enum(['document', 'api', 'capability', 'action', 'scenario']);
 
 export const templateCreateRequestSchema = z
   .object({
@@ -867,6 +867,7 @@ export const SUBTYPES: Record<TemplateType, string[]> = {
   api: ['json'],
   capability: ['javascript'],
   action: ['javascript'],
+  scenario: ['json'],
 };
 /** Default subtype assigned to a new template (and used to group subtype-less ones in the tree). */
 export const DEFAULT_SUBTYPE: Record<TemplateType, string> = {
@@ -874,6 +875,7 @@ export const DEFAULT_SUBTYPE: Record<TemplateType, string> = {
   api: 'json',
   capability: 'javascript',
   action: 'javascript',
+  scenario: 'json',
 };
 /** Subtypes the Document output shows rendered (not as code). */
 export const RENDERABLE_SUBTYPES = new Set(['html', 'markdown', 'eml', 'mermaid', 'swagger', 'echarts']);

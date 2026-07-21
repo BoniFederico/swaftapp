@@ -230,10 +230,15 @@ export const en = {
   'tpl.api': 'API',
   'tpl.capability': 'Capability',
   'tpl.action': 'Action',
+  'tpl.scenario': 'Scenario',
   'tpl.documentDesc': 'Rendered document driven by inputs.',
   'tpl.apiDesc': 'Structured HTTP request.',
   'tpl.capabilityDesc': 'Sandboxed function for formulas.',
   'tpl.actionDesc': 'Sandboxed action, confirmed before it runs.',
+  'tpl.scenarioDesc': 'Visual workflow chaining templates.',
+
+  'scenario.parseError': 'This scenario’s source is not a valid graph. Fix the JSON in the editor to continue.',
+  'scenario.placeholder': 'Scenario graph loaded ({{nodes}} nodes, {{edges}} edges). The visual editor is coming next.',
   'tpl.codeNameHint': 'The name is how formulas and action plans reference it, so use letters, digits and _ (not starting with a digit).',
 
   'cap.title': 'Capability',
@@ -706,10 +711,15 @@ export const it: Partial<Record<TranslationKey, string>> = {
   'tpl.api': 'API',
   'tpl.capability': 'Capability',
   'tpl.action': 'Action',
+  'tpl.scenario': 'Scenario',
   'tpl.documentDesc': 'Documento renderizzato a partire dagli input.',
   'tpl.apiDesc': 'Richiesta HTTP strutturata.',
   'tpl.capabilityDesc': 'Funzione sandbox per le formule.',
   'tpl.actionDesc': 'Azione sandbox, confermata prima di eseguire.',
+  'tpl.scenarioDesc': 'Workflow visuale che concatena template.',
+
+  'scenario.parseError': 'Il source di questo scenario non è un grafo valido. Correggi il JSON nell’editor per continuare.',
+  'scenario.placeholder': 'Grafo dello scenario caricato ({{nodes}} nodi, {{edges}} archi). L’editor visuale arriva a breve.',
   'tpl.codeNameHint': 'Il nome è ciò con cui formule e action plan la richiamano: usa lettere, cifre e _ (non iniziare con una cifra).',
 
   'cap.title': 'Capability',

@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import {
   DEFAULT_SUBTYPE,
   isCodeTemplateType,
+  serializeScenarioGraph,
+  type ScenarioGraph,
   type TemplateCreateRequest,
   type TemplateDto,
   type TemplateType,
@@ -68,10 +70,21 @@ export default async function ({ input, api, swaft }) {
 }
 `;
 
+/**
+ * Starter graph for a fresh `scenario` template: a single Start node on an otherwise empty canvas.
+ * The scenario's source is this JSON (see docs `scenarios.md`); the visual editor mutates it.
+ */
+const STARTER_SCENARIO_GRAPH: ScenarioGraph = {
+  version: 1,
+  nodes: [{ id: 'start', kind: 'start', position: { x: 80, y: 140 } }],
+  edges: [],
+};
+
 /** The source a new template starts from, by kind. */
 function starterSource(type: TemplateType): string {
   if (type === 'capability') return STARTER_CAPABILITY_SOURCE;
   if (type === 'action') return STARTER_ACTION_SOURCE;
+  if (type === 'scenario') return serializeScenarioGraph(STARTER_SCENARIO_GRAPH);
   return STARTER_SOURCE;
 }
 

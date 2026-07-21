@@ -7,6 +7,7 @@ import { BatcherPanel } from '../batcher/BatcherPanel';
 import { ApiView } from '../document/ApiView';
 import { CodeView } from '../document/CodeView';
 import { DocumentView } from '../document/DocumentView';
+import { ScenarioView } from '../scenario/ScenarioView';
 import { TemplateEditorModal } from '../document/TemplateEditorModal';
 import { EnvironmentPicker } from '../environment/EnvironmentPicker';
 import { EnvironmentProvider } from '../environment/EnvironmentProvider';
@@ -25,6 +26,7 @@ import {
   IconButton,
   LockIcon,
   LogoutIcon,
+  ScenarioIcon,
   SettingsIcon,
 } from '../ui';
 import { FolderView } from './FolderView';
@@ -47,6 +49,7 @@ function TabIcon({ type }: { type: TabKind }) {
   const className = `ws-tab__type ws-tab__type--${type}`;
   if (type === 'api') return <ApiIcon className={className} />;
   if (type === 'capability' || type === 'action') return <CapabilityIcon className={className} />;
+  if (type === 'scenario') return <ScenarioIcon className={className} />;
   if (type === 'folder') return <FolderIcon className={className} />;
   return <DocumentIcon className={className} />;
 }
@@ -358,6 +361,8 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
                     <ApiView {...shared} />
                   ) : tb.type === 'capability' || tb.type === 'action' ? (
                     <CodeView {...shared} kind={tb.type} />
+                  ) : tb.type === 'scenario' ? (
+                    <ScenarioView {...shared} />
                   ) : (
                     <DocumentView {...shared} />
                   )}

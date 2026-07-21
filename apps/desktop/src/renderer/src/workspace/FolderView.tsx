@@ -17,9 +17,11 @@ import { useI18n } from '../i18n/I18nProvider';
 import {
   ApiIcon,
   Button,
+  CapabilityIcon,
   DocumentIcon,
   EmptyState,
   FolderIcon,
+  ScenarioIcon,
   Select,
   TextField,
   useToast,
@@ -32,7 +34,10 @@ type FolderTab = 'content' | 'headers' | 'auth' | 'actions' | 'proxy' | 'notes';
 
 function TypeIcon({ type }: { type: TemplateType }) {
   const className = `fold-card__icon fold-card__icon--${type}`;
-  return type === 'api' ? <ApiIcon className={className} /> : <DocumentIcon className={className} />;
+  if (type === 'api') return <ApiIcon className={className} />;
+  if (type === 'capability' || type === 'action') return <CapabilityIcon className={className} />;
+  if (type === 'scenario') return <ScenarioIcon className={className} />;
+  return <DocumentIcon className={className} />;
 }
 
 /**

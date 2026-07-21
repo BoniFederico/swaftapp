@@ -655,6 +655,9 @@ body {
 .tree-item__icon--api {
   color: #f59e0b;
 }
+.tree-item__icon--scenario {
+  color: #7c3aed;
+}
 .tree-item__icon--folder {
   color: #94a3b8;
 }
@@ -1759,6 +1762,29 @@ body {
   font-size: var(--fs-sm);
 }
 
+/* ---------- Scenario View ---------- */
+.scenario {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.scenario__canvas {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.scenario__placeholder {
+  padding: var(--space-5);
+  text-align: center;
+}
+
 /* ---------- Render View ---------- */
 .render-view {
   display: flex;
@@ -2806,6 +2832,9 @@ body {
 }
 .tpl-type-card__icon--action {
   color: #10b981;
+}
+.tpl-type-card__icon--scenario {
+  color: #7c3aed;
 }
 .tpl-type-card__label {
   font-weight: 600;
