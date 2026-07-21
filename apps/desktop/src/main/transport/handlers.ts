@@ -56,6 +56,8 @@ import {
   type GitCommitRequest,
   type GitCheckoutRequest,
   type GitCreateBranchRequest,
+  type GitCloneRequest,
+  type GitPublishRequest,
 } from '@swaft/shared';
 import { getAuthService } from '../auth/registry';
 import { toErrorEnvelope } from '../errors';
@@ -158,6 +160,13 @@ export const handlers: Record<OpName, Handler> = {
       status: await getGitOpsService().createBranch((p as GitCreateBranchRequest).name),
     })),
   'git.discard': () => svc(async () => ({ status: await getGitOpsService().discard() })),
+  'git.clone': (p) =>
+    svc(async () => {
+      const req = p as GitCloneRequest;
+      return { path: await getGitOpsService().clone(req.url, req.parentDir) };
+    }),
+  'git.publish': (p) =>
+    svc(async () => ({ status: await getGitOpsService().publish((p as GitPublishRequest).url) })),
 
   // Organization tree (M5)
   'tree.get': () => svc(async () => ({ tree: await getOrganizationService().getTree() })),

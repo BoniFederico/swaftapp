@@ -38,6 +38,9 @@ class FakeGit implements GitService {
   pull = () => Promise.resolve();
   push = () => Promise.resolve();
   discardAll = () => Promise.resolve();
+  clone = (_url: string, parentDir: string) => Promise.resolve(`${parentDir}/repo`);
+  originUrl = () => Promise.resolve(null);
+  addRemote = () => Promise.resolve();
 }
 
 async function insProject(a: LocalAdapter, id: string, name: string): Promise<void> {

@@ -30,8 +30,27 @@ export class GitOpsService {
 
   async status(): Promise<GitStatusDto> {
     const dir = this.dir();
-    const [status, branches] = await Promise.all([this.git.status(dir), this.git.listBranches(dir)]);
-    return { ...status, branches };
+    const [status, branches, remoteUrl] = await Promise.all([
+      this.git.status(dir),
+      this.git.listBranches(dir),
+      this.git.originUrl(dir),
+    ]);
+    return { ...status, branches, remoteUrl };
+  }
+
+  /** Clone `url` into a subfolder of `parentDir`; returns the created repo path to open next. */
+  clone(url: string, parentDir: string): Promise<string> {
+    return this.git.clone(url, parentDir);
+  }
+
+  /** Connect a local Git workspace to a remote and push it (first publish). */
+  async publish(url: string): Promise<GitStatusDto> {
+    const dir = this.dir();
+    if (!(await this.git.originUrl(dir))) {
+      await this.git.addRemote(dir, 'origin', url);
+    }
+    await this.git.push(dir); // sets upstream on first push
+    return this.status();
   }
 
   async commit(message: string): Promise<GitStatusDto> {

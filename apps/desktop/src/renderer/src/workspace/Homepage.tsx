@@ -4,6 +4,7 @@ import { AccountControls } from '../auth/AccountControls';
 import { useI18n } from '../i18n/I18nProvider';
 import { PreferencesDialog } from '../settings/PreferencesDialog';
 import { Button, Card, EmptyState, IconButton, SettingsIcon } from '../ui';
+import { CloneDialog } from '../git/CloneDialog';
 import { CreateWorkspaceWizard } from './CreateWorkspaceWizard';
 import { OpenPasswordDialog } from './OpenPasswordDialog';
 import { useWorkspace } from './WorkspaceProvider';
@@ -17,6 +18,7 @@ export function Homepage() {
   const { recent, open, pickOpenTarget, pickDirectory } = useWorkspace();
 
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [cloneOpen, setCloneOpen] = useState(false);
   const [pwDialogOpen, setPwDialogOpen] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [openPath, setOpenPath] = useState<string | null>(null);
@@ -70,6 +72,9 @@ export function Homepage() {
             <Button variant="secondary" onClick={() => void openFolder()}>
               {t('home.openFolder')}
             </Button>
+            <Button variant="secondary" onClick={() => setCloneOpen(true)}>
+              {t('home.clone')}
+            </Button>
           </div>
 
           {recent.length === 0 ? (
@@ -91,6 +96,7 @@ export function Homepage() {
       </Card>
 
       <CreateWorkspaceWizard open={wizardOpen} onClose={() => setWizardOpen(false)} />
+      <CloneDialog open={cloneOpen} onClose={() => setCloneOpen(false)} />
       <OpenPasswordDialog
         open={pwDialogOpen}
         path={openPath}

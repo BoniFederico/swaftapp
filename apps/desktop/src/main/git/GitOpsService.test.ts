@@ -50,6 +50,11 @@ class FakeGit implements GitService {
   };
   push = () => (this.calls.push('push'), Promise.resolve());
   discardAll = () => (this.calls.push('discard'), Promise.resolve());
+  clone = (_url: string, parentDir: string) => (this.calls.push('clone'), Promise.resolve(`${parentDir}/repo`));
+  originUrl = () => Promise.resolve(null);
+  addRemote = (_dir: string, _name: string, url: string) => (
+    this.calls.push(`addRemote:${url}`), Promise.resolve()
+  );
 }
 
 async function insProject(a: LocalAdapter, id: string, name: string): Promise<void> {
@@ -133,6 +138,20 @@ describe('GitOpsService', () => {
     const { git, ops } = await setup();
     await ops.checkout('dev');
     expect(git.calls).toContain('checkout:dev');
+  });
+
+  it('publishes: adds origin then pushes', async () => {
+    const { git, ops } = await setup();
+    await ops.publish('https://example.test/acme/ws.git');
+    expect(git.calls).toContain('addRemote:https://example.test/acme/ws.git');
+    expect(git.calls).toContain('push');
+  });
+
+  it('clones without needing an open workspace', async () => {
+    const { git, ops } = await setup();
+    const path = await ops.clone('https://example.test/acme/ws.git', '/parent');
+    expect(path).toBe('/parent/repo');
+    expect(git.calls).toContain('clone');
   });
 
   it('rejects git ops when the open workspace is not git-backed', async () => {

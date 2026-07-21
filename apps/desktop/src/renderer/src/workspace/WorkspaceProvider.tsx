@@ -28,6 +28,8 @@ interface WorkspaceContextValue {
   errorCode: string | null;
   create(req: WorkspaceCreateRequest): Promise<void>;
   open(path: string, password?: string): Promise<void>;
+  /** Clone a Git repository from `url` into `parentDir`, then open it. */
+  cloneAndOpen(url: string, parentDir: string): Promise<void>;
   update(patch: WorkspaceUpdateRequest): Promise<void>;
   close(): Promise<void>;
   refresh(): Promise<void>;
@@ -114,6 +116,13 @@ export function WorkspaceProvider({
       open: (path, password) =>
         run(async () => {
           const res = await client.call('workspace.open', { path, password });
+          setCurrent(res.workspace);
+          await refresh();
+        }),
+      cloneAndOpen: (url, parentDir) =>
+        run(async () => {
+          const { path } = await client.call('git.clone', { url, parentDir });
+          const res = await client.call('workspace.open', { path });
           setCurrent(res.workspace);
           await refresh();
         }),

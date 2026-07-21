@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { AppError } from '../errors';
 
@@ -56,9 +57,19 @@ export interface GitService {
   commitAll(dir: string, message: string): Promise<void>;
   fetch(dir: string): Promise<void>;
   pull(dir: string): Promise<void>;
+  /**
+   * Push the current branch. If it has no upstream yet, set it to `origin` on first push
+   * (`push -u origin <branch>`); throws when no remote is configured.
+   */
   push(dir: string): Promise<void>;
   /** Discard all uncommitted changes: restore tracked files to HEAD and remove untracked ones. */
   discardAll(dir: string): Promise<void>;
+  /** Clone `url` into a new subdirectory of `parentDir`; returns the created repo path. */
+  clone(url: string, parentDir: string): Promise<string>;
+  /** The `origin` remote URL, or null when no `origin` remote is configured. */
+  originUrl(dir: string): Promise<string | null>;
+  /** Add a remote (e.g. `origin`) pointing at `url`. */
+  addRemote(dir: string, name: string, url: string): Promise<void>;
 }
 
 /** Reject refs/messages that could be mistaken for options or break the ref grammar. */
@@ -66,6 +77,20 @@ function assertSafeRef(name: string): void {
   if (!name || name.startsWith('-') || /[\s~^:?*[\\]/.test(name) || name.includes('..')) {
     throw new AppError('GIT_INVALID_REF', 'validation', `Invalid git branch name: "${name}".`);
   }
+}
+
+/** Reject a URL/remote-name that could be parsed as an option (defense for the arg-based CLI). */
+function assertSafeArg(value: string, code: string, label: string): void {
+  if (!value || value.startsWith('-')) {
+    throw new AppError(code, 'validation', `Invalid ${label}: "${value}".`);
+  }
+}
+
+/** Derive the directory name `git clone` would create for a URL (last path segment, sans `.git`). */
+export function deriveRepoName(url: string): string {
+  const cleaned = url.trim().replace(/\/+$/, '').replace(/\.git$/i, '');
+  const segment = cleaned.split(/[/:]/).pop() ?? '';
+  return segment.replace(/[^A-Za-z0-9._-]/g, '') || 'repo';
 }
 
 export class SystemGitService implements GitService {
@@ -157,7 +182,19 @@ export class SystemGitService implements GitService {
   }
 
   async push(dir: string): Promise<void> {
-    await this.git(dir, ['push']);
+    if (await this.branchHasUpstream(dir)) {
+      await this.git(dir, ['push']);
+      return;
+    }
+    // No upstream yet: set it to origin on first push, or fail clearly if there is no remote.
+    if (!(await this.originUrl(dir))) {
+      throw new AppError('GIT_NO_REMOTE', 'execution', 'No remote is configured for this workspace.');
+    }
+    const branch = await this.currentBranch(dir);
+    if (!branch) {
+      throw new AppError('GIT_DETACHED', 'execution', 'Cannot push a detached HEAD.');
+    }
+    await this.git(dir, ['push', '-u', 'origin', branch]);
   }
 
   async discardAll(dir: string): Promise<void> {
@@ -165,6 +202,37 @@ export class SystemGitService implements GitService {
     // honors .gitignore, so the local `.swaft/` cache is preserved.
     await this.git(dir, ['restore', '--staged', '--worktree', '.']);
     await this.git(dir, ['clean', '-fd']);
+  }
+
+  async clone(url: string, parentDir: string): Promise<string> {
+    assertSafeArg(url, 'GIT_INVALID_URL', 'repository URL');
+    const name = deriveRepoName(url);
+    await this.git(parentDir, ['clone', url, name]);
+    return join(parentDir, name);
+  }
+
+  async originUrl(dir: string): Promise<string | null> {
+    try {
+      return (await this.git(dir, ['remote', 'get-url', 'origin'])).trim() || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async addRemote(dir: string, name: string, url: string): Promise<void> {
+    assertSafeArg(name, 'GIT_INVALID_REF', 'remote name');
+    assertSafeArg(url, 'GIT_INVALID_URL', 'repository URL');
+    await this.git(dir, ['remote', 'add', name, url]);
+  }
+
+  /** Whether the current branch has a configured upstream (so a plain `git push` will work). */
+  private async branchHasUpstream(dir: string): Promise<boolean> {
+    try {
+      await this.git(dir, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']);
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 

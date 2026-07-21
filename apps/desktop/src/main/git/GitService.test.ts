@@ -1,9 +1,18 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { parseStatus, SystemGitService } from './GitService';
+import { deriveRepoName, parseStatus, SystemGitService } from './GitService';
+
+describe('deriveRepoName', () => {
+  it('extracts the repo folder name from clone URLs', () => {
+    expect(deriveRepoName('https://github.com/acme/widgets.git')).toBe('widgets');
+    expect(deriveRepoName('https://github.com/acme/widgets')).toBe('widgets');
+    expect(deriveRepoName('git@github.com:acme/widgets.git')).toBe('widgets');
+    expect(deriveRepoName('https://git-codecommit.eu-west-1.amazonaws.com/v1/repos/ops/')).toBe('ops');
+  });
+});
 
 describe('parseStatus', () => {
   it('reads branch, upstream and ahead/behind', () => {
@@ -115,5 +124,49 @@ describe.skipIf(!gitAvailable)('SystemGitService (integration)', () => {
   it('rejects unsafe branch names', async () => {
     await expect(svc.createBranch(dir, '-rf')).rejects.toMatchObject({ code: 'GIT_INVALID_REF' });
     await expect(svc.checkout(dir, 'a b')).rejects.toMatchObject({ code: 'GIT_INVALID_REF' });
+  });
+
+  it('adds a remote, first-pushes setting upstream, and clones back', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'swaft-remote-'));
+    const work = join(base, 'work');
+    mkdirSync(work);
+    execFileSync('git', ['init'], { cwd: work });
+    execFileSync('git', ['config', 'user.email', 'test@swaft.test'], { cwd: work });
+    execFileSync('git', ['config', 'user.name', 'Swaft Test'], { cwd: work });
+    execFileSync('git', ['config', 'commit.gpgsign', 'false'], { cwd: work });
+    writeFileSync(join(work, 'f.txt'), 'hello');
+    await svc.commitAll(work, 'init');
+
+    expect(await svc.originUrl(work)).toBeNull();
+
+    const bare = join(base, 'origin.git');
+    execFileSync('git', ['init', '--bare', bare]);
+    await svc.addRemote(work, 'origin', bare);
+    expect(await svc.originUrl(work)).toContain('origin.git');
+
+    // No upstream yet → push must set it (push -u origin <branch>).
+    expect((await svc.status(work)).hasUpstream).toBe(false);
+    await svc.push(work);
+    expect((await svc.status(work)).hasUpstream).toBe(true);
+
+    // Clone the bare repo elsewhere; the committed file comes across.
+    const dest = mkdtempSync(join(tmpdir(), 'swaft-clone-'));
+    const cloned = await svc.clone(bare, dest);
+    expect(existsSync(join(cloned, 'f.txt'))).toBe(true);
+
+    rmSync(base, { recursive: true, force: true });
+    rmSync(dest, { recursive: true, force: true });
+  });
+
+  it('push without a remote fails with a clear code', async () => {
+    const solo = mkdtempSync(join(tmpdir(), 'swaft-solo-'));
+    execFileSync('git', ['init'], { cwd: solo });
+    execFileSync('git', ['config', 'user.email', 'test@swaft.test'], { cwd: solo });
+    execFileSync('git', ['config', 'user.name', 'Swaft Test'], { cwd: solo });
+    execFileSync('git', ['config', 'commit.gpgsign', 'false'], { cwd: solo });
+    writeFileSync(join(solo, 'a.txt'), 'x');
+    await svc.commitAll(solo, 'init');
+    await expect(svc.push(solo)).rejects.toMatchObject({ code: 'GIT_NO_REMOTE' });
+    rmSync(solo, { recursive: true, force: true });
   });
 });

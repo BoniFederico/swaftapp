@@ -96,6 +96,16 @@ export const gitCheckoutRequestSchema = z
 export const gitCreateBranchRequestSchema = z
   .object({ name: z.string().trim().min(1).max(255) })
   .strict();
+export const gitCloneRequestSchema = z
+  .object({
+    url: z.string().trim().min(1).max(2048),
+    /** Parent directory to clone into; the repo lands in a subfolder derived from the URL. */
+    parentDir: z.string().min(1),
+  })
+  .strict();
+export const gitPublishRequestSchema = z
+  .object({ url: z.string().trim().min(1).max(2048) })
+  .strict();
 
 // --- M5: workspace organization + settings ----------------------------------
 
@@ -490,6 +500,8 @@ export const OP_NAMES = [
   'git.checkout',
   'git.createBranch',
   'git.discard',
+  'git.clone',
+  'git.publish',
   'tree.get',
   'project.create',
   'project.rename',
@@ -595,6 +607,8 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'git.checkout': gitCheckoutRequestSchema,
   'git.createBranch': gitCreateBranchRequestSchema,
   'git.discard': emptyRequestSchema,
+  'git.clone': gitCloneRequestSchema,
+  'git.publish': gitPublishRequestSchema,
   'tree.get': emptyRequestSchema,
   'project.create': projectCreateRequestSchema,
   'project.rename': renameRequestSchema,
@@ -758,6 +772,13 @@ export type DialogCreateTargetRequest = z.infer<typeof dialogCreateTargetRequest
 export type GitCommitRequest = z.infer<typeof gitCommitRequestSchema>;
 export type GitCheckoutRequest = z.infer<typeof gitCheckoutRequestSchema>;
 export type GitCreateBranchRequest = z.infer<typeof gitCreateBranchRequestSchema>;
+export type GitCloneRequest = z.infer<typeof gitCloneRequestSchema>;
+export type GitPublishRequest = z.infer<typeof gitPublishRequestSchema>;
+
+export interface GitCloneResponse {
+  /** Absolute path of the cloned repository directory (open it as a workspace next). */
+  path: string;
+}
 
 /** A single changed path in the Git working tree (for the Git panel). */
 export interface GitFileChange {
@@ -777,6 +798,8 @@ export interface GitStatusDto {
   files: GitFileChange[];
   /** Local branch names (for the branch switcher). */
   branches: string[];
+  /** The `origin` remote URL, or null when the repo has no remote yet (offer "Publish"). */
+  remoteUrl: string | null;
 }
 
 export interface GitStatusResponse {
@@ -1425,6 +1448,8 @@ export interface OpContracts {
   'git.checkout': { request: GitCheckoutRequest; response: GitStatusResponse };
   'git.createBranch': { request: GitCreateBranchRequest; response: GitStatusResponse };
   'git.discard': { request: EmptyRequest; response: GitStatusResponse };
+  'git.clone': { request: GitCloneRequest; response: GitCloneResponse };
+  'git.publish': { request: GitPublishRequest; response: GitStatusResponse };
   'tree.get': { request: EmptyRequest; response: TreeResponse };
   'project.create': { request: ProjectCreateRequest; response: TreeResponse };
   'project.rename': { request: RenameRequest; response: TreeResponse };

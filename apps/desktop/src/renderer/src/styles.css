@@ -3912,6 +3912,14 @@ body {
   margin-left: auto;
   font-size: var(--fs-sm);
 }
+.git-panel__remote {
+  font-size: var(--fs-sm);
+  font-family: var(--font-mono, monospace);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: calc(-1 * var(--space-1));
+}
 .git-panel__row {
   display: flex;
   align-items: flex-end;

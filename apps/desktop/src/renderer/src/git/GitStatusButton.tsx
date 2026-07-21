@@ -25,6 +25,8 @@ export function GitStatusButton({ client }: { client: ApiClient }) {
   const [message, setMessage] = useState('');
   const [newBranch, setNewBranch] = useState('');
   const [creatingBranch, setCreatingBranch] = useState(false);
+  const [publishUrl, setPublishUrl] = useState('');
+  const [showPublish, setShowPublish] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -74,9 +76,19 @@ export function GitStatusButton({ client }: { client: ApiClient }) {
     }
   }
 
+  async function publish() {
+    const url = publishUrl.trim();
+    if (!url) return;
+    if (await op(() => client.call('git.publish', { url }))) {
+      setPublishUrl('');
+      setShowPublish(false);
+    }
+  }
+
   const branch = status?.branch ?? '—';
   const dirty = status ? !status.clean : false;
   const aheadBehind = status && (status.ahead || status.behind);
+  const hasRemote = status?.remoteUrl != null;
 
   return (
     <>
@@ -114,6 +126,11 @@ export function GitStatusButton({ client }: { client: ApiClient }) {
                 </span>
               ) : null}
             </div>
+            {hasRemote && (
+              <div className="git-panel__remote muted" title={status?.remoteUrl ?? undefined}>
+                {status?.remoteUrl}
+              </div>
+            )}
 
             {status && status.branches.length > 0 && (
               <div className="git-panel__row">
@@ -187,16 +204,37 @@ export function GitStatusButton({ client }: { client: ApiClient }) {
               </Button>
             </div>
 
+            {showPublish && !hasRemote && (
+              <div className="git-panel__row">
+                <TextField
+                  label={t('git.remoteUrl')}
+                  value={publishUrl}
+                  onChange={(e) => setPublishUrl(e.target.value)}
+                />
+                <Button variant="secondary" disabled={busy || !publishUrl.trim()} onClick={() => void publish()}>
+                  {t('git.publishAction')}
+                </Button>
+              </div>
+            )}
+
             <div className="git-panel__actions">
-              <Button variant="ghost" disabled={busy} onClick={() => void op(() => client.call('git.fetch'))}>
-                {t('git.fetch')}
-              </Button>
-              <Button variant="ghost" disabled={busy} onClick={() => void op(() => client.call('git.pull'), true)}>
-                {t('git.pull')}
-              </Button>
-              <Button variant="ghost" disabled={busy} onClick={() => void op(() => client.call('git.push'))}>
-                {t('git.push')}
-              </Button>
+              {hasRemote ? (
+                <>
+                  <Button variant="ghost" disabled={busy} onClick={() => void op(() => client.call('git.fetch'))}>
+                    {t('git.fetch')}
+                  </Button>
+                  <Button variant="ghost" disabled={busy} onClick={() => void op(() => client.call('git.pull'), true)}>
+                    {t('git.pull')}
+                  </Button>
+                  <Button variant="ghost" disabled={busy} onClick={() => void op(() => client.call('git.push'))}>
+                    {t('git.push')}
+                  </Button>
+                </>
+              ) : (
+                <Button variant="ghost" disabled={busy} onClick={() => setShowPublish((v) => !v)}>
+                  {t('git.publish')}
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 disabled={busy || !dirty}

@@ -16,13 +16,17 @@ const DIRTY: GitStatusDto = {
   clean: false,
   files: [{ path: 'templates/tpl-1/template.json', status: 'modified', staged: false }],
   branches: ['main', 'dev'],
+  remoteUrl: 'https://example.test/acme/ws.git',
 };
 
 const CLEAN: GitStatusDto = { ...DIRTY, clean: true, files: [], ahead: 0 };
 
 /** Fake transport recording git op calls; commit flips the status to clean. */
-function makeTransport(calls: { op: string; payload: unknown }[]): Transport {
-  let status = DIRTY;
+function makeTransport(
+  calls: { op: string; payload: unknown }[],
+  remoteUrl: string | null = DIRTY.remoteUrl,
+): Transport {
+  let status = { ...DIRTY, remoteUrl };
   return {
     call(op, payload): Promise<ResultEnvelope<unknown>> {
       calls.push({ op, payload });
@@ -30,7 +34,10 @@ function makeTransport(calls: { op: string; payload: unknown }[]): Transport {
         case 'git.status':
           return Promise.resolve(ok({ status }));
         case 'git.commit':
-          status = CLEAN;
+          status = { ...CLEAN, remoteUrl };
+          return Promise.resolve(ok({ status }));
+        case 'git.publish':
+          status = { ...status, remoteUrl: (payload as { url: string }).url };
           return Promise.resolve(ok({ status }));
         case 'git.checkout':
         case 'git.pull':
@@ -50,9 +57,9 @@ function makeTransport(calls: { op: string; payload: unknown }[]): Transport {
   };
 }
 
-function renderPanel() {
+function renderPanel(remoteUrl: string | null = DIRTY.remoteUrl) {
   const calls: { op: string; payload: unknown }[] = [];
-  const client = new ApiClient(makeTransport(calls));
+  const client = new ApiClient(makeTransport(calls, remoteUrl));
   render(
     <AppProviders>
       <WorkspaceProvider client={client}>
@@ -97,5 +104,22 @@ describe('GitStatusButton', () => {
     fireEvent.change(await screen.findByLabelText('Branch'), { target: { value: 'dev' } });
     await waitFor(() => expect(calls.some((c) => c.op === 'git.checkout')).toBe(true));
     expect(calls.find((c) => c.op === 'git.checkout')?.payload).toEqual({ branch: 'dev' });
+  });
+
+  it('offers Publish when there is no remote, and publishes a URL', async () => {
+    const { calls } = renderPanel(null);
+    fireEvent.click(await screen.findByRole('button', { name: 'Git' }));
+    // Without a remote there is no Push button; a Publish… action is offered instead.
+    expect(screen.queryByRole('button', { name: 'Push' })).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish…' }));
+    fireEvent.change(screen.getByLabelText('Remote URL'), {
+      target: { value: 'https://example.test/acme/ws.git' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
+
+    await waitFor(() => expect(calls.some((c) => c.op === 'git.publish')).toBe(true));
+    expect(calls.find((c) => c.op === 'git.publish')?.payload).toEqual({
+      url: 'https://example.test/acme/ws.git',
+    });
   });
 });
