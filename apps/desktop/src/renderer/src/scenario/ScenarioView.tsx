@@ -9,7 +9,7 @@ import {
 } from '@swaft/shared';
 import { ApiClient, ApiError } from '../api-client/client';
 import { useI18n } from '../i18n/I18nProvider';
-import { Button, ConfirmDialog, IconButton, SaveIcon, useToast } from '../ui';
+import { Button, CloseIcon, ConfirmDialog, IconButton, SaveIcon, TrashIcon, useToast } from '../ui';
 import { notifyTreeChanged, subscribeTreeChanged } from '../workspace/treeBus';
 import { newId, removeEdge, removeNode } from './graph-model';
 import { NodeInspector } from './NodeInspector';
@@ -19,8 +19,50 @@ import { useScenarioRun } from './useScenarioRun';
 
 const SNAP_KEY = 'swaft:scenarioSnap';
 const INSPECTOR_W_KEY = 'swaft:scenarioInspectorW';
+const RUN_H_KEY = 'swaft:scenarioRunH';
+const RUN_HISTORY_W_KEY = 'swaft:scenarioRunHistoryW';
 const MIN_INSPECTOR = 240;
 const MAX_INSPECTOR = 520;
+const MIN_RUN_H = 120;
+const MAX_RUN_H = 520;
+const MIN_HISTORY = 160;
+const MAX_HISTORY = 460;
+
+/** Read a persisted pixel size, clamped, or a default. */
+function storedSize(key: string, def: number, min: number, max: number): number {
+  const v = Number(localStorage.getItem(key));
+  return Number.isFinite(v) && v >= min && v <= max ? v : def;
+}
+
+/**
+ * A drag-to-resize handler shared by the inspector width, the run panel height, and the run history
+ * width — dragging *toward* the content grows it (base + start − current). Persists on release.
+ */
+function beginResize(
+  e: React.PointerEvent,
+  axis: 'x' | 'y',
+  base: number,
+  min: number,
+  max: number,
+  set: (v: number) => void,
+  key: string,
+): void {
+  e.preventDefault();
+  const start = axis === 'x' ? e.clientX : e.clientY;
+  let latest = base;
+  const onMove = (ev: PointerEvent) => {
+    const cur = axis === 'x' ? ev.clientX : ev.clientY;
+    latest = Math.max(min, Math.min(max, base + (start - cur)));
+    set(latest);
+  };
+  const onUp = () => {
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    localStorage.setItem(key, String(Math.round(latest)));
+  };
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+}
 
 /**
  * Scenario View — the visual workflow editor for `scenario` templates (see docs `scenarios.md`). The
@@ -50,10 +92,16 @@ export function ScenarioView({
   const [loaded, setLoaded] = useState(false);
   const [templates, setTemplates] = useState<Map<string, ResolvedTemplate>>(new Map());
   const [snapEnabled, setSnapEnabled] = useState(() => localStorage.getItem(SNAP_KEY) !== 'off');
-  const [inspectorWidth, setInspectorWidth] = useState(() => {
-    const v = Number(localStorage.getItem(INSPECTOR_W_KEY));
-    return Number.isFinite(v) && v >= MIN_INSPECTOR && v <= MAX_INSPECTOR ? v : 300;
-  });
+  const [inspectorWidth, setInspectorWidth] = useState(() =>
+    storedSize(INSPECTOR_W_KEY, 300, MIN_INSPECTOR, MAX_INSPECTOR),
+  );
+  const [runPanelHeight, setRunPanelHeight] = useState(() =>
+    storedSize(RUN_H_KEY, 220, MIN_RUN_H, MAX_RUN_H),
+  );
+  const [runHistoryWidth, setRunHistoryWidth] = useState(() =>
+    storedSize(RUN_HISTORY_W_KEY, 260, MIN_HISTORY, MAX_HISTORY),
+  );
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Undo / redo history + the saved baseline for the dirty flag. Stacks are refs (they never drive a
   // render on their own); a version counter re-renders so the toolbar's enabled state stays in sync.
@@ -273,25 +321,9 @@ export function ScenarioView({
     });
   }
 
-  // Inspector resize: dragging the divider left grows the (right-hand) inspector.
-  function startInspectorResize(e: React.PointerEvent) {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startW = inspectorWidth;
-    const onMove = (ev: PointerEvent) => {
-      const w = Math.max(MIN_INSPECTOR, Math.min(MAX_INSPECTOR, startW + (startX - ev.clientX)));
-      setInspectorWidth(w);
-    };
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      localStorage.setItem(INSPECTOR_W_KEY, String(inspectorWidthRef.current));
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
+  function requestDelete() {
+    if (selection) setConfirmDelete(true);
   }
-  const inspectorWidthRef = useRef(inspectorWidth);
-  inspectorWidthRef.current = inspectorWidth;
 
   if (parseError) {
     return (
@@ -373,7 +405,9 @@ export function ScenarioView({
               role="separator"
               aria-orientation="vertical"
               aria-label={t('scenario.resizeInspector')}
-              onPointerDown={startInspectorResize}
+              onPointerDown={(e) =>
+                beginResize(e, 'x', inspectorWidth, MIN_INSPECTOR, MAX_INSPECTOR, setInspectorWidth, INSPECTOR_W_KEY)
+              }
             />
             <div className="scenario-inspector-host" style={{ width: inspectorWidth }}>
               {selectedNode ? (
@@ -386,20 +420,24 @@ export function ScenarioView({
                       field ? `field:${selectedNode.id}:${field}` : undefined,
                     )
                   }
-                  onDelete={deleteSelection}
+                  onDelete={requestDelete}
+                  onClose={() => setSelection(null)}
                 />
               ) : (
                 <aside className="scenario-inspector" aria-label={t('scenario.inspector')}>
                   <div className="scenario-inspector__head">
                     <span className="scenario-inspector__kind">{t('scenario.kind.edge')}</span>
+                    <span className="scenario-inspector__head-actions">
+                      <IconButton label={t('scenario.deleteEdge')} onClick={requestDelete}>
+                        <TrashIcon />
+                      </IconButton>
+                      <IconButton label={t('scenario.closeInspector')} onClick={() => setSelection(null)}>
+                        <CloseIcon />
+                      </IconButton>
+                    </span>
                   </div>
                   <div className="scenario-inspector__body">
                     <span className="muted">{t('scenario.edgeHint')}</span>
-                  </div>
-                  <div className="scenario-inspector__foot">
-                    <Button variant="danger" onClick={deleteSelection}>
-                      {t('scenario.deleteEdge')}
-                    </Button>
                   </div>
                 </aside>
               )}
@@ -408,7 +446,19 @@ export function ScenarioView({
         )}
       </div>
 
-      {panelOpen && <ScenarioRunPanel controller={runCtl} />}
+      {panelOpen && (
+        <ScenarioRunPanel
+          controller={runCtl}
+          height={runPanelHeight}
+          historyWidth={runHistoryWidth}
+          onResize={(e) =>
+            beginResize(e, 'y', runPanelHeight, MIN_RUN_H, MAX_RUN_H, setRunPanelHeight, RUN_H_KEY)
+          }
+          onHistoryResize={(e) =>
+            beginResize(e, 'x', runHistoryWidth, MIN_HISTORY, MAX_HISTORY, setRunHistoryWidth, RUN_HISTORY_W_KEY)
+          }
+        />
+      )}
 
       <ConfirmDialog
         open={confirmRun !== null}
@@ -422,6 +472,19 @@ export function ScenarioView({
           startRun(true, start.startNodeId);
         }}
         onClose={() => setConfirmRun(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title={t('confirm.title')}
+        message={selection?.kind === 'edge' ? t('scenario.confirmDeleteEdge') : t('scenario.confirmDeleteNode')}
+        confirmLabel={t('menu.delete')}
+        cancelLabel={t('name.cancel')}
+        onConfirm={() => {
+          setConfirmDelete(false);
+          deleteSelection();
+        }}
+        onClose={() => setConfirmDelete(false)}
       />
 
       {!loaded && <span className="muted scenario__loading">{t('doc.loading')}</span>}

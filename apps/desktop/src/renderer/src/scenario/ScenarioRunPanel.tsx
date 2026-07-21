@@ -16,7 +16,21 @@ function shortTime(iso: string): string {
  * an inline input prompt when an attended run pauses for a block's missing inputs, and the scenario's
  * run history. Purely presentational — the run lifecycle lives in {@link ScenarioRunController}.
  */
-export function ScenarioRunPanel({ controller }: { controller: ScenarioRunController }) {
+export function ScenarioRunPanel({
+  controller,
+  height,
+  historyWidth,
+  onResize,
+  onHistoryResize,
+}: {
+  controller: ScenarioRunController;
+  height: number;
+  historyWidth: number;
+  /** Pointer-down on the top divider (vertical resize of the whole panel). */
+  onResize: (e: React.PointerEvent) => void;
+  /** Pointer-down on the divider between the step list and the history (horizontal resize). */
+  onHistoryResize: (e: React.PointerEvent) => void;
+}) {
   const { t } = useI18n();
   const { status, runs } = controller;
   const [detail, setDetail] = useState<ScenarioRunStepDto | null>(null);
@@ -27,7 +41,14 @@ export function ScenarioRunPanel({ controller }: { controller: ScenarioRunContro
   useEffect(() => setInputs({}), [pendingNode]);
 
   return (
-    <div className="scenario-run">
+    <div className="scenario-run" style={{ height }}>
+      <div
+        className="scenario-run__vsplit"
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label={t('scenario.resizeRun')}
+        onPointerDown={onResize}
+      />
       <div className="scenario-run__cols">
         <div className="scenario-run__main">
           {status ? (
@@ -78,7 +99,14 @@ export function ScenarioRunPanel({ controller }: { controller: ScenarioRunContro
           )}
         </div>
 
-        <div className="scenario-run__history">
+        <div
+          className="scenario-run__hsplit"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t('scenario.resizeRunHistory')}
+          onPointerDown={onHistoryResize}
+        />
+        <div className="scenario-run__history" style={{ width: historyWidth }}>
           <div className="scenario-run__history-head">
             <span className="ui-field__label">{t('scenario.history')}</span>
             {runs.length > 0 && (

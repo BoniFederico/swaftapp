@@ -2091,12 +2091,21 @@ body {
   overflow: hidden;
 }
 .scenario-inspector__head {
-  padding: var(--space-3) var(--space-4);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--border);
 }
 .scenario-inspector__kind {
   font-size: var(--fs-md);
   font-weight: 600;
+}
+.scenario-inspector__head-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
 }
 .scenario-inspector__body {
   flex: 1;
@@ -2147,17 +2156,30 @@ body {
   stroke-width: 2.5;
 }
 
-/* Run panel (below the canvas). */
+/* Run panel (below the canvas) — vertically resizable via its top divider. */
 .scenario-run {
   flex: 0 0 auto;
-  height: 220px;
+  position: relative;
   border-top: 1px solid var(--border);
   background: var(--surface);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.scenario-run__vsplit {
+  flex: 0 0 auto;
+  height: 8px;
+  margin-bottom: -4px;
+  cursor: ns-resize;
+  z-index: 2;
+}
+.scenario-run__vsplit:hover {
+  background: color-mix(in srgb, var(--primary) 30%, transparent);
 }
 .scenario-run__cols {
+  flex: 1;
+  min-height: 0;
   display: flex;
-  height: 100%;
 }
 .scenario-run__main {
   flex: 1;
@@ -2168,8 +2190,20 @@ body {
   gap: var(--space-2);
   overflow-y: auto;
 }
+/* Divider between the step list and the history (resizes the history width). */
+.scenario-run__hsplit {
+  flex: 0 0 auto;
+  width: 8px;
+  margin: 0 -4px;
+  cursor: ew-resize;
+  z-index: 2;
+}
+.scenario-run__hsplit:hover {
+  background: color-mix(in srgb, var(--primary) 30%, transparent);
+}
 .scenario-run__history {
-  flex: 0 0 260px;
+  flex: 0 0 auto;
+  min-width: 0;
   border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;

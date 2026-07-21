@@ -1,30 +1,40 @@
 import type { ScenarioNode } from '@swaft/shared';
 import { SeeboField } from '../editor/SeeboField';
 import { useI18n } from '../i18n/I18nProvider';
-import { Button, TextField } from '../ui';
+import { CloseIcon, IconButton, TextField, TrashIcon } from '../ui';
 
 /**
  * The right-hand inspector for the selected scenario node: kind-specific fields (a block's alias, a
- * decision's boolean formula, a delay's duration, a start's alias) plus delete. Edits are emitted as
- * immutable patches; `field` names the edited field so the parent can coalesce consecutive edits to
- * the same field into a single undo step.
+ * decision's boolean formula, a delay's duration, a start's alias). Its header carries a delete (with
+ * confirmation, wired by the parent) and a close button. Edits are emitted as immutable patches;
+ * `field` names the edited field so the parent can coalesce consecutive edits into a single undo step.
  */
 export function NodeInspector({
   node,
   templateName,
   onChange,
   onDelete,
+  onClose,
 }: {
   node: ScenarioNode;
   templateName: string | null;
   onChange: (patch: Partial<ScenarioNode>, field?: string) => void;
   onDelete: () => void;
+  onClose: () => void;
 }) {
   const { t } = useI18n();
   return (
     <aside className="scenario-inspector" aria-label={t('scenario.inspector')}>
       <div className="scenario-inspector__head">
         <span className="scenario-inspector__kind">{t(`scenario.kind.${node.kind}`)}</span>
+        <span className="scenario-inspector__head-actions">
+          <IconButton label={t('scenario.deleteNode')} onClick={onDelete}>
+            <TrashIcon />
+          </IconButton>
+          <IconButton label={t('scenario.closeInspector')} onClick={onClose}>
+            <CloseIcon />
+          </IconButton>
+        </span>
       </div>
 
       <div className="scenario-inspector__body">
@@ -93,12 +103,6 @@ export function NodeInspector({
             />
           </div>
         )}
-      </div>
-
-      <div className="scenario-inspector__foot">
-        <Button variant="danger" onClick={onDelete}>
-          {t('scenario.deleteNode')}
-        </Button>
       </div>
     </aside>
   );

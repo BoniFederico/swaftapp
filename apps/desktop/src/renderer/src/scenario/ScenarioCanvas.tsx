@@ -180,8 +180,8 @@ export function ScenarioCanvas({
   }
 
   function onBackgroundPointerDown(e: ReactPointerEvent) {
+    // Only pans. The detail panel stays open on a canvas click — it is closed with its × button.
     drag.current = { kind: 'pan', startX: e.clientX, startY: e.clientY, vpX: vp.x, vpY: vp.y };
-    onSelect(null);
   }
 
   function onNodePointerDown(e: ReactPointerEvent, node: ScenarioNode) {
