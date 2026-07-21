@@ -36,6 +36,7 @@ import {
   type SourceRequest,
   type TemplateCreateRequest,
   type TemplateRefRequest,
+  type TemplateSearchRequest,
   type TemplateRenderRequest,
   type TemplateTagAddRequest,
   type TemplateTagRemoveRequest,
@@ -216,6 +217,8 @@ export const handlers: Record<OpName, Handler> = {
     svc(async () => ({ tree: await getTemplateService().deleteTemplate((p as IdRequest).id) })),
   'template.get': (p) =>
     svc(async () => ({ template: await getTemplateService().requireTemplate((p as IdRequest).id) })),
+  'template.search': (p) =>
+    svc(async () => ({ ids: await getTemplateService().search((p as TemplateSearchRequest).query) })),
   'template.updateSource': (p) =>
     svc(async () => {
       const r = p as TemplateUpdateSourceRequest;

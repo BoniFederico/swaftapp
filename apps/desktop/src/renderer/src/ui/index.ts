@@ -28,6 +28,9 @@ export {
   SaveIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  SearchIcon,
+  FilterIcon,
+  SendIcon,
 } from './icons';
 export { Menu, type MenuItem } from './Menu';
 export { ConfirmDialog } from './ConfirmDialog';

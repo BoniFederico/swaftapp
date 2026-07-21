@@ -55,6 +55,23 @@ describe('Templates + Seebo rendering (M6)', () => {
     expect(t.source).toContain('textbox');
   });
 
+  it('search matches names and contents (draft + releases), treating wildcards as literals', async () => {
+    const { templates, releases, newTemplate } = await setup();
+    const invoice = await newTemplate('Invoice', 'Total amount due: 42');
+    const greeting = await newTemplate('Greeting', 'plain greeting body');
+
+    // Name match is case-insensitive; content matches the draft source.
+    expect(await templates.search('invo')).toEqual([invoice]);
+    expect(await templates.search('AMOUNT DUE')).toEqual([invoice]);
+    // LIKE wildcards in the query are literals, not match-alls.
+    expect(await templates.search('%')).toEqual([]);
+
+    // Content kept only in an older release still surfaces the template.
+    await releases.createRelease(greeting, 'v1', { source: 'legacy needle here' });
+    await templates.updateSource(greeting, 'fresh draft');
+    expect(await templates.search('legacy needle')).toEqual([greeting]);
+  });
+
   it('analyze surfaces a widget per capability (textbox) with label', async () => {
     const { render, newTemplate } = await setup();
     const id = await newTemplate('Doc');

@@ -69,7 +69,63 @@ describe('Working Tree — nesting & drag-and-drop', () => {
     });
   });
 
-  it('reflects an external tag change in the Tags view in real time', async () => {
+  it('search narrows the tree to name/content matches; the funnel filters by type', async () => {
+    const { workspace } = installTestWorkspaceBackend();
+    await workspace.create({ name: 'WS', location: 'mem://sr.swaft', encrypt: false });
+    const org = getOrganizationService();
+    let tree = await org.createProject({ name: 'P' });
+    tree = await org.createFolder({ name: 'F', projectId: tree.projects[0]!.id });
+    const folderId = tree.folders[0]!.id;
+    await getTemplateService().createTemplate({
+      folderId,
+      name: 'Invoice',
+      type: 'document',
+      source: 'Total amount due: 42',
+    });
+    await getTemplateService().createTemplate({ folderId, name: 'Call', type: 'api' });
+
+    render(
+      <AppProviders>
+        <WorkingTree
+          client={client}
+          openTemplateId={null}
+          onOpenTemplate={() => {}}
+          onCollapse={() => {}}
+        />
+      </AppProviders>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Select project' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'P' }));
+
+    // The folder starts collapsed: no template rows yet.
+    await screen.findByText('F');
+    expect(screen.queryByText('Invoice')).toBeNull();
+
+    // A content search reveals the matching template, auto-expanding its folder.
+    const search = screen.getByLabelText('Search templates');
+    fireEvent.change(search, { target: { value: 'amount due' } });
+    expect(await screen.findByText('Invoice')).toBeInTheDocument();
+    expect(screen.queryByText('Call')).toBeNull();
+
+    // No matches → the empty hint (and no folder rows).
+    fireEvent.change(search, { target: { value: 'no-such-needle' } });
+    expect(await screen.findByText('No matching templates.')).toBeInTheDocument();
+    expect(screen.queryByText('F')).toBeNull();
+
+    // Clearing the search collapses the tree back.
+    fireEvent.change(search, { target: { value: '' } });
+    expect(await screen.findByText('F')).toBeInTheDocument();
+    expect(screen.queryByText('Invoice')).toBeNull();
+
+    // The funnel narrows by type: only the API template survives.
+    fireEvent.click(screen.getByRole('button', { name: 'Filter by type' }));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: 'API' }));
+    expect(await screen.findByText('Call')).toBeInTheDocument();
+    expect(screen.queryByText('Invoice')).toBeNull();
+  });
+
+  it('reflects an external tag change in the tag badges in real time', async () => {
     const { workspace } = installTestWorkspaceBackend();
     await workspace.create({ name: 'WS', location: 'mem://tg.swaft', encrypt: false });
     const org = getOrganizationService();
@@ -92,16 +148,17 @@ describe('Working Tree — nesting & drag-and-drop', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Select project' }));
     fireEvent.click(await screen.findByRole('menuitem', { name: 'P' }));
-    fireEvent.click(await screen.findByRole('tab', { name: 'Tags' }));
-
-    // Before tagging, the template sits under "Untagged".
-    expect(await screen.findByText('Untagged')).toBeInTheDocument();
-    expect(screen.queryByText('urgent')).toBeNull();
+    // Switch the row badges to tag dots and reveal the template.
+    fireEvent.click(screen.getByRole('button', { name: /Showing subtype badges/ }));
+    fireEvent.click((await screen.findByText('F')).closest('.tree-item')!);
+    await screen.findByText('Doc');
+    expect(document.querySelector('.tree-tagdot')).toBeNull();
 
     // An external mutation (as the editor would do) + a tree-changed notification reflects live.
     await org.addTemplateTag(docId, 'urgent');
     notifyTreeChanged();
 
-    expect(await screen.findByText('urgent')).toBeInTheDocument();
+    await waitFor(() => expect(document.querySelector('.tree-tagdot')).not.toBeNull());
+    expect(document.querySelector('.tree-tagdot')).toHaveAttribute('title', 'urgent');
   });
 });

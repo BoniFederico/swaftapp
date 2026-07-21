@@ -228,6 +228,8 @@ export function TemplateEditorModal({
         applySelection(created.id, res.releases, template);
       }
       setChangelog((await client.call('changelog.list', { templateId })).entries);
+      // A new version now exists: let open views (e.g. an API tab's version listbox) reload theirs.
+      notifyTreeChanged();
     } finally {
       setBusy(false);
     }

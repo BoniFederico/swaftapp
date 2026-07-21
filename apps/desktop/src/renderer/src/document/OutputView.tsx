@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { RENDERABLE_SUBTYPES, type RenderResultDto } from '@swaft/shared';
 import { CodeEditor } from '../editor/CodeEditor';
@@ -102,6 +102,7 @@ export function OutputView({
   fileBaseName,
   subtype,
   testId,
+  versionControl,
 }: {
   result: RenderResultDto | null;
   error: string | null;
@@ -110,6 +111,8 @@ export function OutputView({
   fileBaseName: string;
   subtype: string | null;
   testId?: string;
+  /** Optional control (the Document view's version listbox) shown left of the header buttons. */
+  versionControl?: ReactNode;
 }) {
   const { t } = useI18n();
   const toast = useToast();
@@ -166,6 +169,7 @@ export function OutputView({
       title={t('doc.output')}
       actions={
         <div className="ui-card__actions output-actions">
+          {versionControl}
           {hasActions && (
             <IconButton label={t('doc.hasActions')} onClick={() => {}}>
               <BoltIcon />
