@@ -43,28 +43,28 @@ function renderPanel() {
 }
 
 describe('ActionPanel', () => {
-  it('reveals the performed action’s output and logs, expanded after the run', async () => {
+  it('runs an action and auto-opens its run detail (output, logs, env writes)', async () => {
     renderPanel();
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Confirm action g' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Perform actions' }));
+    // One Run button per prepared action; pressing it performs that action.
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }));
 
-    // The fresh run auto-expands, so the output is visible without a click.
+    // The fresh run auto-opens its detail popup, so the output is one glance away.
     await waitFor(() => expect(screen.getByText('hello world')).toBeInTheDocument());
     expect(screen.getByText('greeting world')).toBeInTheDocument();
     expect(screen.getByText(/Wrote TOKEN/)).toBeInTheDocument();
   });
 
-  it('collapses and re-expands the detail on click', async () => {
+  it('lists the run in the action history and reopens the detail on click', async () => {
     renderPanel();
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Confirm action g' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Perform actions' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }));
     await waitFor(() => expect(screen.getByText('hello world')).toBeInTheDocument());
 
-    // The receipt line is a button; toggling it hides then shows the detail again.
-    const row = screen.getByRole('button', { expanded: true });
-    fireEvent.click(row);
+    // Close the popup → the run stays listed under its action.
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(screen.queryByText('hello world')).not.toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { expanded: false }));
+
+    // Clicking the history row reopens the detail popup.
+    fireEvent.click(screen.getByRole('button', { name: /succeeded/ }));
     await waitFor(() => expect(screen.getByText('hello world')).toBeInTheDocument());
   });
 });

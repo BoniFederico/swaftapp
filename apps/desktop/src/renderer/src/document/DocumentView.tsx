@@ -204,21 +204,20 @@ export function DocumentView({
   }, [requirements, result]);
   const showPanel = !template || !!error || active.length > 0;
 
+  const versionControl = (
+    <Select
+      aria-label={t('render.version')}
+      value={selection}
+      onChange={(v) => void selectVersion(v)}
+      options={[
+        { value: DRAFT_RELEASE, label: t('editor.draft') },
+        ...releases.map((r) => ({ value: r.id, label: r.name })),
+      ]}
+    />
+  );
+
   return (
     <div className="render-view">
-      <div className="render-view__bar">
-        <span className="render-view__name">{template?.name ?? ''}</span>
-        <Select
-          aria-label={t('render.version')}
-          value={selection}
-          onChange={(v) => void selectVersion(v)}
-          options={[
-            { value: DRAFT_RELEASE, label: t('editor.draft') },
-            ...releases.map((r) => ({ value: r.id, label: r.name })),
-          ]}
-        />
-      </div>
-
       <div className="doc" ref={docRef} style={{ height: layout.height ?? undefined }}>
         {/* Hide the Input container entirely when the selected version has no inputs. */}
         {showPanel && (
@@ -272,6 +271,7 @@ export function DocumentView({
               busy={busy}
               fileBaseName={template?.name ?? 'output'}
               subtype={current.subtype}
+              versionControl={versionControl}
             />
           </div>
           {result && result.actions.length > 0 && (

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { ResultEnvelope } from '@swaft/shared';
 import { AppProviders } from '../AppProviders';
 import { ApiClient } from '../api-client/client';
@@ -51,15 +51,11 @@ describe('Action Panel (M10)', () => {
       </AppProviders>,
     );
 
-    // Auto-render (no Render button) → the Action Panel appears with the prepared action.
-    const confirm = await screen.findByLabelText('Confirm action mk');
+    // Auto-render (no Render button) → the Action Panel appears with a Run button for the action.
+    const run = await screen.findByRole('button', { name: 'Run' });
+    fireEvent.click(run);
 
-    // Performing without confirming would skip; confirm first, then perform.
-    fireEvent.click(confirm);
-    fireEvent.click(screen.getByRole('button', { name: 'Perform actions' }));
-
-    await waitFor(() =>
-      expect(within(screen.getByTestId('action-receipts')).getByText('succeeded')).toBeInTheDocument(),
-    );
+    // The run succeeds and is surfaced (in its detail popup and/or the action's history).
+    await waitFor(() => expect(screen.getAllByText('succeeded').length).toBeGreaterThan(0));
   });
 });
