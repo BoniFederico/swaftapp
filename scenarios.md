@@ -390,6 +390,52 @@ New DTOs (`ScenarioRunDto`, `ScenarioRunStepDto`) modeled on `ApiHistoryItem` / 
 > `ApiRunService.send` an optional sink so it records to the scenario run instead of the per‑template
 > history. Standalone sends are unchanged.
 
+### 6.3 Editing model — a scenario is a normal, editable template (dual surface)
+
+**Yes: a scenario is stored and edited exactly like every other template — its `source` is
+editable JSON, openable, versionable, syncable and diffable — with the graph editor as the primary
+surface and raw‑JSON editing available as the power/fallback path.** This mirrors how `api` templates
+work today, and it is a *free* property of storing the graph as JSON‑in‑`source` rather than in a
+bespoke store.
+
+Two edit surfaces, both writing the same `source` (verified against the current API behaviour):
+
+1. **`ScenarioView` (the visual canvas)** — the primary, structured editor. Opening the template
+   (single‑click tab) mounts the canvas; it keeps the graph in memory and `JSON.stringify`s it into
+   `source` via `template.updateSource` — *identical* to how `ApiView.save()` serializes the
+   `HttpRequestModel`.
+2. **The Template Editor modal (`TemplateEditorModal`)** — reached by the same double‑click that opens
+   the raw editor for any template. It is **type‑generic**: it edits `source` as text through CodeMirror
+   using `SUBTYPES[tpl.type]` and saves with `template.updateSource` (`TemplateEditorModal.tsx:160`).
+   Because a scenario's subtype is `json`, this gives **syntax‑highlighted, prettier‑formattable raw
+   graph JSON** out of the box — the exact same experience an `api` template gets when you double‑click
+   it (a JSON request with a Format button). No extra work is needed for this surface; it comes for free
+   once `SUBTYPES['scenario'] = ['json']`.
+
+**Seebo formulas live *inside* the graph JSON, as string fields — the same as API.** An `api`
+template's JSON carries `${ … }` formulas in `url`/`headers`/`body`; a scenario's JSON carries them in
+its own string fields:
+
+- a **decision node**'s `condition` (`"${ previous('login').status == 200 }"`),
+- a **template node**'s `inputs` overrides that bind a block input to upstream data
+  (`"token": "${ previous('login').json.token }"`).
+
+So the whole scenario — topology *and* the formulas that wire data between blocks — is one
+human‑readable, hand‑editable JSON document. It participates in **releases/versioning** like any
+template (the release listbox + `release.update`), syncs as a 🟢 entity, and diffs cleanly in git‑style
+review.
+
+**One required safeguard (parity with `parseRequest`).** Because the JSON can be hand‑edited (and a
+half‑typed graph can be transiently invalid), the canvas's `parseGraph(source)` must be **defensive**:
+on malformed/mismatched JSON it falls back to a safe empty/last‑good graph and surfaces a diagnostic
+rather than throwing — exactly how `ApiView.parseRequest()` (`ApiView.tsx:62-76`) tolerates a bad source
+today. The canvas should also avoid clobbering a source it could not parse (don't auto‑serialize an empty
+graph over a file the user was hand‑editing) — treat an unparseable source as read‑until‑fixed.
+
+**Net:** nothing special is needed to make a scenario "a real template." The JSON‑in‑`source` decision
+(from §2.1) *is* what buys openable/editable/versionable/dual‑surface behaviour; the only new code is the
+canvas that renders and mutates that JSON, plus a defensive parser.
+
 ---
 
 ## 7. Execution engine (`ScenarioService`, main process)
