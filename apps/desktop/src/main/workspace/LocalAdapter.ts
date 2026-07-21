@@ -41,6 +41,12 @@ export class LocalAdapter {
 
   // --- Lifecycle ------------------------------------------------------------
 
+  /** Create the current schema and stamp its version on an empty database (no rows written). */
+  async createSchema(): Promise<void> {
+    await this.db.exec(SCHEMA_DDL);
+    await this.db.setUserVersion(SCHEMA_VERSION);
+  }
+
   /** Create the schema, stamp the version, and write the singleton workspace-metadata row. */
   async initialize(input: {
     name: string;
@@ -49,8 +55,7 @@ export class LocalAdapter {
     deviceId: string;
     now: string;
   }): Promise<void> {
-    await this.db.exec(SCHEMA_DDL);
-    await this.db.setUserVersion(SCHEMA_VERSION);
+    await this.createSchema();
     await this.db.run(
       `INSERT INTO workspace_meta
         (id, name, storage_mode, execution_mode, device_id,
