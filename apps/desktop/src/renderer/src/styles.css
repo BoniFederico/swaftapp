@@ -4045,6 +4045,8 @@ body {
 .git-panel__actions {
   display: flex;
   flex-wrap: wrap;
+  /* Distribute the spacing evenly across the row, keeping the buttons centered. */
+  justify-content: space-evenly;
   gap: var(--space-1);
   border-top: 1px solid var(--border);
   padding-top: var(--space-2);
