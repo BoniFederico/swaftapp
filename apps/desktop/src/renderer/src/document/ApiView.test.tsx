@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { EditorView } from '@codemirror/view';
-import { makeError, ok, type RequirementDto, type ResultEnvelope } from '@swaft/shared';
+import { makeError, ok, type ReleaseDto, type RequirementDto, type ResultEnvelope } from '@swaft/shared';
 import { AppProviders } from '../AppProviders';
 import { ApiClient } from '../api-client/client';
 import type { Transport } from '../api-client/transport/types';
@@ -61,6 +61,10 @@ function makeTransport(sent: unknown[]): Transport {
       switch (op) {
         case 'template.get':
           return Promise.resolve(ok({ template: { ...template(), source } }));
+        case 'release.list':
+          return Promise.resolve(ok({ releases: [] }));
+        case 'releaseSelection.get':
+          return Promise.resolve(ok({ releaseId: 'draft' }));
         case 'api.history.list':
           return Promise.resolve(ok({ items: [] }));
         case 'api.actions.list':
@@ -229,6 +233,69 @@ describe('ApiView — bindings', () => {
     });
   });
 
+  it('edits the selected release in place (switch loads its request, Save writes the release)', async () => {
+    const draft = JSON.stringify({ method: 'GET', url: 'https://draft.example.com' });
+    const release: ReleaseDto = {
+      id: 'r1',
+      templateId: 't1',
+      name: 'v1',
+      source: JSON.stringify({ method: 'POST', url: 'https://release.example.com' }),
+      subtype: 'json',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const calls: { op: string; payload: unknown }[] = [];
+    const transport: Transport = {
+      call(op, payload): Promise<ResultEnvelope<unknown>> {
+        calls.push({ op, payload });
+        switch (op) {
+          case 'template.get':
+            return Promise.resolve(ok({ template: { ...template(), source: draft } }));
+          case 'release.list':
+            return Promise.resolve(ok({ releases: [release] }));
+          case 'releaseSelection.get':
+            return Promise.resolve(ok({ releaseId: 'draft' }));
+          case 'release.update':
+            return Promise.resolve(ok({ releases: [release] }));
+          case 'api.history.list':
+            return Promise.resolve(ok({ items: [] }));
+          case 'api.actions.list':
+            return Promise.resolve(ok({ outcomes: [] }));
+          case 'inputState.get':
+            return Promise.resolve(ok({ values: {} }));
+          case 'api.analyze':
+            return Promise.resolve(ok({ requirements: [], diagnostics: [] }));
+          default:
+            return Promise.resolve(ok({}));
+        }
+      },
+    };
+    const { container } = render(
+      <AppProviders>
+        <ApiView client={new ApiClient(transport)} templateId="t1" />
+      </AppProviders>,
+    );
+    // Starts on the Draft version.
+    await waitFor(() => expect(readField(container, 'URL')).toBe('https://draft.example.com'));
+
+    // Switch the version listbox to the release → its request loads.
+    fireEvent.click(screen.getByLabelText('Version'));
+    fireEvent.click(await screen.findByRole('option', { name: 'v1' }));
+    await waitFor(() => expect(readField(container, 'URL')).toBe('https://release.example.com'));
+
+    // Edit and Save → the release is updated in place (not the draft).
+    typeInto(container, 'URL', 'https://release.example.com/v2');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => {
+      const update = calls.find((c) => c.op === 'release.update');
+      expect(update).toBeTruthy();
+      expect((update!.payload as { releaseId: string }).releaseId).toBe('r1');
+      expect((update!.payload as { source: string }).source).toContain('release.example.com/v2');
+    });
+    // The draft was never overwritten by this save.
+    expect(calls.some((c) => c.op === 'template.updateSource')).toBe(false);
+  });
+
   it('reflects an external template save in the fields (editor → API view)', async () => {
     const state = { source: JSON.stringify({ method: 'GET', url: 'https://one.example.com' }) };
     const transport: Transport = {
@@ -236,6 +303,10 @@ describe('ApiView — bindings', () => {
         switch (op) {
           case 'template.get':
             return Promise.resolve(ok({ template: { ...template(), source: state.source } }));
+          case 'release.list':
+            return Promise.resolve(ok({ releases: [] }));
+          case 'releaseSelection.get':
+            return Promise.resolve(ok({ releaseId: 'draft' }));
           case 'api.history.list':
             return Promise.resolve(ok({ items: [] }));
           case 'api.actions.list':

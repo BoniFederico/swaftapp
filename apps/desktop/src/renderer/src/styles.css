@@ -773,6 +773,28 @@ body {
 .api__save {
   flex: 0 0 auto;
 }
+/* Send is the primary action: an accent icon button, matching the bar's 32px control height. */
+.api__send {
+  flex: 0 0 auto;
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.api__send:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 88%, #000);
+}
+.api__send:disabled {
+  opacity: 0.5;
+}
+/* The version listbox sits between Send and Save; keep it compact and bar-height. */
+.api__bar .ui-select {
+  height: 32px;
+}
+.api__bar > .ui-field {
+  flex: 0 0 auto;
+  margin: 0;
+  min-width: 120px;
+}
 .api__method[data-method='GET'] .ui-select {
   color: var(--status-ok);
 }

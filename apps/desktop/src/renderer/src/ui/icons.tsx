@@ -227,6 +227,15 @@ export function EmptyIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** Paper plane — send the API request. */
+export function SendIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+    </Icon>
+  );
+}
+
 /** Magnifier — the Working Tree search box. */
 export function SearchIcon(props: SVGProps<SVGSVGElement>) {
   return (

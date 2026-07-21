@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type {
-  ApiHistoryItem,
-  RequestAction,
-  RequestActionOutcomeDto,
-  DiagnosticDto,
-  HttpAuth,
-  HttpBodyType,
-  HttpMethod,
-  HttpRequestModel,
-  HttpResponseDto,
-  RequirementDto,
+import {
+  DRAFT_RELEASE,
+  type ApiHistoryItem,
+  type ReleaseDto,
+  type RequestAction,
+  type RequestActionOutcomeDto,
+  type DiagnosticDto,
+  type HttpAuth,
+  type HttpBodyType,
+  type HttpMethod,
+  type HttpRequestModel,
+  type HttpResponseDto,
+  type RequirementDto,
 } from '@swaft/shared';
 import { ApiClient, ApiError } from '../api-client/client';
 import { CodeEditor } from '../editor/CodeEditor';
@@ -25,6 +27,7 @@ import {
   IconButton,
   SaveIcon,
   Select,
+  SendIcon,
   useFocusTrap,
   useSaveShortcut,
   useToast,
@@ -70,6 +73,15 @@ function parseRequest(source: string): HttpRequestModel {
     /* fall through */
   }
   return { method: 'GET', url: '' };
+}
+
+/** The serialized request source of the selected version: a release's source, else the draft's. */
+function requestSourceOf(selection: string, draftSource: string, releases: ReleaseDto[]): string {
+  if (selection !== DRAFT_RELEASE) {
+    const r = releases.find((x) => x.id === selection);
+    if (r) return r.source;
+  }
+  return draftSource;
 }
 
 /**
@@ -139,6 +151,13 @@ export function ApiView({
   const [savedSource, setSavedSource] = useState<string | null>(null);
   const savedSourceRef = useRef<string | null>(null);
   const [req, setReq] = useState<HttpRequestModel>({ method: 'GET', url: '' });
+  // Editable versions of this request: the Draft plus each named release. `selection` is which one is
+  // being edited — every field, save and send targets it. `draftSourceRef` mirrors the draft's saved
+  // source and `selectionRef` the selection, so the tree-change reload (a stable closure) reads them.
+  const [releases, setReleases] = useState<ReleaseDto[]>([]);
+  const [selection, setSelection] = useState<string>(DRAFT_RELEASE);
+  const selectionRef = useRef<string>(DRAFT_RELEASE);
+  const draftSourceRef = useRef<string>('');
   const [response, setResponse] = useState<HttpResponseDto | null>(null);
   // The concrete (rendered) request that was sent, when the request used `${ … }` formulas.
   const [renderedReq, setRenderedReq] = useState<HttpRequestModel | null>(null);
@@ -173,14 +192,22 @@ export function ApiView({
       savedSourceRef.current = source;
       setSavedSource(source);
     };
-    // Reflect an EXTERNAL change to the template source (e.g. edited + saved in the Template Editor):
-    // re-parse it into the structured request. Skips the echo of our own save (source === saved).
+    // Reflect an EXTERNAL change (e.g. edited + saved in the Template Editor, or a new release): reload
+    // the draft source + the release list, then re-parse the *selected* version into the structured
+    // request. Skips the echo of our own save (source === saved) so unsaved edits are not clobbered.
     async function reloadSource() {
       try {
-        const res = await client.call('template.get', { id: templateId });
+        const [tpl, rel] = await Promise.all([
+          client.call('template.get', { id: templateId }),
+          client.call('release.list', { templateId }),
+        ]);
         if (cancelled) return;
-        onTitleChange?.(res.template.name);
-        const parsed = parseRequest(res.template.source);
+        onTitleChange?.(tpl.template.name);
+        draftSourceRef.current = tpl.template.source;
+        setReleases(rel.releases);
+        const parsed = parseRequest(
+          requestSourceOf(selectionRef.current, tpl.template.source, rel.releases),
+        );
         const source = JSON.stringify(parsed);
         if (source === savedSourceRef.current) return;
         setReq(parsed);
@@ -216,15 +243,23 @@ export function ApiView({
     let folderId: string | null = null;
     void (async () => {
       try {
-        const [tpl, hist, acts, inp] = await Promise.all([
+        const [tpl, rel, sel, hist, acts, inp] = await Promise.all([
           client.call('template.get', { id: templateId }),
+          client.call('release.list', { templateId }),
+          client.call('releaseSelection.get', { templateId }),
           client.call('api.history.list', { templateId }),
           client.call('api.actions.list', { templateId }),
           client.call('inputState.get', { templateId }),
         ]);
         if (cancelled) return;
         onTitleChange?.(tpl.template.name);
-        const parsed = parseRequest(tpl.template.source);
+        draftSourceRef.current = tpl.template.source;
+        setReleases(rel.releases);
+        setSelection(sel.releaseId);
+        selectionRef.current = sel.releaseId;
+        const parsed = parseRequest(
+          requestSourceOf(sel.releaseId, tpl.template.source, rel.releases),
+        );
         setReq(parsed);
         applySaved(JSON.stringify(parsed));
         setHistory(hist.items);
@@ -355,10 +390,39 @@ export function ApiView({
 
   async function save() {
     const source = JSON.stringify(req);
-    await client.call('template.updateSource', { id: templateId, source });
+    // Persist to whichever version is being edited: the Draft, or the selected release in place.
+    if (selection === DRAFT_RELEASE) {
+      await client.call('template.updateSource', { id: templateId, source });
+      draftSourceRef.current = source;
+    } else {
+      const rel = releases.find((r) => r.id === selection);
+      const res = await client.call('release.update', {
+        releaseId: selection,
+        source,
+        subtype: rel?.subtype ?? null,
+      });
+      setReleases(res.releases);
+    }
     savedSourceRef.current = source;
     setSavedSource(source);
     notifyTreeChanged();
+  }
+
+  /** Switch the edited version: load its request, reset the saved baseline, persist the selection. */
+  async function selectVersion(sel: string) {
+    if (sel === selection) return;
+    const parsed = parseRequest(requestSourceOf(sel, draftSourceRef.current, releases));
+    const source = JSON.stringify(parsed);
+    setSelection(sel);
+    selectionRef.current = sel;
+    setReq(parsed);
+    savedSourceRef.current = source;
+    setSavedSource(source);
+    // Reset the response pane: it belonged to the previous version.
+    setResponse(null);
+    setRenderedReq(null);
+    setError(null);
+    await client.call('releaseSelection.set', { templateId, releaseId: sel }).catch(() => undefined);
   }
   /** Explicit save (button / Ctrl+S) — confirms with a toast; `send()` saves silently. */
   async function saveRequest() {
@@ -468,9 +532,23 @@ export function ApiView({
             preview={previewFormula}
           />
         </div>
-        <Button onClick={() => void send()} disabled={busy || !req.url}>
-          {busy ? t('api.sending') : t('api.send')}
-        </Button>
+        <IconButton
+          label={busy ? t('api.sending') : t('api.send')}
+          className="api__send"
+          disabled={busy || !req.url}
+          onClick={() => void send()}
+        >
+          <SendIcon />
+        </IconButton>
+        <Select
+          aria-label={t('api.release')}
+          value={selection}
+          onChange={(v) => void selectVersion(v)}
+          options={[
+            { value: DRAFT_RELEASE, label: t('editor.draft') },
+            ...releases.map((r) => ({ value: r.id, label: r.name })),
+          ]}
+        />
         <IconButton label={t('api.save')} className="api__save" onClick={() => void saveRequest()}>
           <SaveIcon />
         </IconButton>
