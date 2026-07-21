@@ -4063,6 +4063,10 @@ body {
   width: min(1100px, 94vw);
   max-width: 94vw;
 }
+/* The diff opens from the Git panel (z-index 150), so it must sit above it. */
+.git-diff-backdrop {
+  z-index: 200;
+}
 .git-diff__title {
   display: flex;
   align-items: baseline;

@@ -69,6 +69,7 @@ export function GitDiffDialog({
     <Dialog
       open={open}
       className="ui-dialog--wide git-diff-dialog"
+      backdropClassName="git-diff-backdrop"
       title={
         <span className="git-diff__title">
           <span className="git-diff__titleName">{label ?? path}</span>
