@@ -362,7 +362,7 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
                   ) : tb.type === 'capability' || tb.type === 'action' ? (
                     <CodeView {...shared} kind={tb.type} />
                   ) : tb.type === 'scenario' ? (
-                    <ScenarioView {...shared} />
+                    <ScenarioView {...shared} onOpenTemplate={openTemplate} />
                   ) : (
                     <DocumentView {...shared} />
                   )}

@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type DragEvent as ReactDragEvent,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from 'react';
@@ -20,7 +21,7 @@ import {
   newId,
   nodeSize,
   outputPorts,
-  snapPoint,
+  snapNodePosition,
   type Point,
 } from './graph-model';
 
@@ -39,7 +40,16 @@ interface Viewport {
 /** A live pointer interaction, held in a ref so a drag never depends on stale React state. */
 type Drag =
   | { kind: 'pan'; startX: number; startY: number; vpX: number; vpY: number }
-  | { kind: 'node'; id: string; startX: number; startY: number; nodeX: number; nodeY: number; moved: boolean }
+  | {
+      kind: 'node';
+      id: string;
+      nodeKind: ScenarioNode['kind'];
+      startX: number;
+      startY: number;
+      nodeX: number;
+      nodeY: number;
+      moved: boolean;
+    }
   | { kind: 'edge'; from: string; branch: ScenarioBranch | null };
 
 export interface ResolvedTemplate {
@@ -71,6 +81,8 @@ export function ScenarioCanvas({
   nodeStatus,
   onChange,
   onSelect,
+  onNodeContextMenu,
+  onInteract,
   resolveTemplate,
 }: {
   graph: ScenarioGraph;
@@ -80,6 +92,10 @@ export function ScenarioCanvas({
   nodeStatus?: Record<string, string>;
   onChange: (graph: ScenarioGraph) => void;
   onSelect: (sel: Selection | null) => void;
+  /** Right-click on a node → open its context menu at the cursor (screen coords). */
+  onNodeContextMenu?: (node: ScenarioNode, x: number, y: number) => void;
+  /** Any pointer-down anywhere on the canvas (background, node, port or edge). */
+  onInteract?: () => void;
   resolveTemplate: (id: string) => ResolvedTemplate | null;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -130,7 +146,7 @@ export function ScenarioCanvas({
         const z = vpRef.current.zoom;
         if (Math.abs(e.clientX - d.startX) > 2 || Math.abs(e.clientY - d.startY) > 2) d.moved = true;
         let pos: Point = { x: d.nodeX + (e.clientX - d.startX) / z, y: d.nodeY + (e.clientY - d.startY) / z };
-        if (snapRef.current) pos = snapPoint(pos);
+        if (snapRef.current) pos = snapNodePosition(d.nodeKind, pos);
         setDragPos({ id: d.id, x: pos.x, y: pos.y });
       } else if (d.kind === 'edge') {
         const p = screenToWorld(e.clientX, e.clientY);
@@ -146,7 +162,7 @@ export function ScenarioCanvas({
         if (d.moved) {
           const z = vpRef.current.zoom;
           let pos: Point = { x: d.nodeX + (e.clientX - d.startX) / z, y: d.nodeY + (e.clientY - d.startY) / z };
-          if (snapRef.current) pos = snapPoint(pos);
+          if (snapRef.current) pos = snapNodePosition(d.nodeKind, pos);
           onChange(moveNode(graphRef.current, d.id, pos));
         }
         setDragPos(null);
@@ -180,16 +196,28 @@ export function ScenarioCanvas({
   }
 
   function onBackgroundPointerDown(e: ReactPointerEvent) {
-    // Only pans. The detail panel stays open on a canvas click — it is closed with its × button.
+    if (e.button !== 0) return; // right-click is reserved for context menus
+    // Only pans. A single canvas click keeps the selection/detail panel — it is cleared with a
+    // double-click on empty space (see onBackgroundDoubleClick) or the panel's × button.
     drag.current = { kind: 'pan', startX: e.clientX, startY: e.clientY, vpX: vp.x, vpY: vp.y };
+  }
+
+  function onBackgroundDoubleClick(e: ReactMouseEvent) {
+    // Double-clicking empty canvas clears the selection (and so closes the detail inspector). A
+    // double-click that lands on a node or an edge is ignored.
+    const el = e.target as HTMLElement;
+    if (el.closest('.scenario-node') || el.closest('.scenario-edge-hit') || el.closest('.scenario-edge')) return;
+    onSelect(null);
   }
 
   function onNodePointerDown(e: ReactPointerEvent, node: ScenarioNode) {
     e.stopPropagation();
+    if (e.button !== 0) return; // right-click → context menu, not a drag
     onSelect({ kind: 'node', id: node.id });
     drag.current = {
       kind: 'node',
       id: node.id,
+      nodeKind: node.kind,
       startX: e.clientX,
       startY: e.clientY,
       nodeX: node.position.x,
@@ -198,8 +226,16 @@ export function ScenarioCanvas({
     };
   }
 
+  function onNodeContext(e: ReactMouseEvent, node: ScenarioNode) {
+    e.preventDefault();
+    e.stopPropagation();
+    onSelect({ kind: 'node', id: node.id });
+    onNodeContextMenu?.(node, e.clientX, e.clientY);
+  }
+
   function onPortPointerDown(e: ReactPointerEvent, node: ScenarioNode, branch: ScenarioBranch | null) {
     e.stopPropagation();
+    if (e.button !== 0) return;
     drag.current = { kind: 'edge', from: node.id, branch };
     setDrawing(true);
     setEdgeCursor(screenToWorld(e.clientX, e.clientY));
@@ -220,7 +256,7 @@ export function ScenarioCanvas({
     const p = screenToWorld(e.clientX, e.clientY);
     const { w, h } = nodeSize('template');
     let position: Point = { x: p.x - w / 2, y: p.y - h / 2 };
-    if (snapEnabled) position = snapPoint(position);
+    if (snapEnabled) position = snapNodePosition('template', position);
     const node: ScenarioNode = {
       id: newId('n'),
       kind: 'template',
@@ -249,7 +285,9 @@ export function ScenarioCanvas({
         backgroundSize: `${GRID * vp.zoom}px ${GRID * vp.zoom}px`,
         backgroundPosition: `${vp.x}px ${vp.y}px`,
       }}
+      onPointerDownCapture={() => onInteract?.()}
       onPointerDown={onBackgroundPointerDown}
+      onDoubleClick={onBackgroundDoubleClick}
       onWheel={onWheel}
       onDragOver={(e: ReactDragEvent) => {
         e.preventDefault();
@@ -303,6 +341,7 @@ export function ScenarioCanvas({
             runStatus={nodeStatus?.[node.id]}
             template={node.ref ? resolveTemplate(node.ref) : null}
             onPointerDown={onNodePointerDown}
+            onContextMenu={onNodeContext}
             onPortPointerDown={onPortPointerDown}
           />
         ))}
@@ -319,6 +358,7 @@ function NodeView({
   runStatus,
   template,
   onPointerDown,
+  onContextMenu,
   onPortPointerDown,
 }: {
   node: ScenarioNode;
@@ -327,6 +367,7 @@ function NodeView({
   runStatus?: string;
   template: ResolvedTemplate | null;
   onPointerDown: (e: ReactPointerEvent, node: ScenarioNode) => void;
+  onContextMenu: (e: ReactMouseEvent, node: ScenarioNode) => void;
   onPortPointerDown: (e: ReactPointerEvent, node: ScenarioNode, branch: ScenarioBranch | null) => void;
 }) {
   const { w, h } = nodeSize(node.kind);
@@ -342,6 +383,7 @@ function NodeView({
       style={{ left: node.position.x, top: node.position.y, width: w, height: h }}
       draggable={false}
       onPointerDown={(e) => onPointerDown(e, node)}
+      onContextMenu={(e) => onContextMenu(e, node)}
     >
       {node.kind === 'decision' && (
         <svg className="scenario-node__diamond" viewBox={`0 0 ${w} ${h}`} aria-hidden="true">

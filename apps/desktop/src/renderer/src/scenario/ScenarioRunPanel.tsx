@@ -14,23 +14,24 @@ function shortTime(iso: string): string {
 /**
  * The run panel below the canvas: the followed run's status + its per-node steps (click for detail),
  * an inline input prompt when an attended run pauses for a block's missing inputs, and the scenario's
- * run history. Purely presentational — the run lifecycle lives in {@link ScenarioRunController}.
+ * run history. Purely presentational — the run lifecycle (and the batch controls, which live in the
+ * toolbar) lives in {@link ScenarioRunController}.
  */
 export function ScenarioRunPanel({
   controller,
+  resolveNodeName,
   minimized,
   onToggleMinimize,
-  onRunBatch,
   height,
   historyWidth,
   onResize,
   onHistoryResize,
 }: {
   controller: ScenarioRunController;
+  /** The referenced template name for a step's node (best-effort), for the detail list. */
+  resolveNodeName: (nodeId: string) => string | null;
   minimized: boolean;
   onToggleMinimize: () => void;
-  /** Launch a batch of `count` runs spaced by `interRunDelayMs` (goes through action-authorization). */
-  onRunBatch: (count: number, interRunDelayMs: number) => void;
   height: number;
   historyWidth: number;
   /** Pointer-down on the top divider (vertical resize of the whole panel). */
@@ -42,12 +43,20 @@ export function ScenarioRunPanel({
   const { status, runs, batch, batchActive } = controller;
   const [detail, setDetail] = useState<ScenarioRunStepDto | null>(null);
   const [inputs, setInputs] = useState<Record<string, unknown>>({});
-  const [count, setCount] = useState(10);
-  const [intervalSec, setIntervalSec] = useState(1);
 
   // Reset the pending-input form each time a new pause begins.
   const pendingNode = status?.pending?.nodeId ?? null;
   useEffect(() => setInputs({}), [pendingNode]);
+
+  // A readable name for a step with no resolved template/alias (control nodes, or a since-deleted ref).
+  const fallbackName = (kind: string): string =>
+    kind === 'decision'
+      ? t('scenario.kind.decision')
+      : kind === 'delay'
+        ? t('scenario.kind.delay')
+        : kind === 'start'
+          ? t('scenario.kind.start')
+          : kind.charAt(0).toUpperCase() + kind.slice(1);
 
   return (
     <div className="scenario-run" style={minimized ? undefined : { height }}>
@@ -81,47 +90,6 @@ export function ScenarioRunPanel({
       {!minimized && (
       <div className="scenario-run__cols">
         <div className="scenario-run__main">
-          <div className="scenario-run__batch">
-            {batchActive && batch ? (
-              <>
-                <span className="scenario-run__batch-label">
-                  {t('scenario.batchRunning', { done: batch.completed, total: batch.total })}
-                </span>
-                <span className="scenario-run__spacer" />
-                <Button variant="danger" onClick={() => void controller.stopBatch()}>
-                  {t('scenario.stopBatch')}
-                </Button>
-              </>
-            ) : (
-              <>
-                <span className="scenario-run__batch-label">{t('scenario.batchRepeat')}</span>
-                <input
-                  className="ui-input scenario-run__num"
-                  type="number"
-                  min={1}
-                  max={1000}
-                  value={count}
-                  aria-label={t('scenario.batchCount')}
-                  onChange={(e) => setCount(Math.max(1, Math.min(1000, Math.round(Number(e.target.value) || 1))))}
-                />
-                <span className="scenario-run__batch-label">{t('scenario.batchEvery')}</span>
-                <input
-                  className="ui-input scenario-run__num"
-                  type="number"
-                  min={0}
-                  step={0.5}
-                  value={intervalSec}
-                  aria-label={t('scenario.batchInterval')}
-                  onChange={(e) => setIntervalSec(Math.max(0, Number(e.target.value) || 0))}
-                />
-                <span className="scenario-run__batch-label">{t('scenario.batchSeconds')}</span>
-                <span className="scenario-run__spacer" />
-                <Button variant="secondary" onClick={() => onRunBatch(count, Math.round(intervalSec * 1000))}>
-                  {t('scenario.runBatch')}
-                </Button>
-              </>
-            )}
-          </div>
           {status ? (
             <>
               <div className="scenario-run__head">
@@ -146,24 +114,49 @@ export function ScenarioRunPanel({
                 </div>
               )}
 
-              <ul className="scenario-run__steps">
-                {status.steps.map((step) => (
-                  <li key={step.id}>
-                    <button
-                      type="button"
-                      className="scenario-run__step"
-                      onClick={() => setDetail(step)}
-                    >
-                      <span className={`ui-badge scenario-step--${step.status}`}>{step.status}</span>
-                      <span className="scenario-run__step-kind">{step.kind}</span>
-                      {step.alias && <span className="action-item__id">{step.alias}</span>}
-                      {step.httpStatus != null && <span className="muted">{step.httpStatus}</span>}
-                      <span className="scenario-run__spacer" />
-                      {step.durationMs != null && <span className="muted">{step.durationMs} ms</span>}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <ol className="scenario-run__steps">
+                {status.steps.map((step, i) => {
+                  const name = resolveNodeName(step.nodeId) ?? step.alias ?? fallbackName(step.kind);
+                  return (
+                    <li key={step.id}>
+                      <button
+                        type="button"
+                        className="scenario-run__step"
+                        onClick={() => setDetail(step)}
+                      >
+                        <span className="scenario-run__step-seq">{i + 1}</span>
+                        <span
+                          className={`scenario-run__step-dot scenario-step--${step.status}`}
+                          title={step.status}
+                          aria-label={step.status}
+                        />
+                        <span className="scenario-run__step-body">
+                          <span className="scenario-run__step-title">
+                            {step.method && (
+                              <span className="scenario-run__step-method" data-method={step.method}>
+                                {step.method}
+                              </span>
+                            )}
+                            <span className="scenario-run__step-name">{name}</span>
+                            <span className="scenario-run__step-kind">{step.kind}</span>
+                          </span>
+                          {step.url && <span className="scenario-run__step-url muted">{step.url}</span>}
+                        </span>
+                        <span className="scenario-run__step-meta">
+                          {step.httpStatus != null && (
+                            <span className={`ui-badge scenario-run__status--${step.status}`}>
+                              {step.httpStatus}
+                            </span>
+                          )}
+                          {step.durationMs != null && (
+                            <span className="muted">{step.durationMs} ms</span>
+                          )}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
             </>
           ) : (
             <span className="muted">{t('scenario.noRun')}</span>

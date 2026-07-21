@@ -1,13 +1,14 @@
 import type { ScenarioNode } from '@swaft/shared';
 import { SeeboField } from '../editor/SeeboField';
 import { useI18n } from '../i18n/I18nProvider';
-import { CloseIcon, IconButton, TextField, TrashIcon } from '../ui';
+import { CloseIcon, IconButton, PlayIcon, RunFromIcon, TextField, TrashIcon } from '../ui';
 
 /**
  * The right-hand inspector for the selected scenario node: kind-specific fields (a block's alias, a
  * decision's boolean formula, a delay's duration, a start's alias). Its header carries a delete (with
- * confirmation, wired by the parent) and a close button. Edits are emitted as immutable patches;
- * `field` names the edited field so the parent can coalesce consecutive edits into a single undo step.
+ * confirmation, wired by the parent) and a close button; its footer runs the block alone or from here.
+ * Edits are emitted as immutable patches; `field` names the edited field so the parent can coalesce
+ * consecutive edits into a single undo step.
  */
 export function NodeInspector({
   node,
@@ -15,12 +16,20 @@ export function NodeInspector({
   onChange,
   onDelete,
   onClose,
+  onRun,
+  onRunFrom,
+  runDisabled,
 }: {
   node: ScenarioNode;
   templateName: string | null;
   onChange: (patch: Partial<ScenarioNode>, field?: string) => void;
   onDelete: () => void;
   onClose: () => void;
+  /** Run this block alone (no traversal). */
+  onRun: () => void;
+  /** Run from this block onward. */
+  onRunFrom: () => void;
+  runDisabled: boolean;
 }) {
   const { t } = useI18n();
   return (
@@ -103,6 +112,15 @@ export function NodeInspector({
             />
           </div>
         )}
+      </div>
+
+      <div className="scenario-inspector__foot">
+        <IconButton label={t('scenario.runBlock')} disabled={runDisabled} onClick={onRun}>
+          <PlayIcon />
+        </IconButton>
+        <IconButton label={t('scenario.runFromHere')} disabled={runDisabled} onClick={onRunFrom}>
+          <RunFromIcon />
+        </IconButton>
       </div>
     </aside>
   );

@@ -1773,6 +1773,7 @@ body {
 .scenario__toolbar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--border);
@@ -1781,6 +1782,8 @@ body {
 .scenario__toolbar .ui-btn {
   font-size: var(--fs-sm);
   padding: var(--space-1) var(--space-3);
+  min-height: 30px;
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -1806,6 +1809,31 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* Pushes the version + save zone to the far right of the toolbar. */
+.scenario__toolbar-spacer {
+  flex: 1 1 auto;
+  margin-left: auto;
+}
+/* Inline batch runner (repeat N runs every X s) that lives in the toolbar. */
+.scenario__toolbar-batch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-sm);
+}
+.scenario__num {
+  width: 56px;
+  padding: var(--space-1) var(--space-2);
+}
+/* The condensed toolbar menu buttons (Add / Run / Run batch): icon + label + optional caret. */
+.scenario__menu-btn .ui-select__chevron {
+  margin-left: var(--space-1);
+  font-size: var(--fs-sm);
+}
+/* A little breathing room between the "s" label and the Run batch button. */
+.scenario__toolbar-batch .scenario__menu-btn {
+  margin-left: var(--space-2);
 }
 .scenario__main {
   flex: 1;
@@ -2133,12 +2161,12 @@ body {
   font-weight: 600;
 }
 .scenario-inspector__foot {
-  padding: var(--space-3) var(--space-4);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
   border-top: 1px solid var(--border);
-}
-.scenario-inspector__foot .ui-btn {
-  width: 100%;
-  justify-content: center;
 }
 .scenario__run-btn {
   font-weight: 600;
@@ -2317,14 +2345,86 @@ body {
 .scenario-run__run.is-active {
   border-color: var(--primary);
 }
-.scenario-run__step-kind {
-  font-weight: 600;
-}
 .scenario-run__spacer {
   flex: 1;
 }
 .scenario-run__time {
   flex: 0 0 auto;
+}
+/* Step rows: an ordered, aligned detail list — index · status dot · name/url · meta. */
+.scenario-run__step {
+  display: grid;
+  grid-template-columns: 1.4em 9px minmax(0, 1fr) auto;
+  align-items: center;
+}
+.scenario-run__step-seq {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-xs);
+  text-align: right;
+}
+.scenario-run__step-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--border);
+}
+.scenario-run__step-dot.scenario-step--succeeded {
+  background: var(--status-ok);
+}
+.scenario-run__step-dot.scenario-step--failed {
+  background: var(--danger);
+}
+.scenario-run__step-dot.scenario-step--branch-true {
+  background: var(--primary);
+}
+.scenario-run__step-dot.scenario-step--branch-false {
+  background: var(--text-muted);
+}
+.scenario-run__step-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.scenario-run__step-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.scenario-run__step-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.scenario-run__step-method {
+  flex: 0 0 auto;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--primary);
+}
+.scenario-run__step-kind {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.scenario-run__step-url {
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.scenario-run__step-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
 }
 /* Step/run status badges. */
 .scenario-step--failed,

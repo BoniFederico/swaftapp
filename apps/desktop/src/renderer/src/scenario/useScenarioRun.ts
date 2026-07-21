@@ -23,12 +23,27 @@ export interface ScenarioRunController {
   /** The batch currently running (or last finished), or null. */
   batch: ScenarioBatchDto | null;
   batchActive: boolean;
-  start: (opts: { startNodeId?: string; mode: ScenarioRunMode; authorizeActions: boolean }) => Promise<void>;
-  startBatch: (opts: { count: number; interRunDelayMs: number; authorizeActions: boolean }) => Promise<void>;
+  start: (opts: {
+    startNodeId?: string;
+    onlyNode?: boolean;
+    mode: ScenarioRunMode;
+    authorizeActions: boolean;
+    /** The current (possibly unsaved) graph source to run verbatim. */
+    source?: string;
+  }) => Promise<void>;
+  startBatch: (opts: {
+    count: number;
+    interRunDelayMs: number;
+    authorizeActions: boolean;
+    startNodeId?: string;
+    source?: string;
+  }) => Promise<void>;
   stop: () => Promise<void>;
   stopBatch: () => Promise<void>;
   provideInput: (values: Record<string, unknown>) => Promise<void>;
   view: (runId: string) => void;
+  /** Stop following the current run: clears the status + the per-node highlight + the history highlight. */
+  clearFocus: () => void;
   refreshRuns: () => void;
   clearRuns: () => Promise<void>;
 }
@@ -98,7 +113,13 @@ export function useScenarioRun(client: ApiClient, scenarioId: string): ScenarioR
   }, [client, batchId, refreshRuns]);
 
   const start = useCallback(
-    async (opts: { startNodeId?: string; mode: ScenarioRunMode; authorizeActions: boolean }) => {
+    async (opts: {
+      startNodeId?: string;
+      onlyNode?: boolean;
+      mode: ScenarioRunMode;
+      authorizeActions: boolean;
+      source?: string;
+    }) => {
       const { runId: id } = await client.call('scenario.run', { id: scenarioId, ...opts });
       setStatus(null);
       setRunId(id);
@@ -107,7 +128,13 @@ export function useScenarioRun(client: ApiClient, scenarioId: string): ScenarioR
   );
 
   const startBatch = useCallback(
-    async (opts: { count: number; interRunDelayMs: number; authorizeActions: boolean }) => {
+    async (opts: {
+      count: number;
+      interRunDelayMs: number;
+      authorizeActions: boolean;
+      startNodeId?: string;
+      source?: string;
+    }) => {
       const { batchId: id } = await client.call('scenario.runBatch', { id: scenarioId, ...opts });
       setBatch(null);
       setBatchId(id);
@@ -130,9 +157,22 @@ export function useScenarioRun(client: ApiClient, scenarioId: string): ScenarioR
     [client, runId],
   );
 
-  const view = useCallback((id: string) => {
+  const view = useCallback(
+    (id: string) => {
+      setRunId(id);
+      // Fetch right away so re-selecting the run already being followed (same id → the polling effect
+      // won't re-fire, and a terminal run isn't polling at all) still (re)shows its detail.
+      void client
+        .call('scenario.runStatus', { runId: id })
+        .then((s) => setStatus(s))
+        .catch(() => undefined);
+    },
+    [client],
+  );
+
+  const clearFocus = useCallback(() => {
+    setRunId(null);
     setStatus(null);
-    setRunId(id);
   }, []);
 
   const clearRuns = useCallback(async () => {
@@ -169,6 +209,7 @@ export function useScenarioRun(client: ApiClient, scenarioId: string): ScenarioR
     stopBatch,
     provideInput,
     view,
+    clearFocus,
     refreshRuns,
     clearRuns,
   };

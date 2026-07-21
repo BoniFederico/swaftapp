@@ -1,15 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
+  DRAFT_RELEASE,
   EMPTY_SCENARIO_GRAPH,
   parseScenarioGraph,
   serializeScenarioGraph,
+  type ReleaseDto,
   type ScenarioGraph,
   type ScenarioNode,
   type TemplateType,
 } from '@swaft/shared';
 import { ApiClient, ApiError } from '../api-client/client';
 import { useI18n } from '../i18n/I18nProvider';
-import { Button, CloseIcon, ConfirmDialog, IconButton, SaveIcon, TrashIcon, useToast } from '../ui';
+import {
+  Button,
+  CloseIcon,
+  ConfirmDialog,
+  GridIcon,
+  IconButton,
+  PlayIcon,
+  SaveIcon,
+  Select,
+  TrashIcon,
+  useToast,
+} from '../ui';
+import { usePopover } from '../ui/usePopover';
 import { notifyTreeChanged, subscribeTreeChanged } from '../workspace/treeBus';
 import { newId, removeEdge, removeNode } from './graph-model';
 import { NodeInspector } from './NodeInspector';
@@ -29,10 +44,22 @@ const MAX_RUN_H = 520;
 const MIN_HISTORY = 160;
 const MAX_HISTORY = 460;
 
-/** A pending launch awaiting action-authorization: a single run (optionally from a node) or a batch. */
+/** A pending launch awaiting action-authorization: a single/from-here run or a batch. */
 type Launch =
-  | { kind: 'run'; startNodeId?: string }
-  | { kind: 'batch'; count: number; interRunDelayMs: number };
+  | { kind: 'run'; startNodeId?: string; onlyNode?: boolean }
+  | { kind: 'batch'; count: number; interRunDelayMs: number; startNodeId?: string };
+
+/** A right-click context menu open over a node, at screen coordinates. */
+type NodeMenu = { node: ScenarioNode; x: number; y: number };
+
+/** The serialized graph source of the selected version: a release's source, else the draft's. */
+function scenarioSourceOf(selection: string, draftSource: string, releases: ReleaseDto[]): string {
+  if (selection !== DRAFT_RELEASE) {
+    const r = releases.find((x) => x.id === selection);
+    if (r) return r.source;
+  }
+  return draftSource;
+}
 
 /** Read a persisted pixel size, clamped, or a default. */
 function storedSize(key: string, def: number, min: number, max: number): number {
@@ -72,21 +99,26 @@ function beginResize(
 
 /**
  * Scenario View — the visual workflow editor for `scenario` templates (see docs `scenarios.md`). The
- * graph rides in the template `source` as JSON; this view parses it defensively and edits it on a
- * pan/zoom canvas (drag templates in from the Working Tree, add decision/delay/start nodes, wire and
- * select them). Editing is **explicit-save** (a Save button + Ctrl+S; a dirty dot until saved) with a
- * full undo/redo history. A malformed hand-edited source degrades to a read-only error state.
+ * graph rides in the template `source` as JSON (per selected version: Draft or a named release); this
+ * view parses it defensively and edits it on a pan/zoom canvas (drag templates in from the Working
+ * Tree, add decision/delay/start nodes, wire and select them). Editing is **explicit-save** (a Save
+ * button + Ctrl+S; a dirty dot until saved) with a full undo/redo history. Runs always execute the
+ * currently-edited graph — including unsaved changes. A malformed hand-edited source degrades to a
+ * read-only error state.
  */
 export function ScenarioView({
   client,
   templateId,
   onDirtyChange,
   onTitleChange,
+  onOpenTemplate,
 }: {
   client: ApiClient;
   templateId: string;
   onDirtyChange?: (dirty: boolean) => void;
   onTitleChange?: (name: string) => void;
+  /** Open a referenced template in its own tab (the node context menu's "Edit"). */
+  onOpenTemplate?: (id: string, type: TemplateType, name: string) => void;
 }) {
   const { t } = useI18n();
   const toast = useToast();
@@ -108,6 +140,19 @@ export function ScenarioView({
     storedSize(RUN_HISTORY_W_KEY, 260, MIN_HISTORY, MAX_HISTORY),
   );
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [nodeMenu, setNodeMenu] = useState<NodeMenu | null>(null);
+
+  // Editable versions: the Draft plus each named release. `selection` is which one is being edited;
+  // every field, save and run targets it. Refs mirror the draft's saved source + the selection so the
+  // tree-change reload (a stable closure) reads the current values.
+  const [releases, setReleases] = useState<ReleaseDto[]>([]);
+  const [releaseSel, setReleaseSel] = useState<string>(DRAFT_RELEASE);
+  const releaseSelRef = useRef<string>(DRAFT_RELEASE);
+  const draftSourceRef = useRef<string>('');
+
+  // Batch config (moved to the toolbar): repeat `count` runs spaced by `intervalSec` seconds.
+  const [count, setCount] = useState(10);
+  const [intervalSec, setIntervalSec] = useState(1);
 
   // Undo / redo history + the saved baseline for the dirty flag. Stacks are refs (they never drive a
   // render on their own); a version counter re-renders so the toolbar's enabled state stays in sync.
@@ -123,38 +168,63 @@ export function ScenarioView({
   const savedSourceRef = useRef<string | null>(null);
   const [savedSource, setSavedSource] = useState<string | null>(null);
 
-  // Load (and reload on external save) the graph. Never overwrite from an unparseable source.
+  // Apply a version's source to the canvas: parse defensively, reset the undo/redo history and the
+  // saved baseline. Never overwrites the graph from an unparseable source.
+  const applyVersion = useCallback(
+    (source: string) => {
+      const { graph: parsed, ok } = parseScenarioGraph(source);
+      setParseError(!ok);
+      if (ok) {
+        setGraph(parsed);
+        undoStack.current = [];
+        redoStack.current = [];
+        coalesceKey.current = null;
+        syncHist();
+        const normalized = serializeScenarioGraph(parsed);
+        savedSourceRef.current = normalized;
+        setSavedSource(normalized);
+      }
+    },
+    [syncHist],
+  );
+
+  // Load (and reload on external save) the graph for the selected version. Skips the echo of our own
+  // save (source === saved) so unsaved edits are not clobbered.
   useEffect(() => {
     let cancelled = false;
-    async function load() {
+    async function load(initial: boolean) {
       try {
-        const res = await client.call('template.get', { id: templateId });
+        const [tpl, rel, sel] = await Promise.all([
+          client.call('template.get', { id: templateId }),
+          client.call('release.list', { templateId }),
+          initial
+            ? client.call('releaseSelection.get', { templateId })
+            : Promise.resolve({ releaseId: releaseSelRef.current }),
+        ]);
         if (cancelled) return;
-        onTitleChange?.(res.template.name);
-        if (res.template.source === savedSourceRef.current) return; // our own save echoed back
-        const { graph: parsed, ok } = parseScenarioGraph(res.template.source);
-        setParseError(!ok);
-        if (ok) {
-          setGraph(parsed);
-          undoStack.current = [];
-          redoStack.current = [];
-          syncHist();
-          const normalized = serializeScenarioGraph(parsed);
-          savedSourceRef.current = normalized;
-          setSavedSource(normalized);
+        onTitleChange?.(tpl.template.name);
+        draftSourceRef.current = tpl.template.source;
+        setReleases(rel.releases);
+        if (initial) {
+          setReleaseSel(sel.releaseId);
+          releaseSelRef.current = sel.releaseId;
         }
+        const source = scenarioSourceOf(releaseSelRef.current, tpl.template.source, rel.releases);
+        const normalized = serializeScenarioGraph(parseScenarioGraph(source).graph);
+        if (!initial && normalized === savedSourceRef.current) return; // our own save echoed back
+        applyVersion(source);
         setLoaded(true);
       } catch {
         if (!cancelled) setLoaded(true);
       }
     }
-    void load();
-    const unsubscribe = subscribeTreeChanged(() => void load());
+    void load(true);
+    const unsubscribe = subscribeTreeChanged(() => void load(false));
     return () => {
       cancelled = true;
       unsubscribe();
     };
-  }, [client, templateId, onTitleChange, syncHist]);
+  }, [client, templateId, onTitleChange, applyVersion]);
 
   // Templates a scenario can reference (executable kinds): id → { name, type }.
   useEffect(() => {
@@ -176,6 +246,17 @@ export function ScenarioView({
   }, [client]);
 
   const resolveTemplate = useCallback((id: string) => templates.get(id) ?? null, [templates]);
+
+  // A run step's referenced template name (best-effort, resolved against the current graph) for the
+  // run panel's detail list. Falls back to the node's alias.
+  const resolveStepName = useCallback(
+    (nodeId: string): string | null => {
+      const node = graphRef.current.nodes.find((n) => n.id === nodeId);
+      if (node?.ref) return templates.get(node.ref)?.name ?? node.alias ?? null;
+      return node?.alias ?? null;
+    },
+    [templates],
+  );
 
   // Run lifecycle (start/stop/poll/history) + the run panel (always docked, minimizable).
   const runCtl = useScenarioRun(client, templateId);
@@ -201,23 +282,31 @@ export function ScenarioView({
     (l: Launch, authorizeActions: boolean) => {
       setRunMinimized(false); // auto-expand the panel when a run starts
       localStorage.setItem(RUN_MIN_KEY, 'off');
+      // Always run the currently-edited graph — including unsaved changes.
+      const source = serializeScenarioGraph(graphRef.current);
       const go =
         l.kind === 'run'
-          ? runCtl.start({ startNodeId: l.startNodeId, mode: 'single', authorizeActions })
-          : runCtl.startBatch({ count: l.count, interRunDelayMs: l.interRunDelayMs, authorizeActions });
+          ? runCtl.start({ startNodeId: l.startNodeId, onlyNode: l.onlyNode, mode: 'single', authorizeActions, source })
+          : runCtl.startBatch({
+              count: l.count,
+              interRunDelayMs: l.interRunDelayMs,
+              startNodeId: l.startNodeId,
+              authorizeActions,
+              source,
+            });
       void go.catch((e) => toast.show(e instanceof ApiError ? e.swaft.message : String(e), 'error'));
     },
     [runCtl, toast],
   );
 
   /** Launch a run/batch — through the authorization confirmation first when the graph has actions. */
-  function request(l: Launch) {
-    if (hasActionBlocks) setPendingLaunch(l);
-    else launch(l, false);
-  }
-  function requestRun() {
-    request({ kind: 'run', startNodeId: selection?.kind === 'node' ? selection.id : undefined });
-  }
+  const request = useCallback(
+    (l: Launch) => {
+      if (hasActionBlocks) setPendingLaunch(l);
+      else launch(l, false);
+    },
+    [hasActionBlocks, launch],
+  );
 
   /**
    * Apply a graph change and record it for undo. `coalesce` groups consecutive edits under the same key
@@ -264,7 +353,19 @@ export function ScenarioView({
     const source = serializeScenarioGraph(graphRef.current);
     if (source === savedSourceRef.current) return;
     try {
-      await client.call('template.updateSource', { id: templateId, source });
+      // Persist to whichever version is being edited: the Draft, or the selected release in place.
+      if (releaseSelRef.current === DRAFT_RELEASE) {
+        await client.call('template.updateSource', { id: templateId, source });
+        draftSourceRef.current = source;
+      } else {
+        const rel = releases.find((r) => r.id === releaseSelRef.current);
+        const res = await client.call('release.update', {
+          releaseId: releaseSelRef.current,
+          source,
+          subtype: rel?.subtype ?? null,
+        });
+        setReleases(res.releases);
+      }
       savedSourceRef.current = source;
       setSavedSource(source);
       notifyTreeChanged();
@@ -272,11 +373,33 @@ export function ScenarioView({
     } catch (e) {
       toast.show(e instanceof ApiError ? e.swaft.message : String(e), 'error');
     }
-  }, [client, templateId, toast, t]);
+  }, [client, templateId, releases, toast, t]);
+
+  /** Switch the edited version: load its graph, reset history + baseline, persist the selection. */
+  const selectVersion = useCallback(
+    (sel: string) => {
+      if (sel === releaseSelRef.current) return;
+      setReleaseSel(sel);
+      releaseSelRef.current = sel;
+      setSelection(null);
+      applyVersion(scenarioSourceOf(sel, draftSourceRef.current, releases));
+      void client.call('releaseSelection.set', { templateId, releaseId: sel }).catch(() => undefined);
+    },
+    [client, templateId, releases, applyVersion],
+  );
 
   const selectedNode = useMemo(
     () => (selection?.kind === 'node' ? (graph.nodes.find((n) => n.id === selection.id) ?? null) : null),
     [selection, graph.nodes],
+  );
+
+  // The start nodes a run can begin from, labelled by alias (or an ordinal).
+  const startNodes = useMemo(
+    () =>
+      graph.nodes
+        .filter((n) => n.kind === 'start')
+        .map((n, i) => ({ id: n.id, label: n.alias?.trim() || t('scenario.startLabel', { n: i + 1 }) })),
+    [graph.nodes, t],
   );
 
   function addControlNode(kind: ScenarioNode['kind']) {
@@ -343,6 +466,23 @@ export function ScenarioView({
     if (selection) setConfirmDelete(true);
   }
 
+  // --- node context menu (right-click) actions ------------------------------
+  function menuEdit(node: ScenarioNode) {
+    setNodeMenu(null);
+    if (node.kind === 'template' && node.ref && node.templateType && onOpenTemplate) {
+      onOpenTemplate(node.ref, node.templateType, resolveTemplate(node.ref)?.name ?? node.alias ?? '');
+    }
+  }
+  function menuRun(node: ScenarioNode, onlyNode: boolean) {
+    setNodeMenu(null);
+    request({ kind: 'run', startNodeId: node.id, onlyNode });
+  }
+  function menuDelete(node: ScenarioNode) {
+    setNodeMenu(null);
+    setSelection({ kind: 'node', id: node.id });
+    setConfirmDelete(true);
+  }
+
   if (parseError) {
     return (
       <div className="scenario">
@@ -355,44 +495,117 @@ export function ScenarioView({
     );
   }
 
+  const runActive = runCtl.active || runCtl.batchActive;
+
   return (
     <div className="scenario">
       <div className="scenario__toolbar">
-        <Button variant="secondary" onClick={() => addControlNode('start')}>
-          {t('scenario.addStart')}
-        </Button>
-        <Button variant="secondary" onClick={() => addControlNode('decision')}>
-          {t('scenario.addDecision')}
-        </Button>
-        <Button variant="secondary" onClick={() => addControlNode('delay')}>
-          {t('scenario.addDelay')}
-        </Button>
+        {/* Zone: add nodes (one condensed menu) */}
+        <ActionMenuButton
+          label={t('scenario.add')}
+          variant="secondary"
+          items={[
+            { id: 'start', label: t('scenario.addStart') },
+            { id: 'decision', label: t('scenario.addDecision') },
+            { id: 'delay', label: t('scenario.addDelay') },
+          ]}
+          onPick={(id) => addControlNode(id as ScenarioNode['kind'])}
+        />
+
         <span className="scenario__toolbar-sep" />
+        {/* Zone: edit history + snap */}
         <IconButton label={t('scenario.undo')} disabled={!canUndo} onClick={undo}>
           <UndoGlyph />
         </IconButton>
         <IconButton label={t('scenario.redo')} disabled={!canRedo} onClick={redo}>
           <UndoGlyph flip />
         </IconButton>
-        <Button
-          variant={snapEnabled ? 'secondary' : 'ghost'}
-          className={snapEnabled ? 'scenario__snap is-on' : 'scenario__snap'}
+        <IconButton
+          label={t('scenario.snap')}
           aria-pressed={snapEnabled}
+          className={snapEnabled ? 'scenario__snap is-on' : 'scenario__snap'}
           onClick={toggleSnap}
         >
-          {t('scenario.snap')}
-        </Button>
+          <GridIcon />
+        </IconButton>
+
         <span className="scenario__toolbar-sep" />
+        {/* Zone: run */}
         {runCtl.active ? (
           <Button variant="danger" onClick={() => void runCtl.stop()}>
             {t('scenario.stop')}
           </Button>
         ) : (
-          <Button variant="primary" className="scenario__run-btn" onClick={requestRun}>
-            {selection?.kind === 'node' ? t('scenario.runFromHere') : t('scenario.run')}
-          </Button>
+          <ActionMenuButton
+            label={t('scenario.run')}
+            variant="primary"
+            icon={<PlayIcon />}
+            disabled={runActive}
+            directWhenSingle
+            items={startNodes}
+            onPick={(id) => request({ kind: 'run', startNodeId: id })}
+          />
         )}
-        <span className="scenario__toolbar-hint muted">{t('scenario.dropHint')}</span>
+
+        <span className="scenario__toolbar-sep" />
+        {/* Zone: batch */}
+        {runCtl.batchActive && runCtl.batch ? (
+          <div className="scenario__toolbar-batch">
+            <span className="ui-badge">
+              {t('scenario.batchRunning', { done: runCtl.batch.completed, total: runCtl.batch.total })}
+            </span>
+            <Button variant="danger" onClick={() => void runCtl.stopBatch()}>
+              {t('scenario.stopBatch')}
+            </Button>
+          </div>
+        ) : (
+          <div className="scenario__toolbar-batch">
+            <span className="muted">{t('scenario.batchRepeat')}</span>
+            <input
+              className="ui-input scenario__num"
+              type="number"
+              min={1}
+              max={1000}
+              value={count}
+              aria-label={t('scenario.batchCount')}
+              onChange={(e) => setCount(Math.max(1, Math.min(1000, Math.round(Number(e.target.value) || 1))))}
+            />
+            <span className="muted">{t('scenario.batchEvery')}</span>
+            <input
+              className="ui-input scenario__num"
+              type="number"
+              min={0}
+              step={0.5}
+              value={intervalSec}
+              aria-label={t('scenario.batchInterval')}
+              onChange={(e) => setIntervalSec(Math.max(0, Number(e.target.value) || 0))}
+            />
+            <span className="muted">{t('scenario.batchSeconds')}</span>
+            <ActionMenuButton
+              label={t('scenario.runBatch')}
+              variant="secondary"
+              icon={<PlayIcon />}
+              disabled={runActive}
+              directWhenSingle
+              items={startNodes}
+              onPick={(id) =>
+                request({ kind: 'batch', count, interRunDelayMs: Math.round(intervalSec * 1000), startNodeId: id })
+              }
+            />
+          </div>
+        )}
+
+        <span className="scenario__toolbar-spacer" />
+        {/* Zone: version + save */}
+        <Select
+          aria-label={t('scenario.release')}
+          value={releaseSel}
+          onChange={(v) => selectVersion(v)}
+          options={[
+            { value: DRAFT_RELEASE, label: t('editor.draft') },
+            ...releases.map((r) => ({ value: r.id, label: r.name })),
+          ]}
+        />
         <Button variant="primary" disabled={!dirty} onClick={() => void save()}>
           <SaveIcon />
           <span>{t('scenario.save')}</span>
@@ -407,6 +620,12 @@ export function ScenarioView({
           nodeStatus={runCtl.nodeStatus}
           onChange={(next) => commit(next)}
           onSelect={setSelection}
+          onNodeContextMenu={(node, x, y) => setNodeMenu({ node, x, y })}
+          onInteract={() => {
+            // Any click on the canvas drops the followed run (history highlight + node highlights),
+            // unless a run/batch is still live (so live progress is never lost by a stray click).
+            if (!runActive) runCtl.clearFocus();
+          }}
           resolveTemplate={resolveTemplate}
         />
         {selection && (
@@ -432,6 +651,9 @@ export function ScenarioView({
                   }
                   onDelete={requestDelete}
                   onClose={() => setSelection(null)}
+                  onRun={() => request({ kind: 'run', startNodeId: selectedNode.id, onlyNode: true })}
+                  onRunFrom={() => request({ kind: 'run', startNodeId: selectedNode.id })}
+                  runDisabled={runActive}
                 />
               ) : (
                 <aside className="scenario-inspector" aria-label={t('scenario.inspector')}>
@@ -457,9 +679,9 @@ export function ScenarioView({
 
       <ScenarioRunPanel
         controller={runCtl}
+        resolveNodeName={resolveStepName}
         minimized={runMinimized}
         onToggleMinimize={toggleRunMinimized}
-        onRunBatch={(count, interRunDelayMs) => request({ kind: 'batch', count, interRunDelayMs })}
         height={runPanelHeight}
         historyWidth={runHistoryWidth}
         onResize={(e) =>
@@ -469,6 +691,18 @@ export function ScenarioView({
           beginResize(e, 'x', runHistoryWidth, MIN_HISTORY, MAX_HISTORY, setRunHistoryWidth, RUN_HISTORY_W_KEY)
         }
       />
+
+      {nodeMenu && (
+        <NodeContextMenu
+          menu={nodeMenu}
+          canEdit={nodeMenu.node.kind === 'template' && !!nodeMenu.node.ref && !!onOpenTemplate}
+          onEdit={() => menuEdit(nodeMenu.node)}
+          onRun={() => menuRun(nodeMenu.node, true)}
+          onRunFrom={() => menuRun(nodeMenu.node, false)}
+          onDelete={() => menuDelete(nodeMenu.node)}
+          onClose={() => setNodeMenu(null)}
+        />
+      )}
 
       <ConfirmDialog
         open={pendingLaunch !== null}
@@ -499,6 +733,158 @@ export function ScenarioView({
 
       {!loaded && <span className="muted scenario__loading">{t('doc.loading')}</span>}
     </div>
+  );
+}
+
+/**
+ * A toolbar button that either acts directly or opens a menu of choices — the shared shape for Add,
+ * Run and Run batch. With `directWhenSingle` and exactly one item it is a plain button (no caret) that
+ * picks that item; otherwise it opens a portalled menu. Disabled (and caret-less) when there are none.
+ */
+function ActionMenuButton({
+  label,
+  variant,
+  icon,
+  items,
+  disabled,
+  directWhenSingle,
+  onPick,
+}: {
+  label: string;
+  variant: 'primary' | 'secondary' | 'ghost' | 'danger';
+  icon?: React.ReactNode;
+  items: { id: string; label: string }[];
+  disabled?: boolean;
+  directWhenSingle?: boolean;
+  onPick: (id: string) => void;
+}) {
+  const { open, setOpen, pos, triggerRef, popRef, toggle } = usePopover<HTMLUListElement>(220);
+  const direct = !!directWhenSingle && items.length === 1;
+  const empty = items.length === 0;
+
+  function onClick() {
+    if (direct) onPick(items[0]!.id);
+    else toggle();
+  }
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        className={`ui-btn ui-btn--${variant} scenario__menu-btn`}
+        disabled={disabled || empty}
+        aria-haspopup={direct ? undefined : 'menu'}
+        aria-expanded={direct ? undefined : open}
+        onClick={onClick}
+      >
+        {icon}
+        <span>{label}</span>
+        {!direct && (
+          <span className="ui-select__chevron" aria-hidden="true">
+            ▾
+          </span>
+        )}
+      </button>
+      {open &&
+        !direct &&
+        createPortal(
+          <ul
+            ref={popRef}
+            role="menu"
+            className="ui-menu"
+            style={{ position: 'fixed', top: pos.top, left: pos.left }}
+          >
+            {items.map((it) => (
+              <li key={it.id} role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="ui-menu__item"
+                  onClick={() => {
+                    setOpen(false);
+                    onPick(it.id);
+                  }}
+                >
+                  {it.label}
+                </button>
+              </li>
+            ))}
+          </ul>,
+          document.body,
+        )}
+    </>
+  );
+}
+
+/** A node's right-click menu (Edit / Run / Run from here / Delete), portalled at the cursor. */
+function NodeContextMenu({
+  menu,
+  canEdit,
+  onEdit,
+  onRun,
+  onRunFrom,
+  onDelete,
+  onClose,
+}: {
+  menu: NodeMenu;
+  canEdit: boolean;
+  onEdit: () => void;
+  onRun: () => void;
+  onRunFrom: () => void;
+  onDelete: () => void;
+  onClose: () => void;
+}) {
+  const { t } = useI18n();
+  const ref = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) onClose();
+    };
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onEsc);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onEsc);
+    };
+  }, [onClose]);
+
+  const left = Math.min(menu.x, window.innerWidth - 200);
+  const top = Math.min(menu.y, window.innerHeight - 180);
+  return createPortal(
+    <ul
+      ref={ref}
+      role="menu"
+      className="ui-menu"
+      style={{ position: 'fixed', top, left }}
+    >
+      {canEdit && (
+        <li role="none">
+          <button type="button" role="menuitem" className="ui-menu__item" onClick={onEdit}>
+            {t('scenario.edit')}
+          </button>
+        </li>
+      )}
+      <li role="none">
+        <button type="button" role="menuitem" className="ui-menu__item" onClick={onRun}>
+          {t('scenario.runBlock')}
+        </button>
+      </li>
+      <li role="none">
+        <button type="button" role="menuitem" className="ui-menu__item" onClick={onRunFrom}>
+          {t('scenario.runFromHere')}
+        </button>
+      </li>
+      <li role="none">
+        <button type="button" role="menuitem" className="ui-menu__item ui-menu__item--danger" onClick={onDelete}>
+          {t('menu.delete')}
+        </button>
+      </li>
+    </ul>,
+    document.body,
   );
 }
 
