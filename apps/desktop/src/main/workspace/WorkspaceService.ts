@@ -8,13 +8,11 @@ import type {
 import { AppError } from '../errors';
 import type { CryptoService } from '../crypto/CryptoService';
 import type { DbBackend } from '../storage/db-backend';
-import { LocalAdapter } from './LocalAdapter';
+import type { LocalAdapter } from './LocalAdapter';
+import { LocalFilePersistence, type WorkspaceFs } from './persistence/LocalFilePersistence';
+import type { WorkspacePersistence } from './persistence/WorkspacePersistence';
 
-/** Filesystem port (injected) so the service is testable without touching the real disk. */
-export interface WorkspaceFs {
-  read(path: string): Promise<Uint8Array | null>;
-  write(path: string, bytes: Uint8Array): Promise<void>;
-}
+export type { WorkspaceFs };
 
 export interface WorkspaceServiceDeps {
   /** Build a DB backend, optionally from existing bytes (worker in prod, in-process in tests). */
@@ -31,22 +29,32 @@ export interface WorkspaceServiceDeps {
 interface OpenState {
   summary: WorkspaceSummary;
   adapter: LocalAdapter;
+  persistence: WorkspacePersistence;
   /** Held in memory only while open, to re-encrypt on save. Never persisted/sent to the renderer. */
   password?: string;
 }
 
 /**
- * Owns the lifecycle of the single open workspace: create / open / close / save. Enforces the
- * **immutable** storage mode (only `local` in the MVP), optional whole-file encryption, and the
- * forward-only schema gate. All DB work goes through the injected (worker-backed) {@link DbBackend}.
- * See SWAFT_STORAGE_SYNC_MODEL.md §2–§3, §13.
+ * Owns the lifecycle of the single open workspace: create / open / close / save. The byte ⇄ disk
+ * work is delegated to a {@link WorkspacePersistence} strategy selected by the (immutable) storage
+ * mode; today only {@link LocalFilePersistence} (`local`) exists, with a `git` strategy planned
+ * (see `git.md`). This class keeps the serializing lock, the surfaced summary, the forward-only
+ * schema gate and revision bookkeeping. See SWAFT_STORAGE_SYNC_MODEL.md §2–§3, §13.
  */
 export class WorkspaceService {
   private state: OpenState | null = null;
   private rev = 0;
   private queue: Promise<unknown> = Promise.resolve();
+  /** The default (`local`) persistence, built from the injected backend/crypto/fs. */
+  private readonly local: LocalFilePersistence;
 
-  constructor(private readonly deps: WorkspaceServiceDeps) {}
+  constructor(private readonly deps: WorkspaceServiceDeps) {
+    this.local = new LocalFilePersistence({
+      createBackend: deps.createBackend,
+      crypto: deps.crypto,
+      fs: deps.fs,
+    });
+  }
 
   private now(): string {
     return (this.deps.now?.() ?? new Date()).toISOString();
@@ -77,29 +85,33 @@ export class WorkspaceService {
       );
     }
 
-    const storageMode: StorageMode = 'local'; // immutable in the MVP (p2p/server reserved)
+    // Presence of a secret is what turns encryption on downstream.
+    const secret = req.encrypt ? password : undefined;
     const executionMode: ExecutionMode = req.executionMode ?? 'sandbox';
+    // Storage mode is immutable and derived from the chosen persistence (only `local` today;
+    // git selection is added in a later phase — see git.md).
+    const persistence = this.local;
     const deviceId = this.deps.deviceId();
 
     await this.closeCurrent();
-    const backend = await this.deps.createBackend();
-    const adapter = new LocalAdapter(backend);
-    await adapter.initialize({ name: req.name, storageMode, executionMode, deviceId, now: this.now() });
-
-    const image = await adapter.serialize();
-    const fileBytes =
-      req.encrypt && password ? await this.deps.crypto.encrypt(image, password) : image;
-    await this.deps.fs.write(req.location, fileBytes);
+    const opened = await persistence.create({
+      name: req.name,
+      executionMode,
+      deviceId,
+      now: this.now(),
+      location: req.location,
+      secret,
+    });
 
     const summary: WorkspaceSummary = {
       name: req.name,
       icon: null,
       path: req.location,
-      storageMode,
+      storageMode: persistence.kind,
       executionMode,
-      encrypted: Boolean(req.encrypt),
+      encrypted: opened.encrypted,
     };
-    this.state = { summary, adapter, password: req.encrypt ? password : undefined };
+    this.state = { summary, adapter: opened.adapter, persistence, password: secret };
     this.rev++;
     this.deps.onOpened?.(summary);
     return summary;
@@ -110,32 +122,15 @@ export class WorkspaceService {
   }
 
   private async doOpen(req: WorkspaceOpenRequest): Promise<WorkspaceSummary> {
-    const file = await this.deps.fs.read(req.path);
-    if (!file) {
-      throw new AppError('WORKSPACE_NOT_FOUND', 'not_found', 'Workspace file not found.');
-    }
+    // Only `local` persistence exists today; a mode probe (file vs directory) is added with git.
+    const persistence = this.local;
 
-    const encrypted = this.deps.crypto.isEncrypted(file);
-    let image: Uint8Array;
-    if (encrypted) {
-      if (!req.password) {
-        throw new AppError(
-          'PASSWORD_REQUIRED',
-          'validation',
-          'This workspace is encrypted; a password is required to open it.',
-        );
-      }
-      image = await this.deps.crypto.decrypt(file, req.password); // → WRONG_WORKSPACE_PASSWORD
-    } else {
-      image = file;
-    }
-
-    await this.closeCurrent();
-    let adapter: LocalAdapter | undefined;
+    // Open is atomic: materialize the new workspace first (this throws WORKSPACE_NOT_FOUND /
+    // PASSWORD_REQUIRED / WRONG_WORKSPACE_PASSWORD / SCHEMA_TOO_NEW / INVALID_WORKSPACE without
+    // touching the currently-open one), and only then swap it in.
+    const opened = await persistence.open({ location: req.path, password: req.password });
     try {
-      adapter = new LocalAdapter(await this.deps.createBackend(image));
-      await adapter.migrateToCurrent(); // → SCHEMA_TOO_NEW (an AppError, re-thrown below)
-      const meta = await adapter.getMeta();
+      const meta = await opened.adapter.getMeta();
       if (!meta) {
         throw new AppError(
           'INVALID_WORKSPACE',
@@ -150,17 +145,21 @@ export class WorkspaceService {
         path: req.path,
         storageMode: meta.storage_mode as StorageMode,
         executionMode: meta.execution_mode as ExecutionMode,
-        encrypted,
+        encrypted: opened.encrypted,
       };
-      this.state = { summary, adapter, password: encrypted ? req.password : undefined };
+      await this.closeCurrent();
+      this.state = {
+        summary,
+        adapter: opened.adapter,
+        persistence,
+        password: opened.encrypted ? req.password : undefined,
+      };
       this.rev++;
       this.deps.onOpened?.(summary);
       return summary;
     } catch (err) {
-      await adapter?.close().catch(() => undefined);
-      if (err instanceof AppError) throw err;
-      // Any other failure (e.g. sql.js "file is not a database") → invalid workspace.
-      throw new AppError('INVALID_WORKSPACE', 'validation', 'The file is not a valid Swaft workspace.');
+      await opened.adapter.close().catch(() => undefined);
+      throw err;
     }
   }
 
@@ -169,11 +168,11 @@ export class WorkspaceService {
     return this.locked(async () => {
       if (!this.state) return;
       this.rev++;
-      const image = await this.state.adapter.serialize();
-      const out = this.state.password
-        ? await this.deps.crypto.encrypt(image, this.state.password)
-        : image;
-      await this.deps.fs.write(this.state.summary.path, out);
+      await this.state.persistence.save(
+        this.state.adapter,
+        this.state.summary.path,
+        this.state.password,
+      );
     });
   }
 

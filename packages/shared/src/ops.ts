@@ -699,8 +699,15 @@ export interface WhoamiResponse {
 
 // --- M4 DTOs ----------------------------------------------------------------
 
-/** Workspace storage backend. Only `local` is enabled in the MVP; the others are reserved. */
-export type StorageMode = 'local' | 'p2p' | 'server';
+/**
+ * Workspace persistence backend, immutable per workspace.
+ * - `local`: a single (optionally encrypted) `.swaft` SQLite file (default).
+ * - `git`: a directory of plain, versioned files inside a Git repository (see `git.md`).
+ *
+ * The former `p2p`/`server` modes were never implemented and are removed; their reserved
+ * design lives on only as history in `docs/swaft/`.
+ */
+export type StorageMode = 'local' | 'git';
 export type ExecutionMode = z.infer<typeof executionModeSchema>;
 
 /** Local-only UI preferences (theme/color/language). Opaque strings; the renderer interprets them. */

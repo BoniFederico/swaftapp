@@ -1,10 +1,18 @@
 # Swaft — Data Model
 
+> ⚠️ **Partially superseded (2026-07).** `Workspace.storageMode` is now `'local' | 'git'`; the
+> `p2p`/`server` modes and the **P2P trust entities** (Device Identity, Invitation, Allowlist,
+> Revocation, §16) were never implemented and are removed. The per-entity **sync-metadata**
+> (`updatedByDeviceId`, `revision`, `deletedAt`, …, §3) was designed for the unbuilt P2P
+> last-write-wins engine; in **Git** mode it is not versioned (Git provides history and merge
+> instead) — see [`../../git.md`](../../git.md).
+
 > **Status:** Formal domain data model for implementation planning.
 > **Source of truth:** [`init.md`](init.md). Fields beyond `init.md` are marked **Recommended**.
 > **Audience:** Backend engineers, frontend engineers (DTOs), security reviewers.
 > **Companions:** [`SWAFT_STORAGE_SYNC_MODEL.md`](SWAFT_STORAGE_SYNC_MODEL.md) (sync mechanics),
-> [`SWAFT_SECURITY_MODEL.md`](SWAFT_SECURITY_MODEL.md) (sensitive data handling).
+> [`SWAFT_SECURITY_MODEL.md`](SWAFT_SECURITY_MODEL.md) (sensitive data handling),
+> [`../../git.md`](../../git.md) (Git storage mode).
 
 ---
 
