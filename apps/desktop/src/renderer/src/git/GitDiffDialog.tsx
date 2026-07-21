@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import type { GitFileDiffResponse } from '@swaft/shared';
 import type { ApiClient } from '../api-client/client';
-import { CodeEditor } from '../editor/CodeEditor';
 import { useI18n } from '../i18n/I18nProvider';
 import { Button, Dialog, EmptyState, LoadingState } from '../ui';
+import { GitDiffView } from './GitDiffView';
 
 /** Map a versioned file's extension to a CodeEditor language (best-effort; null = plain text). */
 function languageForPath(path: string): string | null {
@@ -27,36 +27,10 @@ function languageForPath(path: string): string | null {
   }
 }
 
-/** One read-only editor pane (committed or working-tree side), or a placeholder when absent. */
-function DiffPane({
-  title,
-  content,
-  language,
-  absentLabel,
-}: {
-  title: string;
-  content: string | null;
-  language: string | null;
-  absentLabel: string;
-}) {
-  return (
-    <div className="git-diff__pane">
-      <div className="git-diff__paneHead">{title}</div>
-      <div className="git-diff__editor">
-        {content == null ? (
-          <EmptyState title={absentLabel} />
-        ) : (
-          <CodeEditor value={content} language={language} onChange={() => {}} readOnly ariaLabel={title} />
-        )}
-      </div>
-    </div>
-  );
-}
-
 /**
  * Side-by-side diff for one changed file: the committed (HEAD) version next to the current
- * working-tree version, each in a read-only CodeMirror editor — the same editor the Template Editor
- * uses, so it looks consistent. Opened by clicking a change in the Git panel.
+ * working-tree version in CodeMirror's native `MergeView`, which highlights the changed lines and
+ * keeps syntax highlighting. Opened by clicking a change in the Git panel.
  */
 export function GitDiffDialog({
   open,
@@ -114,18 +88,19 @@ export function GitDiffDialog({
         <LoadingState label={t('git.diff.loading')} />
       ) : (
         <div className="git-diff">
-          <DiffPane
-            title={t('git.diff.old')}
-            content={diff.old}
-            language={language}
-            absentLabel={t('git.diff.added')}
-          />
-          <DiffPane
-            title={t('git.diff.current')}
-            content={diff.current}
-            language={language}
-            absentLabel={t('git.diff.removed')}
-          />
+          <div className="git-diff__legend">
+            <span>{t('git.diff.old')}</span>
+            <span>{t('git.diff.current')}</span>
+          </div>
+          {diff.old == null && <div className="git-diff__note muted">{t('git.diff.added')}</div>}
+          {diff.current == null && <div className="git-diff__note muted">{t('git.diff.removed')}</div>}
+          <div className="git-diff__body">
+            <GitDiffView
+              oldText={diff.old ?? ''}
+              newText={diff.current ?? ''}
+              language={language}
+            />
+          </div>
         </div>
       )}
     </Dialog>
