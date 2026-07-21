@@ -51,11 +51,12 @@ const HIGHLIGHT_DARK = HighlightStyle.define([
   { tag: [t.heading], fontWeight: 'bold', color: '#61afef' },
   { tag: [t.link, t.url], color: '#56b6c2', textDecoration: 'underline' },
 ]);
-const highlightFor = (dark: boolean) =>
+/** The Atom One syntax-highlight extension for the current theme (shared with the diff view). */
+export const highlightFor = (dark: boolean) =>
   syntaxHighlighting(dark ? HIGHLIGHT_DARK : HIGHLIGHT_LIGHT);
 
 /** Lazy-load the language support for a subtype (keeps each grammar out of the main chunk). */
-async function loadLanguage(subtype: string | null): Promise<Extension> {
+export async function loadLanguage(subtype: string | null): Promise<Extension> {
   switch (subtype) {
     case 'html':
       return (await import('@codemirror/lang-html')).html() as LanguageSupport;

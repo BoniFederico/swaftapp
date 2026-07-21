@@ -3841,6 +3841,287 @@ body {
   font-weight: 600;
 }
 
+/* ---------- Git panel (top-right, git storage mode) ---------- */
+.ws-actions .git-trigger {
+  height: 30px;
+}
+.git-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 34px;
+  max-width: 220px;
+  padding: 0 var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.git-trigger:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+}
+.git-trigger__icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.git-trigger__branch {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.git-trigger__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warning, #e0a000);
+  flex-shrink: 0;
+}
+
+.git-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  /* Fixed width matching the popover anchor (usePopover(360)) so it never overflows the viewport. */
+  width: 360px;
+  max-width: calc(100vw - 16px);
+  padding: var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, var(--radius-sm));
+  box-shadow: var(--shadow-2);
+  z-index: 150;
+}
+.git-panel__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.git-panel__branch {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.git-panel__head > .git-panel__state,
+.git-panel__head > .git-panel__track,
+.git-panel__head > svg {
+  flex-shrink: 0;
+}
+.git-panel__state.is-dirty {
+  color: color-mix(in srgb, var(--warning, #e0a000) 85%, var(--text));
+  border-color: color-mix(in srgb, var(--warning, #e0a000) 45%, var(--border));
+}
+.git-panel__track {
+  font-size: var(--fs-sm);
+}
+.git-panel__remote {
+  font-size: var(--fs-sm);
+  font-family: var(--font-mono, monospace);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: calc(-1 * var(--space-2));
+}
+.git-panel__label {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+/* Branch switcher: the shared Select fills the row; "New branch" sits beside it. */
+.git-panel__branchRow {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+.git-panel__branchSelect {
+  flex: 1;
+  min-width: 0;
+}
+/* Inline mini-forms (new branch, publish): a labelled field + an action button. */
+.git-panel__inline {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+.git-panel__inline > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.git-panel__changes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.git-panel__files {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1);
+  max-height: 190px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+/* Clickable change row — styled like the shared popover menu items (env-menu). */
+.git-file {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+  padding: var(--space-2);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.git-file:hover {
+  background: var(--surface);
+}
+.git-file__mark {
+  width: 16px;
+  text-align: center;
+  font-weight: 700;
+  font-family: var(--font-mono, monospace);
+  color: var(--text-muted);
+  flex-shrink: 0;
+  line-height: 1.5;
+}
+.git-file__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.git-file__name,
+.git-file__path {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.git-file__path {
+  font-size: var(--fs-xs, 0.75rem);
+}
+.git-file--added .git-file__mark,
+.git-file--untracked .git-file__mark {
+  color: #2e9e5b;
+}
+.git-file--deleted .git-file__mark {
+  color: #d1495b;
+}
+.git-file--conflicted .git-file__mark {
+  color: #e0a000;
+}
+.git-panel__conflict {
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  color: color-mix(in srgb, #d1495b 88%, var(--text));
+  background: color-mix(in srgb, #d1495b 12%, transparent);
+  border: 1px solid color-mix(in srgb, #d1495b 40%, var(--border));
+}
+.git-panel__empty {
+  padding: var(--space-2);
+  font-size: var(--fs-sm);
+}
+.git-panel__commit {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+.git-panel__commit > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.git-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  /* Distribute the spacing evenly across the row, keeping the buttons centered. */
+  justify-content: space-evenly;
+  gap: var(--space-1);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-2);
+}
+/* Compact secondary actions (Fetch / Pull / Push / Reload / Discard / Publish / New branch). */
+.git-panel__actions .ui-btn,
+.git-panel__branchRow .ui-btn {
+  font-size: var(--fs-xs, 0.75rem);
+  padding: var(--space-1) var(--space-2);
+}
+
+/* ---------- Git diff dialog (native CodeMirror MergeView) ---------- */
+.ui-dialog--wide {
+  width: min(1100px, 94vw);
+  max-width: 94vw;
+}
+/* The diff opens from the Git panel (z-index 150), so it must sit above it. */
+.git-diff-backdrop {
+  z-index: 200;
+}
+.git-diff__title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.git-diff__titleName {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.git-diff__titlePath {
+  font-size: var(--fs-sm);
+  font-family: var(--font-mono, monospace);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.git-diff {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+/* Two equal captions above the side-by-side merge view. */
+.git-diff__legend {
+  display: flex;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.git-diff__legend > span {
+  flex: 1;
+  min-width: 0;
+}
+.git-diff__note {
+  font-size: var(--fs-sm);
+}
+.git-diff__body {
+  height: min(68vh, 600px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.git-mergeview,
+.git-mergeview .cm-mergeView,
+.git-mergeview .cm-mergeViewEditors {
+  height: 100%;
+}
+.git-mergeview .cm-editor {
+  height: 100%;
+}
+.git-mergeview .cm-mergeView .cm-scroller {
+  overflow: auto;
+}
+
 /* ---------- Environments: settings section (master/detail) ---------- */
 .env-settings {
   display: flex;

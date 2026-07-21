@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { writeFileAtomic } from './storage/atomic-file';
 import { parseJsonOr } from './util/json';
 import { app, dialog, session, type BrowserWindow } from 'electron';
@@ -26,6 +26,7 @@ import {
   setBatcherService,
   setChangelogService,
   setEnvironmentService,
+  setGitOpsService,
   setHttpService,
   setOrganizationService,
   setPlatformDialogs,
@@ -53,6 +54,9 @@ import { SettingsService } from './workspace/SettingsService';
 import { TemplateDataProvider } from './workspace/TemplateDataProvider';
 import { TemplateService } from './workspace/TemplateService';
 import { WorkspaceService } from './workspace/WorkspaceService';
+import { GitPersistence } from './workspace/persistence/GitPersistence';
+import { SystemGitService } from './git/GitService';
+import { GitOpsService } from './git/GitOpsService';
 
 const SWAFT_FILTER = { name: 'Swaft Workspace', extensions: ['swaft'] };
 
@@ -74,9 +78,11 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
   const appStore = new AppStore(join(app.getPath('userData'), 'app-store.json'));
   const crypto = new CryptoService();
   const workerFile = join(__dirname, 'dbWorker.js');
+  const createBackend = (bytes?: Uint8Array) => createDbBackend({ workerFile, bytes });
+  const git = new SystemGitService();
 
   const workspaceService = new WorkspaceService({
-    createBackend: (bytes) => createDbBackend({ workerFile, bytes }),
+    createBackend,
     crypto,
     fs: {
       read: async (path) => {
@@ -91,6 +97,15 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
     },
     deviceId: () => appStore.getDeviceId(),
     onOpened: (summary) => appStore.recordRecent(summary),
+    // `git` storage mode: a workspace is a directory of versioned files (see git.md).
+    git: new GitPersistence({ createBackend, git, deviceId: () => appStore.getDeviceId() }),
+    probePath: async (path) => {
+      try {
+        return (await stat(path)).isDirectory() ? 'dir' : 'file';
+      } catch {
+        return 'missing';
+      }
+    },
   });
 
   const dialogs: PlatformDialogs = {
@@ -119,6 +134,15 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
       const opts: Electron.SaveDialogOptions = { title: 'Export', defaultPath: defaultName };
       const res = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts);
       return res.canceled || !res.filePath ? null : res.filePath;
+    },
+    pickDirectory: async () => {
+      const win = getWindow();
+      const opts: Electron.OpenDialogOptions = {
+        title: 'Select workspace folder',
+        properties: ['openDirectory', 'createDirectory'],
+      };
+      const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
+      return res.canceled || res.filePaths.length === 0 ? null : (res.filePaths[0] ?? null);
     },
   };
 
@@ -220,5 +244,6 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
   setActionService(actionService);
   setScenarioService(scenarioService);
   setEnvironmentService(environments);
+  setGitOpsService(new GitOpsService(workspaceService, git));
   setPlatformDialogs(dialogs);
 }

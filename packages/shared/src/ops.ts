@@ -64,7 +64,10 @@ export const executionModeSchema = z.enum(['sandbox', 'dev']);
 export const workspaceCreateRequestSchema = z
   .object({
     name: z.string().trim().min(1).max(120),
+    /** A `.swaft` file path for `local`, or a repository directory for `git`. */
     location: z.string().min(1),
+    /** Persistence backend; defaults to `local`. `git` never encrypts. */
+    storageMode: z.enum(['local', 'git']).optional(),
     encrypt: z.boolean(),
     password: z.string().min(8).max(256).optional(),
     executionMode: executionModeSchema.optional(),
@@ -81,6 +84,29 @@ export const workspaceOpenRequestSchema = z
 export const dialogCreateTargetRequestSchema = z
   .object({ defaultName: z.string().max(120).optional() })
   .strict();
+
+// --- Git storage mode ops ---------------------------------------------------
+
+export const gitCommitRequestSchema = z
+  .object({ message: z.string().trim().min(1).max(1000) })
+  .strict();
+export const gitCheckoutRequestSchema = z
+  .object({ branch: z.string().trim().min(1).max(255) })
+  .strict();
+export const gitCreateBranchRequestSchema = z
+  .object({ name: z.string().trim().min(1).max(255) })
+  .strict();
+export const gitCloneRequestSchema = z
+  .object({
+    url: z.string().trim().min(1).max(2048),
+    /** Parent directory to clone into; the repo lands in a subfolder derived from the URL. */
+    parentDir: z.string().min(1),
+  })
+  .strict();
+export const gitPublishRequestSchema = z
+  .object({ url: z.string().trim().min(1).max(2048) })
+  .strict();
+export const gitFileDiffRequestSchema = z.object({ path: z.string().min(1).max(2048) }).strict();
 
 // --- M5: workspace organization + settings ----------------------------------
 
@@ -466,6 +492,20 @@ export const OP_NAMES = [
   'workspace.recent',
   'dialog.createTarget',
   'dialog.openTarget',
+  'dialog.pickDirectory',
+  'git.status',
+  'git.commit',
+  'git.push',
+  'git.pull',
+  'git.fetch',
+  'git.checkout',
+  'git.createBranch',
+  'git.discard',
+  'git.clone',
+  'git.publish',
+  'git.available',
+  'git.reload',
+  'git.fileDiff',
   'tree.get',
   'project.create',
   'project.rename',
@@ -562,6 +602,20 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'workspace.recent': emptyRequestSchema,
   'dialog.createTarget': dialogCreateTargetRequestSchema,
   'dialog.openTarget': emptyRequestSchema,
+  'dialog.pickDirectory': emptyRequestSchema,
+  'git.status': emptyRequestSchema,
+  'git.commit': gitCommitRequestSchema,
+  'git.push': emptyRequestSchema,
+  'git.pull': emptyRequestSchema,
+  'git.fetch': emptyRequestSchema,
+  'git.checkout': gitCheckoutRequestSchema,
+  'git.createBranch': gitCreateBranchRequestSchema,
+  'git.discard': emptyRequestSchema,
+  'git.clone': gitCloneRequestSchema,
+  'git.publish': gitPublishRequestSchema,
+  'git.available': emptyRequestSchema,
+  'git.reload': emptyRequestSchema,
+  'git.fileDiff': gitFileDiffRequestSchema,
   'tree.get': emptyRequestSchema,
   'project.create': projectCreateRequestSchema,
   'project.rename': renameRequestSchema,
@@ -699,8 +753,15 @@ export interface WhoamiResponse {
 
 // --- M4 DTOs ----------------------------------------------------------------
 
-/** Workspace storage backend. Only `local` is enabled in the MVP; the others are reserved. */
-export type StorageMode = 'local' | 'p2p' | 'server';
+/**
+ * Workspace persistence backend, immutable per workspace.
+ * - `local`: a single (optionally encrypted) `.swaft` SQLite file (default).
+ * - `git`: a directory of plain, versioned files inside a Git repository (see `git.md`).
+ *
+ * The former `p2p`/`server` modes were never implemented and are removed; their reserved
+ * design lives on only as history in `docs/swaft/`.
+ */
+export type StorageMode = 'local' | 'git';
 export type ExecutionMode = z.infer<typeof executionModeSchema>;
 
 /** Local-only UI preferences (theme/color/language). Opaque strings; the renderer interprets them. */
@@ -714,6 +775,56 @@ export interface PrefsResponse {
 export type WorkspaceCreateRequest = z.infer<typeof workspaceCreateRequestSchema>;
 export type WorkspaceOpenRequest = z.infer<typeof workspaceOpenRequestSchema>;
 export type DialogCreateTargetRequest = z.infer<typeof dialogCreateTargetRequestSchema>;
+
+export type GitCommitRequest = z.infer<typeof gitCommitRequestSchema>;
+export type GitCheckoutRequest = z.infer<typeof gitCheckoutRequestSchema>;
+export type GitCreateBranchRequest = z.infer<typeof gitCreateBranchRequestSchema>;
+export type GitCloneRequest = z.infer<typeof gitCloneRequestSchema>;
+export type GitPublishRequest = z.infer<typeof gitPublishRequestSchema>;
+export type GitFileDiffRequest = z.infer<typeof gitFileDiffRequestSchema>;
+
+export interface GitFileDiffResponse {
+  path: string;
+  /** Committed (HEAD) contents, or null when the file is new/untracked. */
+  old: string | null;
+  /** Working-tree contents, or null when the file was deleted. */
+  current: string | null;
+}
+
+/** A single changed path in the Git working tree (for the Git panel). */
+export interface GitFileChange {
+  path: string;
+  status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked' | 'conflicted';
+  staged: boolean;
+  /** Human-readable label resolved from the workspace (e.g. "Template: Release notes"), if known. */
+  label?: string;
+}
+
+export interface GitAvailabilityResponse {
+  /** Whether a usable `git` binary is on PATH in the main process. */
+  available: boolean;
+  /** The `git --version` string, or null when unavailable. */
+  version: string | null;
+}
+
+/** The open Git workspace's repository state, surfaced to the Git panel. */
+export interface GitStatusDto {
+  branch: string | null;
+  detached: boolean;
+  hasUpstream: boolean;
+  ahead: number;
+  behind: number;
+  clean: boolean;
+  files: GitFileChange[];
+  /** Local branch names (for the branch switcher). */
+  branches: string[];
+  /** The `origin` remote URL, or null when the repo has no remote yet (offer "Publish"). */
+  remoteUrl: string | null;
+}
+
+export interface GitStatusResponse {
+  status: GitStatusDto;
+}
 
 /** Non-secret summary of the open workspace surfaced to the renderer. */
 export interface WorkspaceSummary {
@@ -1348,6 +1459,20 @@ export interface OpContracts {
   'workspace.recent': { request: EmptyRequest; response: RecentWorkspacesResponse };
   'dialog.createTarget': { request: DialogCreateTargetRequest; response: DialogPathResponse };
   'dialog.openTarget': { request: EmptyRequest; response: DialogPathResponse };
+  'dialog.pickDirectory': { request: EmptyRequest; response: DialogPathResponse };
+  'git.status': { request: EmptyRequest; response: GitStatusResponse };
+  'git.commit': { request: GitCommitRequest; response: GitStatusResponse };
+  'git.push': { request: EmptyRequest; response: GitStatusResponse };
+  'git.pull': { request: EmptyRequest; response: GitStatusResponse };
+  'git.fetch': { request: EmptyRequest; response: GitStatusResponse };
+  'git.checkout': { request: GitCheckoutRequest; response: GitStatusResponse };
+  'git.createBranch': { request: GitCreateBranchRequest; response: GitStatusResponse };
+  'git.discard': { request: EmptyRequest; response: GitStatusResponse };
+  'git.clone': { request: GitCloneRequest; response: WorkspaceResponse };
+  'git.publish': { request: GitPublishRequest; response: GitStatusResponse };
+  'git.available': { request: EmptyRequest; response: GitAvailabilityResponse };
+  'git.reload': { request: EmptyRequest; response: GitStatusResponse };
+  'git.fileDiff': { request: GitFileDiffRequest; response: GitFileDiffResponse };
   'tree.get': { request: EmptyRequest; response: TreeResponse };
   'project.create': { request: ProjectCreateRequest; response: TreeResponse };
   'project.rename': { request: RenameRequest; response: TreeResponse };

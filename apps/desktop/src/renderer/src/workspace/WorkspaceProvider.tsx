@@ -26,8 +26,12 @@ interface WorkspaceContextValue {
   loading: boolean;
   busy: boolean;
   errorCode: string | null;
+  /** Whether git is usable in this host; null while unknown. Gates the Git storage mode. */
+  gitAvailable: boolean | null;
   create(req: WorkspaceCreateRequest): Promise<void>;
   open(path: string, password?: string): Promise<void>;
+  /** Clone a Git repository from `url` into `parentDir`, then open it. */
+  cloneAndOpen(url: string, parentDir: string): Promise<void>;
   update(patch: WorkspaceUpdateRequest): Promise<void>;
   close(): Promise<void>;
   refresh(): Promise<void>;
@@ -36,6 +40,8 @@ interface WorkspaceContextValue {
   pickCreateTarget(defaultName?: string): Promise<string | null>;
   /** Native "open" for an existing `.swaft`; returns the chosen path or null. */
   pickOpenTarget(): Promise<string | null>;
+  /** Native directory picker (for a Git workspace folder); returns the path or null. */
+  pickDirectory(): Promise<string | null>;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
@@ -52,6 +58,7 @@ export function WorkspaceProvider({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [gitAvailable, setGitAvailable] = useState<boolean | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -73,11 +80,18 @@ export function WorkspaceProvider({
     void (async () => {
       await refresh();
       if (!cancelled) setLoading(false);
+      // Probe git once so the wizard can gate the Git storage mode (best-effort).
+      try {
+        const res = await client.call('git.available');
+        if (!cancelled) setGitAvailable(res.available);
+      } catch {
+        if (!cancelled) setGitAvailable(false);
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [refresh]);
+  }, [refresh, client]);
 
   const run = useCallback(
     async (fn: () => Promise<void>) => {
@@ -102,6 +116,7 @@ export function WorkspaceProvider({
       loading,
       busy,
       errorCode,
+      gitAvailable,
       clearError: () => setErrorCode(null),
       create: (req) =>
         run(async () => {
@@ -112,6 +127,14 @@ export function WorkspaceProvider({
       open: (path, password) =>
         run(async () => {
           const res = await client.call('workspace.open', { path, password });
+          setCurrent(res.workspace);
+          await refresh();
+        }),
+      cloneAndOpen: (url, parentDir) =>
+        run(async () => {
+          // The backend opens an existing Swaft repo, or initializes a fresh workspace into an
+          // empty remote (keeping origin for the first push).
+          const res = await client.call('git.clone', { url, parentDir });
           setCurrent(res.workspace);
           await refresh();
         }),
@@ -141,8 +164,15 @@ export function WorkspaceProvider({
           return null;
         }
       },
+      pickDirectory: async () => {
+        try {
+          return (await client.call('dialog.pickDirectory')).path;
+        } catch {
+          return null;
+        }
+      },
     }),
-    [current, recent, loading, busy, errorCode, run, client, refresh],
+    [current, recent, loading, busy, errorCode, gitAvailable, run, client, refresh],
   );
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;

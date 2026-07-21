@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { ExecutionMode } from '@swaft/shared';
+import type { ExecutionMode, StorageMode } from '@swaft/shared';
 import { useI18n } from '../i18n/I18nProvider';
 import type { TranslationKey } from '../i18n/catalogs';
 import { Button, Dialog, Select, Switch, TextField } from '../ui';
@@ -7,15 +7,17 @@ import { useWorkspace } from './WorkspaceProvider';
 import { workspaceErrorKey } from './workspace-errors';
 
 /**
- * Create Workspace wizard (SWAFT_UI_SPEC.md §3). Storage mode is shown **immutable** (local only),
- * encryption is opt-in with an **unrecoverability** acknowledgement, and execution mode defaults to
- * `sandbox`. The `.swaft` location is chosen via a native save dialog (platform shim in main).
+ * Create Workspace wizard (SWAFT_UI_SPEC.md §3). The storage mode is chosen at creation and immutable:
+ * `local` is a single (optionally encrypted) `.swaft` file; `git` is a directory of versioned files in
+ * a Git repository (never encrypted — see git.md). Execution mode defaults to `sandbox`.
  */
 export function CreateWorkspaceWizard({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t } = useI18n();
-  const { create, busy, errorCode, clearError, pickCreateTarget } = useWorkspace();
+  const { create, busy, errorCode, clearError, pickCreateTarget, pickDirectory, gitAvailable } =
+    useWorkspace();
 
   const [name, setName] = useState('');
+  const [storageMode, setStorageMode] = useState<StorageMode>('local');
   const [location, setLocation] = useState('');
   const [encrypt, setEncrypt] = useState(false);
   const [password, setPassword] = useState('');
@@ -23,8 +25,11 @@ export function CreateWorkspaceWizard({ open, onClose }: { open: boolean; onClos
   const [executionMode, setExecutionMode] = useState<ExecutionMode>('sandbox');
   const [localError, setLocalError] = useState<TranslationKey | null>(null);
 
+  const isGit = storageMode === 'git';
+
   function reset() {
     setName('');
+    setStorageMode('local');
     setLocation('');
     setEncrypt(false);
     setPassword('');
@@ -39,8 +44,14 @@ export function CreateWorkspaceWizard({ open, onClose }: { open: boolean; onClos
     onClose();
   }
 
+  function changeMode(mode: StorageMode) {
+    setStorageMode(mode);
+    setLocation(''); // a file path and a directory are not interchangeable
+    if (mode === 'git') setEncrypt(false); // git workspaces are plain files
+  }
+
   async function chooseLocation() {
-    const path = await pickCreateTarget(name);
+    const path = isGit ? await pickDirectory() : await pickCreateTarget(name);
     if (path) setLocation(path);
   }
 
@@ -48,16 +59,18 @@ export function CreateWorkspaceWizard({ open, onClose }: { open: boolean; onClos
     e.preventDefault();
     setLocalError(null);
     clearError();
-    if (encrypt) {
+    const encrypting = encrypt && !isGit;
+    if (encrypting) {
       if (password.length < 8) return setLocalError('auth.error.tooShort');
       if (password !== confirm) return setLocalError('auth.error.mismatch');
     }
     try {
       await create({
         name: name.trim(),
+        storageMode,
         location,
-        encrypt,
-        password: encrypt ? password : undefined,
+        encrypt: encrypting,
+        password: encrypting ? password : undefined,
         executionMode,
       });
       close();
@@ -93,24 +106,36 @@ export function CreateWorkspaceWizard({ open, onClose }: { open: boolean; onClos
           onChange={(e) => setName(e.target.value)}
         />
 
+        <Select
+          label={t('wizard.storageMode')}
+          value={storageMode}
+          onChange={(v) => changeMode(v as StorageMode)}
+          options={[
+            { value: 'local', label: t('wizard.storageModeLocal') },
+            // Only offer Git when a git binary is available in the host.
+            ...(gitAvailable === false ? [] : [{ value: 'git', label: t('wizard.storageModeGit') }]),
+          ]}
+        />
+        <div className="field-hint">
+          {gitAvailable === false
+            ? t('wizard.gitUnavailable')
+            : isGit
+              ? t('wizard.storageGitHint')
+              : t('wizard.storageImmutable')}
+        </div>
+
         <div className="ui-field">
-          <span className="ui-field__label">{t('wizard.location')}</span>
+          <span className="ui-field__label">
+            {isGit ? t('wizard.locationFolder') : t('wizard.location')}
+          </span>
           <div className="row">
             <Button type="button" variant="secondary" onClick={chooseLocation}>
-              {t('wizard.chooseLocation')}
+              {isGit ? t('wizard.chooseFolder') : t('wizard.chooseLocation')}
             </Button>
             <span className="muted" data-testid="wizard-location">
               {location || t('wizard.noLocation')}
             </span>
           </div>
-        </div>
-
-        <div className="ui-field">
-          <span className="ui-field__label">{t('wizard.storageMode')}</span>
-          <div className="row">
-            <span className="ui-badge">{t('wizard.storageModeLocal')}</span>
-          </div>
-          <div className="field-hint">{t('wizard.storageImmutable')}</div>
         </div>
 
         <Select
@@ -123,8 +148,8 @@ export function CreateWorkspaceWizard({ open, onClose }: { open: boolean; onClos
           ]}
         />
 
-        <Switch checked={encrypt} onChange={setEncrypt} label={t('wizard.encrypt')} />
-        {encrypt && (
+        {!isGit && <Switch checked={encrypt} onChange={setEncrypt} label={t('wizard.encrypt')} />}
+        {!isGit && encrypt && (
           <div className="col" style={{ gap: 'var(--space-3)' }}>
             <TextField
               label={t('wizard.password')}

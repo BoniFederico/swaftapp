@@ -1,11 +1,19 @@
 # Swaft — Storage & Synchronization Model
 
+> ⚠️ **Partially superseded (2026-07).** The `p2p` and `server` storage modes described here were
+> **never implemented and have been removed** from the codebase; `StorageMode` is now `'local' | 'git'`.
+> The **P2P sync, device-trust, last-write-wins and server** sections below are retained only as
+> historical design and no longer reflect the product. The supported second mode is **Git**
+> (plain, versioned files) — see [`../../git.md`](../../git.md), which also documents that the
+> "storage-adapter / repository-interface" abstraction in these docs is aspirational (only a concrete
+> `LocalAdapter` + raw SQL exist) and that the engine is `sql.js` (WASM), not `better-sqlite3`.
+
 > **Status:** Implementation-oriented storage and synchronization specification.
 > **Source of truth:** [`init.md`](init.md). Elaborations are marked **Recommended**; undecided
 > items **Open decision**.
 > **Audience:** Backend engineers, security reviewers.
 > **Companions:** [`SWAFT_DATA_MODEL.md`](SWAFT_DATA_MODEL.md), [`SWAFT_SECURITY_MODEL.md`](SWAFT_SECURITY_MODEL.md),
-> [`SWAFT_ARCHITECTURE.md`](SWAFT_ARCHITECTURE.md).
+> [`SWAFT_ARCHITECTURE.md`](SWAFT_ARCHITECTURE.md), [`../../git.md`](../../git.md).
 
 ---
 
