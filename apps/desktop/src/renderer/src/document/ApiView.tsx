@@ -540,6 +540,9 @@ export function ApiView({
         >
           <SendIcon />
         </IconButton>
+        <IconButton label={t('api.save')} className="api__save" onClick={() => void saveRequest()}>
+          <SaveIcon />
+        </IconButton>
         <Select
           aria-label={t('api.release')}
           value={selection}
@@ -549,9 +552,6 @@ export function ApiView({
             ...releases.map((r) => ({ value: r.id, label: r.name })),
           ]}
         />
-        <IconButton label={t('api.save')} className="api__save" onClick={() => void saveRequest()}>
-          <SaveIcon />
-        </IconButton>
       </div>
 
       <div className="api__cols" ref={colsRef}>
