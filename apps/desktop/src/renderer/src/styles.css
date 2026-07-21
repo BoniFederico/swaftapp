@@ -4049,6 +4049,11 @@ body {
   border-top: 1px solid var(--border);
   padding-top: var(--space-2);
 }
+/* Compact secondary actions (Fetch / Pull / Push / Reload / Discard / Publish). */
+.git-panel__actions .ui-btn {
+  font-size: var(--fs-xs, 0.75rem);
+  padding: var(--space-1) var(--space-2);
+}
 
 /* ---------- Git diff dialog (two read-only editors) ---------- */
 .ui-dialog--wide {
