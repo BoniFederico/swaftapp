@@ -26,6 +26,7 @@ import {
   setBatcherService,
   setChangelogService,
   setEnvironmentService,
+  setGitOpsService,
   setHttpService,
   setOrganizationService,
   setPlatformDialogs,
@@ -55,6 +56,7 @@ import { TemplateService } from './workspace/TemplateService';
 import { WorkspaceService } from './workspace/WorkspaceService';
 import { GitPersistence } from './workspace/persistence/GitPersistence';
 import { SystemGitService } from './git/GitService';
+import { GitOpsService } from './git/GitOpsService';
 
 const SWAFT_FILTER = { name: 'Swaft Workspace', extensions: ['swaft'] };
 
@@ -132,6 +134,15 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
       const opts: Electron.SaveDialogOptions = { title: 'Export', defaultPath: defaultName };
       const res = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts);
       return res.canceled || !res.filePath ? null : res.filePath;
+    },
+    pickDirectory: async () => {
+      const win = getWindow();
+      const opts: Electron.OpenDialogOptions = {
+        title: 'Select workspace folder',
+        properties: ['openDirectory', 'createDirectory'],
+      };
+      const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
+      return res.canceled || res.filePaths.length === 0 ? null : (res.filePaths[0] ?? null);
     },
   };
 
@@ -233,5 +244,6 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
   setActionService(actionService);
   setScenarioService(scenarioService);
   setEnvironmentService(environments);
+  setGitOpsService(new GitOpsService(workspaceService, git));
   setPlatformDialogs(dialogs);
 }

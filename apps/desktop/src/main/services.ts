@@ -1,6 +1,7 @@
 import type { ActionService } from './actions/ActionService';
 import type { ScenarioService } from './actions/ScenarioService';
 import type { AppStore } from './app-store/AppStore';
+import type { GitOpsService } from './git/GitOpsService';
 import type { HttpService } from './http/HttpService';
 import type { SecretService } from './secret/SecretService';
 import type { UserCodeRegistry } from './usercode/UserCodeRegistry';
@@ -29,6 +30,8 @@ export interface PlatformDialogs {
   pickOpenTarget(): Promise<string | null>;
   /** Native "save as" for an arbitrary export file. */
   pickSaveTarget(defaultName: string): Promise<string | null>;
+  /** Native directory picker (for a Git workspace folder); returns the path or null if cancelled. */
+  pickDirectory(): Promise<string | null>;
 }
 
 /** One nullable slot per service: `set` at bootstrap (or a fake in tests), `get` throws until then. */
@@ -81,3 +84,5 @@ export const { get: getScenarioService, set: setScenarioService } =
   serviceSlot<ScenarioService>('ScenarioService');
 export const { get: getEnvironmentService, set: setEnvironmentService } =
   serviceSlot<EnvironmentService>('EnvironmentService');
+export const { get: getGitOpsService, set: setGitOpsService } =
+  serviceSlot<GitOpsService>('GitOpsService');

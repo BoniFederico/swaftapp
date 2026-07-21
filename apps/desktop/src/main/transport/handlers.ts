@@ -53,6 +53,9 @@ import {
   type WorkspaceSettingsUpdate,
   type WorkspaceUpdateRequest,
   type DialogCreateTargetRequest,
+  type GitCommitRequest,
+  type GitCheckoutRequest,
+  type GitCreateBranchRequest,
 } from '@swaft/shared';
 import { getAuthService } from '../auth/registry';
 import { toErrorEnvelope } from '../errors';
@@ -66,6 +69,7 @@ import {
   getBatcherService,
   getChangelogService,
   getEnvironmentService,
+  getGitOpsService,
   getOrganizationService,
   getPlatformDialogs,
   getReleaseService,
@@ -137,6 +141,23 @@ export const handlers: Record<OpName, Handler> = {
       path: await getPlatformDialogs().pickCreateTarget((p as DialogCreateTargetRequest).defaultName),
     })),
   'dialog.openTarget': () => svc(async () => ({ path: await getPlatformDialogs().pickOpenTarget() })),
+  'dialog.pickDirectory': () =>
+    svc(async () => ({ path: await getPlatformDialogs().pickDirectory() })),
+
+  // Git storage mode (git.md)
+  'git.status': () => svc(async () => ({ status: await getGitOpsService().status() })),
+  'git.commit': (p) =>
+    svc(async () => ({ status: await getGitOpsService().commit((p as GitCommitRequest).message) })),
+  'git.push': () => svc(async () => ({ status: await getGitOpsService().push() })),
+  'git.pull': () => svc(async () => ({ status: await getGitOpsService().pull() })),
+  'git.fetch': () => svc(async () => ({ status: await getGitOpsService().fetch() })),
+  'git.checkout': (p) =>
+    svc(async () => ({ status: await getGitOpsService().checkout((p as GitCheckoutRequest).branch) })),
+  'git.createBranch': (p) =>
+    svc(async () => ({
+      status: await getGitOpsService().createBranch((p as GitCreateBranchRequest).name),
+    })),
+  'git.discard': () => svc(async () => ({ status: await getGitOpsService().discard() })),
 
   // Organization tree (M5)
   'tree.get': () => svc(async () => ({ tree: await getOrganizationService().getTree() })),

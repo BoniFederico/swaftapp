@@ -7,6 +7,8 @@ import { AppStore } from '../app-store/AppStore';
 import { getAuthService } from '../auth/registry';
 import { IdentityCipher } from '../auth/testing';
 import { CryptoService } from '../crypto/CryptoService';
+import { GitOpsService } from '../git/GitOpsService';
+import { SystemGitService } from '../git/GitService';
 import { HttpService } from '../http/HttpService';
 import { BUILTIN_ACTION_TYPES } from '../seebo/action-handlers';
 import { SecretService } from '../secret/SecretService';
@@ -20,6 +22,7 @@ import {
   setBatcherService,
   setChangelogService,
   setEnvironmentService,
+  setGitOpsService,
   setHttpService,
   setOrganizationService,
   setPlatformDialogs,
@@ -77,6 +80,7 @@ export function installTestWorkspaceBackend(
     pickCreateTarget: () => Promise.resolve(opts.createPath ?? 'mem://new.swaft'),
     pickOpenTarget: () => Promise.resolve(opts.openPath ?? null),
     pickSaveTarget: () => Promise.resolve(null),
+    pickDirectory: () => Promise.resolve(null),
   };
 
   const organization = new OrganizationService(workspace);
@@ -144,6 +148,7 @@ export function installTestWorkspaceBackend(
   setBatcherService(batcher);
   setActionService(actions);
   setEnvironmentService(environments);
+  setGitOpsService(new GitOpsService(workspace, new SystemGitService()));
   setPlatformDialogs(dialogs);
   return { files, appStore, workspace, actions, environments };
 }
@@ -166,5 +171,6 @@ export function resetTestWorkspaceBackend(): void {
   setBatcherService(null);
   setActionService(null);
   setEnvironmentService(null);
+  setGitOpsService(null);
   setPlatformDialogs(null);
 }
