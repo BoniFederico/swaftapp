@@ -9,6 +9,7 @@ import {
   outputPorts,
   removeNode,
   snap,
+  snapNodePosition,
   snapPoint,
   updateNode,
 } from './graph-model';
@@ -77,6 +78,26 @@ describe('snap', () => {
     expect(snap(-9, 20)).toBe(0);
     expect(snap(-11, 20)).toBe(-20);
     expect(snapPoint({ x: 23, y: 37 }, 20)).toEqual({ x: 20, y: 40 });
+  });
+
+  it('snapNodePosition snaps a node so its port row lands on the grid', () => {
+    // The port row is the vertical center (position.y + h/2). Snapping makes it a grid multiple,
+    // regardless of the node's height — so blocks aimed at the same row align horizontally.
+    const s = snapNodePosition('start', { x: 23, y: 100 }, 20); // start h=44
+    expect(s.x).toBe(20);
+    expect((s.y + 44 / 2) % 20).toBe(0);
+
+    const b = snapNodePosition('template', { x: 0, y: 213 }, 20); // template h=68
+    expect((b.y + 68 / 2) % 20).toBe(0);
+  });
+
+  it('aligns different-height blocks aimed at the same row → a horizontal connecting edge', () => {
+    // Aim both port-centers at grid line 120: start (h=44) and template (h=68).
+    const s = snapNodePosition('start', { x: 0, y: 120 - 44 / 2 }, 20);
+    const b = snapNodePosition('template', { x: 300, y: 120 - 68 / 2 }, 20);
+    // Output port of `s` and input port of `b` share the same y → edgePath is a straight horizontal.
+    expect(s.y + 44 / 2).toBe(120);
+    expect(b.y + 68 / 2).toBe(120);
   });
 });
 

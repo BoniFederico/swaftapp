@@ -165,6 +165,17 @@ export function snapPoint(p: Point, grid: number = GRID): Point {
   return { x: snap(p.x, grid), y: snap(p.y, grid) };
 }
 
+/**
+ * Snap a node's top-left so its **port row** (vertical center, where the input/output anchors sit)
+ * lands on a grid line — not its top edge. This makes anchors of different-height blocks align to the
+ * same row, so an edge between two snapped blocks on that row is perfectly horizontal. The x edge is
+ * snapped normally.
+ */
+export function snapNodePosition(kind: ScenarioNode['kind'], p: Point, grid: number = GRID): Point {
+  const { h } = nodeSize(kind);
+  return { x: snap(p.x, grid), y: snap(p.y + h / 2, grid) - h / 2 };
+}
+
 /** A fresh unique id for a node/edge. Uses the platform UUID (available in the renderer). */
 export function newId(prefix: 'n' | 'e'): string {
   const uuid =
