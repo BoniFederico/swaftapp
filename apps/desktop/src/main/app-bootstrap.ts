@@ -5,6 +5,7 @@ import { parseJsonOr } from './util/json';
 import { app, dialog, session, type BrowserWindow } from 'electron';
 import { DATA_CAPABILITIES, httpRequestSchema, type FolderProxyDto } from '@swaft/shared';
 import { ActionService } from './actions/ActionService';
+import { ScenarioService } from './actions/ScenarioService';
 import { AppStore } from './app-store/AppStore';
 import { CryptoService } from './crypto/CryptoService';
 import { SafeStorageCipher } from './auth/cipher';
@@ -30,6 +31,7 @@ import {
   setPlatformDialogs,
   setReleaseService,
   setRenderService,
+  setScenarioService,
   setSecretService,
   setSettingsService,
   setTemplateService,
@@ -185,6 +187,20 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
     settings,
   });
   const apiHistory = new ApiHistoryService(workspaceService);
+  const apiRun = new ApiRunService({
+    requests: apiRequest,
+    http: httpService,
+    history: apiHistory,
+    code: userCapabilities,
+  });
+  const scenarioService = new ScenarioService(workspaceService, {
+    templates,
+    releases,
+    render,
+    host,
+    apiRun,
+    userCode: userCapabilities,
+  });
 
   setAppStore(appStore);
   setWorkspaceService(workspaceService);
@@ -198,12 +214,11 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
   setHttpService(httpService);
   setApiHistoryService(apiHistory);
   setApiRequestService(apiRequest);
-  setApiRunService(
-    new ApiRunService({ requests: apiRequest, http: httpService, history: apiHistory, code: userCapabilities }),
-  );
+  setApiRunService(apiRun);
   setUserCodeRegistry(userCapabilities);
   setBatcherService(batcher);
   setActionService(actionService);
+  setScenarioService(scenarioService);
   setEnvironmentService(environments);
   setPlatformDialogs(dialogs);
 }

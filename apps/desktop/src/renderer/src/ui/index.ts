@@ -31,6 +31,10 @@ export {
   SearchIcon,
   FilterIcon,
   SendIcon,
+  ScenarioIcon,
+  PlayIcon,
+  RunFromIcon,
+  GridIcon,
 } from './icons';
 export { Menu, type MenuItem } from './Menu';
 export { ConfirmDialog } from './ConfirmDialog';

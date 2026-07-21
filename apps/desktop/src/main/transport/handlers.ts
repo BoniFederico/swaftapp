@@ -34,6 +34,12 @@ import {
   type SignUpRequest,
   type RenderSourceRequest,
   type SourceRequest,
+  type ScenarioRunRequest,
+  type ScenarioRunRefRequest,
+  type ScenarioProvideInputRequest,
+  type ScenarioRunListRequest,
+  type ScenarioRunBatchRequest,
+  type ScenarioBatchRefRequest,
   type TemplateCreateRequest,
   type TemplateRefRequest,
   type TemplateSearchRequest,
@@ -64,6 +70,7 @@ import {
   getPlatformDialogs,
   getReleaseService,
   getRenderService,
+  getScenarioService,
   getSecretService,
   getSettingsService,
   getTemplateService,
@@ -408,4 +415,54 @@ export const handlers: Record<OpName, Handler> = {
         (p as EnvSelectionSetRequest).environmentId,
       ),
     })),
+
+  // Scenarios (M11): run a workflow graph + poll its progress.
+  'scenario.run': (p) =>
+    svc(async () => {
+      const r = p as ScenarioRunRequest;
+      return getScenarioService().run({
+        id: r.id,
+        startNodeId: r.startNodeId,
+        onlyNode: r.onlyNode,
+        mode: r.mode,
+        authorizeActions: r.authorizeActions,
+        source: r.source,
+      });
+    }),
+  'scenario.runStatus': (p) =>
+    svc(() => getScenarioService().status((p as ScenarioRunRefRequest).runId)),
+  'scenario.stop': (p) =>
+    svc(async () => {
+      await getScenarioService().stop((p as ScenarioRunRefRequest).runId);
+      return { ok: true as const };
+    }),
+  'scenario.provideInput': (p) =>
+    svc(async () => {
+      const r = p as ScenarioProvideInputRequest;
+      await getScenarioService().provideInput(r.runId, r.values);
+      return { ok: true as const };
+    }),
+  'scenario.runList': (p) =>
+    svc(async () => ({ runs: await getScenarioService().list((p as ScenarioRunListRequest).scenarioId) })),
+  'scenario.runClear': (p) =>
+    svc(async () => ({ runs: await getScenarioService().clear((p as ScenarioRunListRequest).scenarioId) })),
+  'scenario.runBatch': (p) =>
+    svc(async () => {
+      const r = p as ScenarioRunBatchRequest;
+      return getScenarioService().runBatch({
+        id: r.id,
+        count: r.count,
+        interRunDelayMs: r.interRunDelayMs,
+        authorizeActions: r.authorizeActions,
+        startNodeId: r.startNodeId,
+        source: r.source,
+      });
+    }),
+  'scenario.batchStatus': (p) =>
+    svc(() => ({ batch: getScenarioService().batchStatus((p as ScenarioBatchRefRequest).batchId) })),
+  'scenario.stopBatch': (p) =>
+    svc(async () => {
+      await getScenarioService().stopBatch((p as ScenarioBatchRefRequest).batchId);
+      return { ok: true as const };
+    }),
 };

@@ -655,6 +655,9 @@ body {
 .tree-item__icon--api {
   color: #f59e0b;
 }
+.tree-item__icon--scenario {
+  color: #7c3aed;
+}
 .tree-item__icon--folder {
   color: #94a3b8;
 }
@@ -1759,6 +1762,685 @@ body {
   font-size: var(--fs-sm);
 }
 
+/* ---------- Scenario View (workflow canvas) ---------- */
+.scenario {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  position: relative;
+}
+.scenario__toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.scenario__toolbar .ui-btn {
+  font-size: var(--fs-sm);
+  padding: var(--space-1) var(--space-3);
+  min-height: 30px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.scenario__toolbar .ui-icon-btn {
+  width: 30px;
+  height: 30px;
+}
+.scenario__toolbar-sep {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 var(--space-1);
+}
+.scenario__snap.is-on {
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  color: var(--primary);
+}
+.scenario__toolbar-hint {
+  margin-left: auto;
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Pushes the version + save zone to the far right of the toolbar. */
+.scenario__toolbar-spacer {
+  flex: 1 1 auto;
+  margin-left: auto;
+}
+/* Inline batch runner (repeat N runs every X s) that lives in the toolbar. */
+.scenario__toolbar-batch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-sm);
+}
+.scenario__num {
+  width: 56px;
+  padding: var(--space-1) var(--space-2);
+}
+/* The condensed toolbar menu buttons (Add / Run / Run batch): icon + label + optional caret. */
+.scenario__menu-btn .ui-select__chevron {
+  margin-left: var(--space-1);
+  font-size: var(--fs-sm);
+}
+/* A little breathing room between the "s" label and the Run batch button. */
+.scenario__toolbar-batch .scenario__menu-btn {
+  margin-left: var(--space-2);
+}
+.scenario__main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  position: relative;
+}
+.scenario__loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* The pannable/zoomable canvas surface, with a dot grid that pans/zooms via inline background-size /
+   background-position (no giant DOM element — cheap and always aligned to the world). */
+.scenario__canvas {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+  background-color: var(--surface-2);
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--text-muted) 32%, transparent) 1px,
+    transparent 1.6px
+  );
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.scenario__canvas--error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+}
+.scenario__canvas[data-dragover='true'] {
+  outline: 2px dashed var(--primary);
+  outline-offset: -4px;
+}
+.scenario__world {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.scenario__edges {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+}
+
+/* Edges (behind nodes). The visible path never captures clicks; a fat transparent hit path does. */
+.scenario-edge {
+  stroke: var(--text-muted);
+  stroke-width: 2.5;
+  pointer-events: none;
+}
+.scenario-edge-hit {
+  stroke: transparent;
+  stroke-width: 14;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+.scenario-edge--true {
+  stroke: var(--status-ok);
+}
+.scenario-edge--false {
+  stroke: var(--status-err);
+}
+.scenario-edge--pending {
+  stroke: var(--primary);
+  stroke-dasharray: 5 4;
+  pointer-events: none;
+}
+.scenario-edge.is-selected {
+  stroke: var(--primary);
+  stroke-width: 3.5;
+}
+
+/* Nodes. */
+.scenario-node {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+}
+.scenario-node.is-selected {
+  z-index: 3;
+}
+.scenario-node__body {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  height: 100%;
+  padding: 0 var(--space-3);
+  pointer-events: none;
+}
+.scenario-node__glyph {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  color: var(--text-muted);
+}
+.scenario-node__labels {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.scenario-node__labels--center {
+  align-items: center;
+  text-align: center;
+}
+.scenario-node__name {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scenario-node__alias {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Template block: a card. */
+.scenario-node--template {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-1);
+}
+.scenario-node--template.is-selected {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+/* Start: an accent pill. */
+.scenario-node--start {
+  background: color-mix(in srgb, var(--primary) 14%, var(--surface));
+  border: 1px solid var(--primary);
+  border-radius: 999px;
+}
+.scenario-node--start.is-selected {
+  box-shadow: 0 0 0 2px var(--primary);
+}
+/* Delay: a compact pill. */
+.scenario-node--delay {
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+}
+.scenario-node--delay.is-selected {
+  border-color: var(--primary);
+  border-style: solid;
+  box-shadow: 0 0 0 1px var(--primary);
+}
+/* Decision: a diamond drawn in SVG behind an upright, centered label. */
+.scenario-node--decision {
+  background: transparent;
+}
+.scenario-node--decision .scenario-node__body {
+  justify-content: center;
+  padding: 0;
+}
+.scenario-node__diamond {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  /* Never intercept pointer events meant for the ports/body underneath. */
+  pointer-events: none;
+}
+.scenario-node__diamond polygon {
+  fill: var(--surface);
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+.scenario-node--decision.is-selected .scenario-node__diamond polygon {
+  stroke: var(--primary);
+  stroke-width: 2;
+}
+.scenario-node__name--decision {
+  position: relative;
+  font-family: var(--font-mono);
+}
+
+/* Ports — handles to draw edges from/to. Kept visually small but with a generous invisible grab
+   ring (::after) so they are easy to hit; output ports light up on node hover for discoverability. */
+.scenario-port {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+  transition: transform 0.1s ease, box-shadow 0.1s ease, border-color 0.1s ease;
+}
+/* Enlarge the clickable area well beyond the dot so it is easy to grab. */
+.scenario-port::after {
+  content: '';
+  position: absolute;
+  inset: -9px;
+  border-radius: 50%;
+}
+.scenario-port--in {
+  left: -7px;
+}
+.scenario-port--out {
+  right: -7px;
+  cursor: crosshair;
+}
+.scenario-port--true {
+  border-color: var(--status-ok);
+  background: var(--status-ok);
+}
+.scenario-port--false {
+  border-color: var(--status-err);
+  background: var(--status-err);
+}
+/* Make output ports obvious when the node is hovered (but NOT while drawing an edge — during a draw
+   the *target* input side lights up, not the source's output side). */
+.scenario__canvas:not(.is-drawing) .scenario-node:hover .scenario-port--out {
+  border-color: var(--primary);
+}
+.scenario__canvas:not(.is-drawing) .scenario-port--out:hover {
+  transform: scale(1.25);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 22%, transparent);
+}
+/* Valid drop target while drawing an edge — highlight the node and its INPUT side. */
+.scenario-node.is-drop-target .scenario-port--in {
+  border-color: var(--primary);
+  background: var(--primary);
+  transform: scale(1.25);
+}
+.scenario-node--template.is-drop-target,
+.scenario-node--delay.is-drop-target,
+.scenario-node--start.is-drop-target {
+  box-shadow: 0 0 0 2px var(--primary);
+}
+.scenario-node--decision.is-drop-target .scenario-node__diamond polygon {
+  stroke: var(--primary);
+  stroke-width: 2.5;
+}
+
+/* Inspector — a floating card pinned top-right over the canvas, only as tall as its content (up to a
+   max, then its body scrolls). A thin handle on its left edge resizes the width. */
+.scenario-inspector-float {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  max-height: calc(100% - 2 * var(--space-3));
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+  z-index: 5;
+}
+.scenario-inspector-float__resize {
+  position: absolute;
+  left: -3px;
+  top: 0;
+  bottom: 0;
+  width: 9px;
+  cursor: ew-resize;
+  z-index: 6;
+}
+.scenario-inspector-float__resize:hover {
+  background: color-mix(in srgb, var(--primary) 30%, transparent);
+}
+.scenario-inspector {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.scenario-inspector__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.scenario-inspector__kind {
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+.scenario-inspector__head-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.scenario-inspector__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.scenario-inspector__ref {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.scenario-inspector__foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.scenario__run-btn {
+  font-weight: 600;
+}
+
+/* Node run-status highlight during/after a run. */
+.scenario-node--run-succeeded.scenario-node--template,
+.scenario-node--run-succeeded.scenario-node--start,
+.scenario-node--run-succeeded.scenario-node--delay {
+  box-shadow: 0 0 0 2px var(--status-ok);
+}
+.scenario-node--run-failed.scenario-node--template,
+.scenario-node--run-failed.scenario-node--start,
+.scenario-node--run-failed.scenario-node--delay {
+  box-shadow: 0 0 0 2px var(--status-err);
+}
+.scenario-node--run-awaiting.scenario-node--template {
+  box-shadow: 0 0 0 2px var(--status-warn);
+}
+.scenario-node--run-succeeded .scenario-node__diamond polygon,
+.scenario-node--run-branch-true .scenario-node__diamond polygon {
+  stroke: var(--status-ok);
+  stroke-width: 2.5;
+}
+.scenario-node--run-branch-false .scenario-node__diamond polygon {
+  stroke: var(--status-err);
+  stroke-width: 2.5;
+}
+
+/* Run panel (below the canvas) — vertically resizable via its top divider. */
+.scenario-run {
+  flex: 0 0 auto;
+  position: relative;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.scenario-run__vsplit {
+  flex: 0 0 auto;
+  height: 8px;
+  margin-bottom: -4px;
+  cursor: ns-resize;
+  z-index: 2;
+}
+.scenario-run__vsplit:hover {
+  background: color-mix(in srgb, var(--primary) 30%, transparent);
+}
+/* The always-visible bar: title + status + the minimize/maximize toggle. */
+.scenario-run__bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.scenario-run__bar-title {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.scenario-run__cols {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.scenario-run__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-3);
+  gap: var(--space-2);
+  overflow-y: auto;
+}
+/* Divider between the step list and the history (resizes the history width). */
+.scenario-run__hsplit {
+  flex: 0 0 auto;
+  width: 8px;
+  margin: 0 -4px;
+  cursor: ew-resize;
+  z-index: 2;
+}
+.scenario-run__hsplit:hover {
+  background: color-mix(in srgb, var(--primary) 30%, transparent);
+}
+.scenario-run__history {
+  flex: 0 0 auto;
+  min-width: 0;
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-3);
+  gap: var(--space-2);
+  overflow-y: auto;
+}
+.scenario-run__history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.scenario-run__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}
+/* Batch config / progress row. */
+.scenario-run__batch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-sm);
+}
+.scenario-run__batch-label {
+  color: var(--text-muted);
+}
+.scenario-run__num {
+  width: 64px;
+  padding: var(--space-1) var(--space-2);
+}
+.scenario-run__batch .ui-btn {
+  font-size: var(--fs-sm);
+  padding: var(--space-1) var(--space-3);
+}
+.scenario-run__batch-badge {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+.scenario-run__err {
+  color: var(--danger);
+  font-size: var(--fs-sm);
+}
+.scenario-run__pending {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--status-warn);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--status-warn) 8%, transparent);
+}
+.scenario-run__steps,
+.scenario-run__runs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.scenario-run__step,
+.scenario-run__run {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.scenario-run__step:hover,
+.scenario-run__run:hover {
+  background: var(--surface-2);
+}
+.scenario-run__run.is-active {
+  border-color: var(--primary);
+}
+.scenario-run__spacer {
+  flex: 1;
+}
+.scenario-run__time {
+  flex: 0 0 auto;
+}
+/* Step rows: an ordered, aligned detail list — index · status dot · name/url · meta. */
+.scenario-run__step {
+  display: grid;
+  grid-template-columns: 1.4em 9px minmax(0, 1fr) auto;
+  align-items: center;
+}
+.scenario-run__step-seq {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-xs);
+  text-align: right;
+}
+.scenario-run__step-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--border);
+}
+.scenario-run__step-dot.scenario-step--succeeded {
+  background: var(--status-ok);
+}
+.scenario-run__step-dot.scenario-step--failed {
+  background: var(--danger);
+}
+.scenario-run__step-dot.scenario-step--branch-true {
+  background: var(--primary);
+}
+.scenario-run__step-dot.scenario-step--branch-false {
+  background: var(--text-muted);
+}
+.scenario-run__step-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.scenario-run__step-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.scenario-run__step-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.scenario-run__step-method {
+  flex: 0 0 auto;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--primary);
+}
+.scenario-run__step-kind {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.scenario-run__step-url {
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.scenario-run__step-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+/* Step/run status badges. */
+.scenario-step--failed,
+.scenario-run__status--failed {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.scenario-run__status--completed {
+  color: var(--status-ok);
+  border-color: var(--status-ok);
+}
+.scenario-run__status--awaiting-input {
+  color: var(--status-warn);
+  border-color: var(--status-warn);
+}
+
 /* ---------- Render View ---------- */
 .render-view {
   display: flex;
@@ -2806,6 +3488,9 @@ body {
 }
 .tpl-type-card__icon--action {
   color: #10b981;
+}
+.tpl-type-card__icon--scenario {
+  color: #7c3aed;
 }
 .tpl-type-card__label {
   font-weight: 600;

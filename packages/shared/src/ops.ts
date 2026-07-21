@@ -223,7 +223,7 @@ export const settingsUpdateSchema = z
 // Template kinds. `render` was folded into `document` (its subtypes — mermaid/swagger/echarts — are
 // now document subtypes that render in the output). `capability` and `action` are user-authored
 // JavaScript: the first resolves data for a formula, the second is an effect (analisi_codice_utente.md).
-export const templateTypeSchema = z.enum(['document', 'api', 'capability', 'action']);
+export const templateTypeSchema = z.enum(['document', 'api', 'capability', 'action', 'scenario']);
 
 export const templateCreateRequestSchema = z
   .object({
@@ -403,6 +403,49 @@ export const envSelectionSetRequestSchema = z
   .object({ environmentId: z.string().min(1).nullable() })
   .strict();
 
+// --- Scenarios (M11): run a workflow graph, poll its progress -----------------
+
+export const scenarioRunModeSchema = z.enum(['single', 'batch']);
+export const scenarioRunRequestSchema = z
+  .object({
+    /** The scenario template id. */
+    id: z.string().min(1),
+    /** Node to start from (default: the graph's single start node). */
+    startNodeId: z.string().min(1).optional(),
+    /** Execute only the start node (a single block), without following its outgoing edges. */
+    onlyNode: z.boolean().optional(),
+    /** `single` pauses for missing inputs (attended); `batch` fails the step (unattended). */
+    mode: scenarioRunModeSchema.default('single'),
+    /** One acknowledgement authorizing every action block in the run (sandbox still forbids prod). */
+    authorizeActions: z.boolean().default(false),
+    /**
+     * The graph to run, verbatim — the currently-edited (possibly unsaved) source. When omitted the
+     * run resolves the scenario's selected version from storage.
+     */
+    source: z.string().optional(),
+  })
+  .strict();
+export const scenarioRunRefRequestSchema = z.object({ runId: z.string().min(1) }).strict();
+export const scenarioProvideInputRequestSchema = z
+  .object({ runId: z.string().min(1), values: z.record(z.unknown()) })
+  .strict();
+export const scenarioRunListRequestSchema = z.object({ scenarioId: z.string().min(1) }).strict();
+
+/** Run a scenario `count` times back-to-back, spaced by `interRunDelayMs`, unattended (batch mode). */
+export const scenarioRunBatchRequestSchema = z
+  .object({
+    id: z.string().min(1),
+    count: z.number().int().min(1).max(1000),
+    interRunDelayMs: z.number().int().min(0).max(3_600_000).default(0),
+    authorizeActions: z.boolean().default(false),
+    /** Node each run starts from (default: the graph's single start node). */
+    startNodeId: z.string().min(1).optional(),
+    /** The graph to run, verbatim (the currently-edited source); omitted → resolve stored version. */
+    source: z.string().optional(),
+  })
+  .strict();
+export const scenarioBatchRefRequestSchema = z.object({ batchId: z.string().min(1) }).strict();
+
 /** The canonical list of op names. The IPC router allow-list is derived from this. */
 export const OP_NAMES = [
   'system.ping',
@@ -487,6 +530,15 @@ export const OP_NAMES = [
   'env.delete',
   'env.selection.get',
   'env.selection.set',
+  'scenario.run',
+  'scenario.runStatus',
+  'scenario.stop',
+  'scenario.provideInput',
+  'scenario.runList',
+  'scenario.runClear',
+  'scenario.runBatch',
+  'scenario.batchStatus',
+  'scenario.stopBatch',
 ] as const;
 export type OpName = (typeof OP_NAMES)[number];
 
@@ -574,6 +626,15 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'env.delete': idRequestSchema,
   'env.selection.get': emptyRequestSchema,
   'env.selection.set': envSelectionSetRequestSchema,
+  'scenario.run': scenarioRunRequestSchema,
+  'scenario.runStatus': scenarioRunRefRequestSchema,
+  'scenario.stop': scenarioRunRefRequestSchema,
+  'scenario.provideInput': scenarioProvideInputRequestSchema,
+  'scenario.runList': scenarioRunListRequestSchema,
+  'scenario.runClear': scenarioRunListRequestSchema,
+  'scenario.runBatch': scenarioRunBatchRequestSchema,
+  'scenario.batchStatus': scenarioBatchRefRequestSchema,
+  'scenario.stopBatch': scenarioBatchRefRequestSchema,
 };
 
 /**
@@ -796,7 +857,7 @@ export interface RequirementDto {
  * which surface as requirements for the user). They are never shown in the Input panel. Single source
  * of truth for both the main host (`SeeboHost`) and the renderer (Input panel pruning).
  */
-export const DATA_CAPABILITIES = ['template', 'env'] as const;
+export const DATA_CAPABILITIES = ['template', 'env', 'previous'] as const;
 export type DataCapability = (typeof DATA_CAPABILITIES)[number];
 
 export interface DiagnosticDto {
@@ -867,6 +928,7 @@ export const SUBTYPES: Record<TemplateType, string[]> = {
   api: ['json'],
   capability: ['javascript'],
   action: ['javascript'],
+  scenario: ['json'],
 };
 /** Default subtype assigned to a new template (and used to group subtype-less ones in the tree). */
 export const DEFAULT_SUBTYPE: Record<TemplateType, string> = {
@@ -874,6 +936,7 @@ export const DEFAULT_SUBTYPE: Record<TemplateType, string> = {
   api: 'json',
   capability: 'javascript',
   action: 'javascript',
+  scenario: 'json',
 };
 /** Subtypes the Document output shows rendered (not as code). */
 export const RENDERABLE_SUBTYPES = new Set(['html', 'markdown', 'eml', 'mermaid', 'swagger', 'echarts']);
@@ -996,6 +1059,101 @@ export interface EnvironmentSelectionResponse {
   /** The active environment id, or null when none is selected. */
   environmentId: string | null;
 }
+
+// --- Scenario run DTOs ------------------------------------------------------
+
+/**
+ * The canonical output envelope every executed scenario block produces, addressed from a later block's
+ * formulas via `previous('alias')`. API blocks add HTTP fields; action/capability blocks add their
+ * value/logs. Always an object, so member access in formulas is predictable.
+ */
+export interface BlockOutput {
+  kind: 'api' | 'action' | 'capability' | 'decision' | 'delay' | 'start';
+  ok: boolean;
+  output: unknown;
+  /** API metadata (never bodies): the method + url the call used. */
+  method?: string;
+  url?: string;
+  status?: number;
+  statusText?: string;
+  headers?: Record<string, string>;
+  body?: string;
+  json?: unknown;
+  durationMs?: number;
+  logs?: string[];
+  envWrites?: string[];
+  error?: string | null;
+}
+
+export type ScenarioRunStatus = 'running' | 'awaiting-input' | 'completed' | 'failed' | 'cancelled';
+export type ScenarioRunMode = z.infer<typeof scenarioRunModeSchema>;
+
+export interface ScenarioRunDto {
+  id: string;
+  scenarioId: string;
+  status: ScenarioRunStatus;
+  mode: ScenarioRunMode;
+  startNodeId: string | null;
+  stepCount: number;
+  error: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+/** One executed node in a run (redacted: metadata + a truncated output snapshot, never inputs/bodies). */
+export interface ScenarioRunStepDto {
+  id: string;
+  runId: string;
+  seq: number;
+  nodeId: string;
+  alias: string | null;
+  kind: string;
+  status: string;
+  method: string | null;
+  url: string | null;
+  httpStatus: number | null;
+  message: string | null;
+  output: unknown;
+  durationMs: number | null;
+  createdAt: string;
+}
+
+export interface ScenarioRunStatusResponse {
+  run: ScenarioRunDto;
+  steps: ScenarioRunStepDto[];
+  /** When `run.status === 'awaiting-input'`: the paused node and the inputs it still needs. */
+  pending: { nodeId: string; requirements: RequirementDto[] } | null;
+}
+export interface ScenarioRunStartedResponse {
+  runId: string;
+}
+export interface ScenarioRunsResponse {
+  runs: ScenarioRunDto[];
+}
+
+/** A batch of back-to-back scenario runs. Transient (in-memory) — the runs themselves are persisted. */
+export type ScenarioBatchStatus = 'running' | 'completed' | 'cancelled' | 'failed';
+export interface ScenarioBatchDto {
+  id: string;
+  scenarioId: string;
+  total: number;
+  completed: number;
+  status: ScenarioBatchStatus;
+  currentRunId: string | null;
+}
+export interface ScenarioBatchStartedResponse {
+  batchId: string;
+}
+export interface ScenarioBatchStatusResponse {
+  batch: ScenarioBatchDto;
+}
+
+export type ScenarioRunRequest = z.infer<typeof scenarioRunRequestSchema>;
+export type ScenarioRunRefRequest = z.infer<typeof scenarioRunRefRequestSchema>;
+export type ScenarioProvideInputRequest = z.infer<typeof scenarioProvideInputRequestSchema>;
+export type ScenarioRunListRequest = z.infer<typeof scenarioRunListRequestSchema>;
+export type ScenarioRunBatchRequest = z.infer<typeof scenarioRunBatchRequestSchema>;
+export type ScenarioBatchRefRequest = z.infer<typeof scenarioBatchRefRequestSchema>;
 
 export type NameColorRequest = z.infer<typeof nameColorRequestSchema>;
 export type ProjectCreateRequest = z.infer<typeof projectCreateRequestSchema>;
@@ -1254,6 +1412,15 @@ export interface OpContracts {
   'env.delete': { request: IdRequest; response: EnvironmentsResponse };
   'env.selection.get': { request: EmptyRequest; response: EnvironmentSelectionResponse };
   'env.selection.set': { request: EnvSelectionSetRequest; response: EnvironmentSelectionResponse };
+  'scenario.run': { request: ScenarioRunRequest; response: ScenarioRunStartedResponse };
+  'scenario.runStatus': { request: ScenarioRunRefRequest; response: ScenarioRunStatusResponse };
+  'scenario.stop': { request: ScenarioRunRefRequest; response: OkResponse };
+  'scenario.provideInput': { request: ScenarioProvideInputRequest; response: OkResponse };
+  'scenario.runList': { request: ScenarioRunListRequest; response: ScenarioRunsResponse };
+  'scenario.runClear': { request: ScenarioRunListRequest; response: ScenarioRunsResponse };
+  'scenario.runBatch': { request: ScenarioRunBatchRequest; response: ScenarioBatchStartedResponse };
+  'scenario.batchStatus': { request: ScenarioBatchRefRequest; response: ScenarioBatchStatusResponse };
+  'scenario.stopBatch': { request: ScenarioBatchRefRequest; response: OkResponse };
 }
 
 export type OpRequest<N extends OpName> = OpContracts[N]['request'];

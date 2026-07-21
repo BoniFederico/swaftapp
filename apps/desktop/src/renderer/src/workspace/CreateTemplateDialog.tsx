@@ -1,17 +1,27 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { isCodeTemplateType, type TemplateType } from '@swaft/shared';
 import { useI18n } from '../i18n/I18nProvider';
-import { ApiIcon, BoltIcon, Button, CapabilityIcon, Dialog, DocumentIcon, TextField } from '../ui';
+import {
+  ApiIcon,
+  BoltIcon,
+  Button,
+  CapabilityIcon,
+  Dialog,
+  DocumentIcon,
+  ScenarioIcon,
+  TextField,
+} from '../ui';
 
 /** Capability/action names are referenced like a function, so they must be JS identifiers. */
 const IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
 
-/** The four template types, with the same glyphs the rest of the app uses for them. */
+/** The template types, with the same glyphs the rest of the app uses for them. */
 const TYPE_OPTIONS = [
   { type: 'document', Icon: DocumentIcon, labelKey: 'tpl.document', descKey: 'tpl.documentDesc' },
   { type: 'api', Icon: ApiIcon, labelKey: 'tpl.api', descKey: 'tpl.apiDesc' },
   { type: 'capability', Icon: CapabilityIcon, labelKey: 'tpl.capability', descKey: 'tpl.capabilityDesc' },
   { type: 'action', Icon: BoltIcon, labelKey: 'tpl.action', descKey: 'tpl.actionDesc' },
+  { type: 'scenario', Icon: ScenarioIcon, labelKey: 'tpl.scenario', descKey: 'tpl.scenarioDesc' },
 ] as const;
 
 /** WAI-ARIA radio cards (icon + name + one-liner): click or arrow keys select, focus follows. */

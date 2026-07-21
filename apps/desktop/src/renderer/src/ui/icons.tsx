@@ -227,6 +227,42 @@ export function EmptyIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** Branching node tree — the Scenario (workflow) template glyph (Material `account_tree`). */
+export function ScenarioIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M22 11V3h-7v3H9V3H2v8h7V8h2v10h4v3h7v-8h-7v3h-2V8h2v3h7zM7 9H4V5h3v4zm10 6h3v4h-3v-4zm0-10h3v4h-3V5z" />
+    </Icon>
+  );
+}
+
+/** Play triangle — run (a single block / a scenario). */
+export function PlayIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M8 5v14l11-7z" />
+    </Icon>
+  );
+}
+
+/** Play with a leading bar — run from this block onward. */
+export function RunFromIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M4 5v14h2V5H4zm4 0v14l11-7L8 5z" />
+    </Icon>
+  );
+}
+
+/** Grid — the snap-to-grid toggle. */
+export function GridIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M4 4h6v6H4V4zm0 10h6v6H4v-6zM14 4h6v6h-6V4zm0 10h6v6h-6v-6z" />
+    </Icon>
+  );
+}
+
 /** Paper plane — send the API request. */
 export function SendIcon(props: SVGProps<SVGSVGElement>) {
   return (

@@ -11,7 +11,7 @@
  * reshaped to flat collections) + workspace settings + restrictions.
  */
 
-export const SCHEMA_VERSION = 24;
+export const SCHEMA_VERSION = 25;
 
 /** Sync-metadata columns present on every 🟢 synchronized entity. */
 export const SYNC_META_COLUMNS = [
@@ -44,6 +44,8 @@ export const LOCAL_ONLY_TABLES = [
   'api_action_runs',
   'receipts',
   'environment_selection',
+  'scenario_runs',
+  'scenario_run_steps',
 ] as const;
 
 /** DDL fragment: the shared sync-metadata columns. */
@@ -191,6 +193,39 @@ const RECEIPTS_DDL = `CREATE TABLE receipts (
   created_at TEXT NOT NULL
 );`;
 
+// Scenarios (M11): 🔵 local-only run history for a scenario workflow. A `scenario_runs` row groups the
+// per-node `scenario_run_steps` of one run. Redacted like the other histories: step output is a
+// truncated snapshot for display, API steps keep method/url/status (never bodies), inputs are never
+// stored. Keyed by the scenario template id — the run history lives on the scenario, not its blocks.
+const SCENARIO_RUNS_DDL = `CREATE TABLE scenario_runs (
+  id TEXT PRIMARY KEY,
+  scenario_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  mode TEXT NOT NULL,
+  start_node_id TEXT,
+  step_count INTEGER NOT NULL DEFAULT 0,
+  error TEXT,
+  started_at TEXT NOT NULL,
+  finished_at TEXT
+);`;
+
+const SCENARIO_RUN_STEPS_DDL = `CREATE TABLE scenario_run_steps (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  node_id TEXT NOT NULL,
+  alias TEXT,
+  kind TEXT NOT NULL,
+  status TEXT NOT NULL,
+  method TEXT,
+  url TEXT,
+  http_status INTEGER,
+  message TEXT,
+  output TEXT,
+  duration_ms INTEGER,
+  created_at TEXT NOT NULL
+);`;
+
 /** Full schema DDL for a fresh workspace (current version). */
 export const SCHEMA_DDL = `
 CREATE TABLE workspace_meta (
@@ -248,6 +283,10 @@ ${TEMPLATE_TAGS_DDL}
 ${ENVIRONMENTS_DDL}
 
 ${ENVIRONMENT_SELECTION_DDL}
+
+${SCENARIO_RUNS_DDL}
+
+${SCENARIO_RUN_STEPS_DDL}
 `;
 
 /**
@@ -463,5 +502,10 @@ export const MIGRATIONS: { to: number; sql: string }[] = [
     // v24 gives folders propagated actions (pre/post actions run around every API call beneath them,
     // concatenated down the chain), like the headers/proxy/auth policy.
     sql: `ALTER TABLE folders ADD COLUMN actions TEXT NOT NULL DEFAULT '[]';`,
+  },
+  {
+    to: 25,
+    // v25 adds the scenario workflow run history (local-only): a run + its per-node steps.
+    sql: `${SCENARIO_RUNS_DDL}\n${SCENARIO_RUN_STEPS_DDL}`,
   },
 ];

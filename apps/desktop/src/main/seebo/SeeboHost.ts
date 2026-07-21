@@ -80,6 +80,16 @@ export interface EnvDataProvider {
 export interface SeeboRenderContext {
   projectId: string | null;
   templateId: string | null;
+  /**
+   * Present only while a scenario run renders one of its blocks (set by the scenario runner). Carries
+   * the output **envelopes** of already-executed blocks, keyed by alias/node id, so `previous(...)`
+   * resolves them. Absent everywhere else, so `previous(...)` is null (an empty object) standalone.
+   */
+  scenario?: {
+    outputs: Record<string, unknown>;
+    /** Alias/id of the immediate predecessor on the taken path (the `previous()` no-arg form). */
+    previousAlias?: string | null;
+  };
 }
 
 export interface SeeboHostOptions {
@@ -143,6 +153,22 @@ function templateRef(req: SeeboRequirement): string {
   const direct = (req as { ref?: unknown }).ref;
   if (typeof direct === 'string') return direct;
   return typeof req.id === 'string' ? req.id : String(req.id ?? '');
+}
+
+/**
+ * The block reference passed to a `previous(...)` capability call — an alias (or node id). The
+ * canonical form is `previous('login')` (→ id); `previous({ ref: 'login' })` / `{ alias: 'login' }`
+ * also work. When no ref is given, the runner-supplied `previousAlias` (immediate predecessor) is used.
+ */
+function previousRef(req: SeeboRequirement): string | null {
+  const args = (req as { args?: Record<string, unknown> }).args;
+  if (args && typeof args === 'object') {
+    const v = args.ref ?? args.alias;
+    if (typeof v === 'string') return v;
+  }
+  const direct = (req as { ref?: unknown }).ref;
+  if (typeof direct === 'string') return direct;
+  return typeof req.id === 'string' && req.id ? req.id : null;
 }
 
 /**
@@ -215,6 +241,20 @@ export class SeeboHost {
     // (e.g. tests, the Template Editor without a workspace) keep their original surface untouched.
     const dataCapabilities: string[] = [];
     const { templateData, envData, userCapabilities } = this.deps;
+    // `previous(...)` carries an already-executed scenario block's output envelope into a later block.
+    // Registered unconditionally (it needs no provider — only the per-render `ctx.scenario` the runner
+    // sets). Outside a run it resolves to an empty object, so a block template stays renderable on its
+    // own; inside a run it returns the stored envelope. `object` contract → member access type-checks.
+    capabilities.previous = defineCapability('previous', {
+      type: 'object',
+      resolve: (req) => {
+        const s = ctx?.scenario;
+        if (!s) return {};
+        const key = previousRef(req) ?? s.previousAlias ?? null;
+        return (key ? s.outputs[key] : undefined) ?? {};
+      },
+    });
+    dataCapabilities.push('previous');
     if (templateData) {
       // Declare an `object` contract so member access (`template('cfg').baseUrl`) type-checks without
       // the template repeating `type:object()`; a JSON object would otherwise fail the default (string)

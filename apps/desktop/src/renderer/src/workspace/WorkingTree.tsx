@@ -24,6 +24,7 @@ import {
   IconButton,
   LabelIcon,
   Menu,
+  ScenarioIcon,
   SearchIcon,
   TagIcon,
   useToast,
@@ -61,6 +62,8 @@ function TypeIcon({ type }: { type: TemplateType }) {
     case 'capability':
     case 'action':
       return <CapabilityIcon className={className} />;
+    case 'scenario':
+      return <ScenarioIcon className={className} />;
     default:
       return <DocumentIcon className={className} />;
   }
@@ -82,6 +85,7 @@ function TypeFilterButton({
     { type: 'api', label: t('tpl.api') },
     { type: 'capability', label: t('tpl.capability') },
     { type: 'action', label: t('tpl.action') },
+    { type: 'scenario', label: t('tpl.scenario') },
   ];
   return (
     <>

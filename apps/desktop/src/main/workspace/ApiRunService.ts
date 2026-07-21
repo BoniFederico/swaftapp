@@ -6,6 +6,7 @@ import type {
 } from '@swaft/shared';
 import { AppError } from '../errors';
 import { parseJsonOr } from '../util/json';
+import type { SeeboRenderContext } from '../seebo/SeeboHost';
 import type { HttpService } from '../http/HttpService';
 import type { UserCodeRegistry } from '../usercode/UserCodeRegistry';
 import type { ApiHistoryService } from './ApiHistoryService';
@@ -40,6 +41,11 @@ export class ApiRunService {
     templateId: string | undefined,
     request: HttpRequestModel,
     values: Record<string, unknown>,
+    /**
+     * When set, resolves `${ previous(...) }` against the scenario run. `skipHistory` suppresses the
+     * per-template history recording so a scenario run's calls are logged on the scenario, not the block.
+     */
+    opts: { scenario?: SeeboRenderContext['scenario']; skipHistory?: boolean } = {},
   ): Promise<{
     response: HttpResponseDto;
     rendered: boolean;
@@ -51,7 +57,7 @@ export class ApiRunService {
       return { response: await this.deps.http.send(request), rendered: false };
     }
 
-    const resolved = await this.deps.requests.resolve(templateId, request, values);
+    const resolved = await this.deps.requests.resolve(templateId, request, values, opts.scenario);
     let outgoing = resolved.request;
     // Folder-inherited actions wrap the request's own like nested middleware: `pre` runs outside-in
     // (outermost folder → … → request), `post` runs inside-out (request → … → outermost folder), so a
@@ -72,7 +78,7 @@ export class ApiRunService {
         // The point of a `pre` action is to make the request valid (sign it, refresh a token); if it
         // could not, sending anyway would produce a confusing HTTP error instead of the real cause.
         // Persist what ran so the failure is in the Pre-Action history, then stop.
-        await this.deps.history.recordActions(templateId, outcomes);
+        if (!opts.skipHistory) await this.deps.history.recordActions(templateId, outcomes);
         throw new AppError(
           'REQUEST_ACTION_FAILED',
           'validation',
@@ -84,7 +90,9 @@ export class ApiRunService {
     }
 
     const response = await this.deps.http.send(outgoing, { proxy: resolved.proxy });
-    await this.deps.history.record(templateId, outgoing.method, outgoing.url, response.status);
+    if (!opts.skipHistory) {
+      await this.deps.history.record(templateId, outgoing.method, outgoing.url, response.status);
+    }
 
     if (postActions.length > 0) {
       const api: ApiContext = { request: outgoing, response: { ...response, json: parseJsonOr<unknown>(response.body, undefined) } };
@@ -96,7 +104,7 @@ export class ApiRunService {
 
     // Persist the run's outcomes so the Pre/Post-Action tabs accumulate a history, like the request
     // history does.
-    await this.deps.history.recordActions(templateId, outcomes);
+    if (!opts.skipHistory) await this.deps.history.recordActions(templateId, outcomes);
 
     const rendered = resolved.rendered || outcomes.length > 0;
     return {

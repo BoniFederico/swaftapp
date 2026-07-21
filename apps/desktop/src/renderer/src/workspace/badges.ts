@@ -8,6 +8,7 @@ const BADGE_COLORS: Record<string, string> = {
   javascript: '#c9a227',
   capability: '#00897b',
   action: '#e8590c',
+  scenario: '#7c3aed',
   java: '#b07219',
   json: '#3f9d3f',
   yaml: '#cb171e',
@@ -35,6 +36,6 @@ export const badgeColor = (value: string): string => BADGE_COLORS[value] ?? 'var
  */
 export function rowBadge(tpl: TemplateSummary): string | null {
   if (tpl.type === 'api') return tpl.method ?? 'GET';
-  if (tpl.type === 'capability' || tpl.type === 'action') return tpl.type;
+  if (tpl.type === 'capability' || tpl.type === 'action' || tpl.type === 'scenario') return tpl.type;
   return tpl.subtype;
 }

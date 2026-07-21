@@ -111,3 +111,43 @@ describe('SeeboHost — env-fallback sugar for bare names', () => {
     expect(state.status).toBe('failed');
   });
 });
+
+describe('SeeboHost — previous(...) scenario data capability', () => {
+  const ctx = (outputs: Record<string, unknown>, previousAlias?: string) => ({
+    projectId: null,
+    templateId: null,
+    scenario: { outputs, previousAlias },
+  });
+
+  it('is a data capability (pruned from inputs), always registered', async () => {
+    expect((await new SeeboHost().dataCapabilityNames()).has('previous')).toBe(true);
+  });
+
+  it('resolves an already-run block’s output envelope by alias (member access)', async () => {
+    const host = new SeeboHost();
+    const state = await host.render("${ previous('login').token }", {}, undefined, ctx({
+      login: { token: 'abc', status: 200 },
+    }));
+    expect(state.status).toBe('completed');
+    expect(state.output).toBe('abc');
+  });
+
+  it('resolves several prior blocks in one formula', async () => {
+    const host = new SeeboHost();
+    const state = await host.render(
+      "${ previous('a').x }-${ previous('b').y }",
+      {},
+      undefined,
+      ctx({ a: { x: 'one' }, b: { y: 'two' } }),
+    );
+    expect(state.status).toBe('completed');
+    expect(state.output).toBe('one-two');
+  });
+
+  it('the whole-value form resolves to an empty object outside a run (no crash)', async () => {
+    // Standalone (no scenario) → previous('x') is {}. The host resolves without throwing; a formula
+    // that then reads a *property* of absent prior data is unresolved, like any missing input.
+    const state = await new SeeboHost().render("${ previous('x') }", {});
+    expect(state.status).toBe('completed');
+  });
+});
