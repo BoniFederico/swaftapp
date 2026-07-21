@@ -58,6 +58,7 @@ import {
   type GitCreateBranchRequest,
   type GitCloneRequest,
   type GitPublishRequest,
+  type GitFileDiffRequest,
 } from '@swaft/shared';
 import { getAuthService } from '../auth/registry';
 import { toErrorEnvelope } from '../errors';
@@ -169,6 +170,8 @@ export const handlers: Record<OpName, Handler> = {
     svc(async () => ({ status: await getGitOpsService().publish((p as GitPublishRequest).url) })),
   'git.available': () => svc(async () => getGitOpsService().available()),
   'git.reload': () => svc(async () => ({ status: await getGitOpsService().reload() })),
+  'git.fileDiff': (p) =>
+    svc(async () => getGitOpsService().fileDiff((p as GitFileDiffRequest).path)),
 
   // Organization tree (M5)
   'tree.get': () => svc(async () => ({ tree: await getOrganizationService().getTree() })),

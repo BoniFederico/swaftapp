@@ -72,6 +72,8 @@ export interface GitService {
   originUrl(dir: string): Promise<string | null>;
   /** Add a remote (e.g. `origin`) pointing at `url`. */
   addRemote(dir: string, name: string, url: string): Promise<void>;
+  /** The committed (HEAD) contents of a tracked file, or null when it is new / has no HEAD. */
+  showHead(dir: string, path: string): Promise<string | null>;
 }
 
 /** Reject refs/messages that could be mistaken for options or break the ref grammar. */
@@ -234,6 +236,15 @@ export class SystemGitService implements GitService {
     assertSafeArg(name, 'GIT_INVALID_REF', 'remote name');
     assertSafeArg(url, 'GIT_INVALID_URL', 'repository URL');
     await this.git(dir, ['remote', 'add', name, url]);
+  }
+
+  async showHead(dir: string, path: string): Promise<string | null> {
+    try {
+      // The path is embedded in the object spec (`HEAD:<path>`), so it can't be read as an option.
+      return await this.git(dir, ['show', `HEAD:${path}`]);
+    } catch {
+      return null; // untracked/new file, or no commit yet
+    }
   }
 
   /** Whether the current branch has a configured upstream (so a plain `git push` will work). */

@@ -106,6 +106,7 @@ export const gitCloneRequestSchema = z
 export const gitPublishRequestSchema = z
   .object({ url: z.string().trim().min(1).max(2048) })
   .strict();
+export const gitFileDiffRequestSchema = z.object({ path: z.string().min(1).max(2048) }).strict();
 
 // --- M5: workspace organization + settings ----------------------------------
 
@@ -504,6 +505,7 @@ export const OP_NAMES = [
   'git.publish',
   'git.available',
   'git.reload',
+  'git.fileDiff',
   'tree.get',
   'project.create',
   'project.rename',
@@ -613,6 +615,7 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'git.publish': gitPublishRequestSchema,
   'git.available': emptyRequestSchema,
   'git.reload': emptyRequestSchema,
+  'git.fileDiff': gitFileDiffRequestSchema,
   'tree.get': emptyRequestSchema,
   'project.create': projectCreateRequestSchema,
   'project.rename': renameRequestSchema,
@@ -778,6 +781,15 @@ export type GitCheckoutRequest = z.infer<typeof gitCheckoutRequestSchema>;
 export type GitCreateBranchRequest = z.infer<typeof gitCreateBranchRequestSchema>;
 export type GitCloneRequest = z.infer<typeof gitCloneRequestSchema>;
 export type GitPublishRequest = z.infer<typeof gitPublishRequestSchema>;
+export type GitFileDiffRequest = z.infer<typeof gitFileDiffRequestSchema>;
+
+export interface GitFileDiffResponse {
+  path: string;
+  /** Committed (HEAD) contents, or null when the file is new/untracked. */
+  old: string | null;
+  /** Working-tree contents, or null when the file was deleted. */
+  current: string | null;
+}
 
 /** A single changed path in the Git working tree (for the Git panel). */
 export interface GitFileChange {
@@ -1460,6 +1472,7 @@ export interface OpContracts {
   'git.publish': { request: GitPublishRequest; response: GitStatusResponse };
   'git.available': { request: EmptyRequest; response: GitAvailabilityResponse };
   'git.reload': { request: EmptyRequest; response: GitStatusResponse };
+  'git.fileDiff': { request: GitFileDiffRequest; response: GitFileDiffResponse };
   'tree.get': { request: EmptyRequest; response: TreeResponse };
   'project.create': { request: ProjectCreateRequest; response: TreeResponse };
   'project.rename': { request: RenameRequest; response: TreeResponse };

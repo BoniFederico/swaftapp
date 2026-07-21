@@ -3,10 +3,11 @@ import { createPortal } from 'react-dom';
 import type { GitStatusDto } from '@swaft/shared';
 import { ApiError, type ApiClient } from '../api-client/client';
 import { useI18n } from '../i18n/I18nProvider';
-import { Button, GitBranchIcon, TextField, useToast } from '../ui';
+import { Button, GitBranchIcon, Select, TextField, useToast } from '../ui';
 import { usePopover } from '../ui/usePopover';
 import { notifyTreeChanged } from '../workspace/treeBus';
 import { useWorkspace } from '../workspace/WorkspaceProvider';
+import { GitDiffDialog } from './GitDiffDialog';
 
 /**
  * The top-right Git widget for a `git` workspace (git.md §6.2): a compact trigger showing the current
@@ -18,7 +19,7 @@ export function GitStatusButton({ client }: { client: ApiClient }) {
   const { t } = useI18n();
   const { refresh } = useWorkspace();
   const toast = useToast();
-  const { open, pos, triggerRef, popRef, toggle } = usePopover<HTMLDivElement>(320);
+  const { open, pos, triggerRef, popRef, toggle } = usePopover<HTMLDivElement>(360);
 
   const [status, setStatus] = useState<GitStatusDto | null>(null);
   const [busy, setBusy] = useState(false);
@@ -27,6 +28,7 @@ export function GitStatusButton({ client }: { client: ApiClient }) {
   const [creatingBranch, setCreatingBranch] = useState(false);
   const [publishUrl, setPublishUrl] = useState('');
   const [showPublish, setShowPublish] = useState(false);
+  const [diffFile, setDiffFile] = useState<{ path: string; label?: string } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -118,7 +120,7 @@ export function GitStatusButton({ client }: { client: ApiClient }) {
             className="git-panel"
             role="dialog"
             aria-label={t('git.label')}
-            style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: 320 }}
+            style={{ position: 'fixed', top: pos.top, left: pos.left }}
           >
             <div className="git-panel__head">
               <GitBranchIcon />
@@ -145,37 +147,27 @@ export function GitStatusButton({ client }: { client: ApiClient }) {
             )}
 
             {status && status.branches.length > 0 && (
-              <div className="git-panel__row">
-                <label className="git-panel__label" htmlFor="git-branch-select">
-                  {t('git.branch')}
-                </label>
-                <select
-                  id="git-branch-select"
-                  className="git-panel__select"
-                  value={status.branch ?? ''}
-                  disabled={busy}
-                  onChange={(e) => void op(() => client.call('git.checkout', { branch: e.target.value }), true)}
-                >
-                  {status.branch == null && <option value="">{t('git.detached')}</option>}
-                  {status.branches.map((b) => (
-                    <option key={b} value={b}>
-                      {b}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  className="git-panel__link"
-                  disabled={busy}
-                  onClick={() => setCreatingBranch((v) => !v)}
-                >
+              <div className="git-panel__branchRow">
+                <div className="git-panel__branchSelect">
+                  <Select
+                    label={t('git.branch')}
+                    value={status.branch ?? ''}
+                    aria-label={t('git.branch')}
+                    options={[
+                      ...(status.branch == null ? [{ value: '', label: t('git.detached') }] : []),
+                      ...status.branches.map((b) => ({ value: b, label: b })),
+                    ]}
+                    onChange={(v) => void op(() => client.call('git.checkout', { branch: v }), true)}
+                  />
+                </div>
+                <Button variant="ghost" disabled={busy} onClick={() => setCreatingBranch((v) => !v)}>
                   {t('git.newBranch')}
-                </button>
+                </Button>
               </div>
             )}
 
             {creatingBranch && (
-              <div className="git-panel__row">
+              <div className="git-panel__inline">
                 <TextField
                   label={t('git.newBranchName')}
                   value={newBranch}
@@ -192,14 +184,21 @@ export function GitStatusButton({ client }: { client: ApiClient }) {
               {status && status.files.length > 0 ? (
                 <ul className="git-panel__files">
                   {status.files.map((f) => (
-                    <li key={f.path} className={`git-file git-file--${f.status}`}>
-                      <span className="git-file__mark" aria-hidden="true">
-                        {f.status[0]!.toUpperCase()}
-                      </span>
-                      <span className="git-file__text">
-                        <span className="git-file__name">{f.label ?? f.path}</span>
-                        {f.label && <span className="git-file__path muted">{f.path}</span>}
-                      </span>
+                    <li key={f.path}>
+                      <button
+                        type="button"
+                        className={`git-file git-file--${f.status}`}
+                        title={t('git.diff.view')}
+                        onClick={() => setDiffFile({ path: f.path, label: f.label })}
+                      >
+                        <span className="git-file__mark" aria-hidden="true">
+                          {f.status[0]!.toUpperCase()}
+                        </span>
+                        <span className="git-file__text">
+                          <span className="git-file__name">{f.label ?? f.path}</span>
+                          {f.label && <span className="git-file__path muted">{f.path}</span>}
+                        </span>
+                      </button>
                     </li>
                   ))}
                 </ul>
@@ -270,6 +269,13 @@ export function GitStatusButton({ client }: { client: ApiClient }) {
           </div>,
           document.body,
         )}
+      <GitDiffDialog
+        open={diffFile !== null}
+        client={client}
+        path={diffFile?.path ?? null}
+        label={diffFile?.label}
+        onClose={() => setDiffFile(null)}
+      />
     </>
   );
 }

@@ -40,6 +40,10 @@ function makeTransport(calls: { op: string; payload: unknown }[], opts: PanelOpt
           return Promise.resolve(ok({ status }));
         case 'git.available':
           return Promise.resolve(ok({ available: true, version: 'git version test' }));
+        case 'git.fileDiff':
+          return Promise.resolve(
+            ok({ path: (payload as { path: string }).path, old: '{"name":"old"}', current: '{"name":"new"}' }),
+          );
         case 'git.commit':
           status = { ...CLEAN, remoteUrl };
           return Promise.resolve(ok({ status }));
@@ -108,7 +112,9 @@ describe('GitStatusButton', () => {
   it('switches branch via the selector', async () => {
     const { calls } = renderPanel();
     fireEvent.click(await screen.findByRole('button', { name: 'Git' }));
-    fireEvent.change(await screen.findByLabelText('Branch'), { target: { value: 'dev' } });
+    // Open the shared Select and choose another branch.
+    fireEvent.click(await screen.findByRole('button', { name: 'Branch' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'dev' }));
     await waitFor(() => expect(calls.some((c) => c.op === 'git.checkout')).toBe(true));
     expect(calls.find((c) => c.op === 'git.checkout')?.payload).toEqual({ branch: 'dev' });
   });
@@ -138,6 +144,22 @@ describe('GitStatusButton', () => {
     expect(await screen.findByText('Release notes')).toBeInTheDocument();
     // The raw path is kept as secondary detail.
     expect(screen.getByText('templates/tpl-1/template.json')).toBeInTheDocument();
+  });
+
+  it('opens a side-by-side diff when a change is clicked', async () => {
+    const { calls } = renderPanel({
+      files: [{ path: 'templates/tpl-1/template.json', status: 'modified', staged: false, label: 'Release notes' }],
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Git' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Release notes/i }));
+
+    // The diff dialog opens with both panes.
+    expect(await screen.findByText('Committed (HEAD)')).toBeInTheDocument();
+    expect(screen.getByText('Working tree')).toBeInTheDocument();
+    await waitFor(() => expect(calls.some((c) => c.op === 'git.fileDiff')).toBe(true));
+    expect(calls.find((c) => c.op === 'git.fileDiff')?.payload).toEqual({
+      path: 'templates/tpl-1/template.json',
+    });
   });
 
   it('reloads the workspace on demand', async () => {

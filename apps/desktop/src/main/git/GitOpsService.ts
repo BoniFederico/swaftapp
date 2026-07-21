@@ -1,6 +1,12 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import type { GitAvailabilityResponse, GitFileChange, GitStatusDto, WorkspaceSummary } from '@swaft/shared';
+import type {
+  GitAvailabilityResponse,
+  GitFileChange,
+  GitFileDiffResponse,
+  GitStatusDto,
+  WorkspaceSummary,
+} from '@swaft/shared';
 import { AppError } from '../errors';
 import type { WorkspaceService } from '../workspace/WorkspaceService';
 import type { GitService } from './GitService';
@@ -61,6 +67,15 @@ export class GitOpsService {
   async reload(): Promise<GitStatusDto> {
     await this.ws.reload();
     return this.status();
+  }
+
+  /** The committed (HEAD) vs working-tree contents of a changed file, for the diff view. */
+  async fileDiff(path: string): Promise<GitFileDiffResponse> {
+    const dir = this.dir();
+    const old = await this.git.showHead(dir, path);
+    const full = join(dir, path);
+    const current = existsSync(full) ? readFileSync(full, 'utf8') : null;
+    return { path, old, current };
   }
 
   async status(): Promise<GitStatusDto> {

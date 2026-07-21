@@ -3885,11 +3885,13 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  max-width: 380px;
+  /* Fixed width matching the popover anchor (usePopover(360)) so it never overflows the viewport. */
+  width: 360px;
+  max-width: calc(100vw - 16px);
   padding: var(--space-3);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md, var(--radius-sm));
   box-shadow: var(--shadow-2);
   z-index: 150;
 }
@@ -3899,17 +3901,23 @@ body {
   gap: var(--space-2);
 }
 .git-panel__branch {
+  flex: 1 1 auto;
+  min-width: 0;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.git-panel__head > .git-panel__state,
+.git-panel__head > .git-panel__track,
+.git-panel__head > svg {
+  flex-shrink: 0;
 }
 .git-panel__state.is-dirty {
   color: color-mix(in srgb, var(--warning, #e0a000) 85%, var(--text));
   border-color: color-mix(in srgb, var(--warning, #e0a000) 45%, var(--border));
 }
 .git-panel__track {
-  margin-left: auto;
   font-size: var(--fs-sm);
 }
 .git-panel__remote {
@@ -3918,62 +3926,67 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-top: calc(-1 * var(--space-1));
-}
-.git-panel__row {
-  display: flex;
-  align-items: flex-end;
-  gap: var(--space-2);
+  margin-top: calc(-1 * var(--space-2));
 }
 .git-panel__label {
   font-size: var(--fs-sm);
   color: var(--text-muted);
   font-weight: 600;
 }
-.git-panel__select {
-  flex: 1;
-  height: 32px;
-  padding: 0 var(--space-2);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  font: inherit;
-  font-size: var(--fs-sm);
+/* Branch switcher: the shared Select fills the row; "New branch" sits beside it. */
+.git-panel__branchRow {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
 }
-.git-panel__link {
-  background: none;
-  border: none;
-  color: var(--primary);
-  font: inherit;
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
+.git-panel__branchSelect {
+  flex: 1;
+  min-width: 0;
+}
+/* Inline mini-forms (new branch, publish): a labelled field + an action button. */
+.git-panel__inline {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+.git-panel__inline > :first-child {
+  flex: 1;
+  min-width: 0;
 }
 .git-panel__changes {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--space-2);
 }
 .git-panel__files {
   list-style: none;
   margin: 0;
-  padding: 0;
-  max-height: 180px;
+  padding: var(--space-1);
+  max-height: 190px;
   overflow: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+  background: var(--surface-2);
 }
+/* Clickable change row — styled like the shared popover menu items (env-menu). */
 .git-file {
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
-  font-size: var(--fs-sm);
-}
-.git-file {
   align-items: flex-start;
+  gap: var(--space-2);
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+  padding: var(--space-2);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.git-file:hover {
+  background: var(--surface);
 }
 .git-file__mark {
   width: 16px;
@@ -3989,18 +4002,14 @@ body {
   flex-direction: column;
   min-width: 0;
 }
-.git-file__name {
+.git-file__name,
+.git-file__path {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.git-panel__conflict {
-  padding: var(--space-2);
-  border-radius: var(--radius-sm);
-  font-size: var(--fs-sm);
-  color: color-mix(in srgb, #d1495b 88%, var(--text));
-  background: color-mix(in srgb, #d1495b 12%, transparent);
-  border: 1px solid color-mix(in srgb, #d1495b 40%, var(--border));
+.git-file__path {
+  font-size: var(--fs-xs, 0.75rem);
 }
 .git-file--added .git-file__mark,
 .git-file--untracked .git-file__mark {
@@ -4012,10 +4021,13 @@ body {
 .git-file--conflicted .git-file__mark {
   color: #e0a000;
 }
-.git-file__path {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.git-panel__conflict {
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  color: color-mix(in srgb, #d1495b 88%, var(--text));
+  background: color-mix(in srgb, #d1495b 12%, transparent);
+  border: 1px solid color-mix(in srgb, #d1495b 40%, var(--border));
 }
 .git-panel__empty {
   padding: var(--space-2);
@@ -4028,6 +4040,7 @@ body {
 }
 .git-panel__commit > :first-child {
   flex: 1;
+  min-width: 0;
 }
 .git-panel__actions {
   display: flex;
@@ -4035,6 +4048,60 @@ body {
   gap: var(--space-1);
   border-top: 1px solid var(--border);
   padding-top: var(--space-2);
+}
+
+/* ---------- Git diff dialog (two read-only editors) ---------- */
+.ui-dialog--wide {
+  width: min(1100px, 94vw);
+  max-width: 94vw;
+}
+.git-diff__title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.git-diff__titleName {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.git-diff__titlePath {
+  font-size: var(--fs-sm);
+  font-family: var(--font-mono, monospace);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.git-diff {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  height: min(68vh, 600px);
+}
+.git-diff__pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.git-diff__paneHead {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+.git-diff__editor {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.git-diff__editor .cm-host {
+  height: 100%;
 }
 
 /* ---------- Environments: settings section (master/detail) ---------- */

@@ -7,10 +7,12 @@ interface DialogProps {
   children: ReactNode;
   footer?: ReactNode;
   onClose: () => void;
+  /** Extra class on the dialog surface (e.g. `ui-dialog--wide` for a large modal). */
+  className?: string;
 }
 
 /** Shared modal Dialog (role=dialog, Esc to close, backdrop click closes, focus trapped). */
-export function Dialog({ open, title, children, footer, onClose }: DialogProps) {
+export function Dialog({ open, title, children, footer, onClose, className }: DialogProps) {
   const ref = useRef<HTMLDivElement>(null);
   useFocusTrap(ref, open);
 
@@ -29,7 +31,7 @@ export function Dialog({ open, title, children, footer, onClose }: DialogProps) 
     <div className="ui-dialog__backdrop" onClick={onClose}>
       <div
         ref={ref}
-        className="ui-dialog"
+        className={`ui-dialog${className ? ` ${className}` : ''}`}
         role="dialog"
         aria-modal="true"
         tabIndex={-1}

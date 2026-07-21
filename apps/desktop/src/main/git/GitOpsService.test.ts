@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -87,6 +87,7 @@ class FakeGit implements GitService {
   addRemote = (_dir: string, _name: string, url: string) => (
     this.calls.push(`addRemote:${url}`), Promise.resolve()
   );
+  showHead = () => Promise.resolve(null);
 }
 
 async function insProject(a: LocalAdapter, id: string, name: string): Promise<void> {
@@ -289,6 +290,27 @@ describe.skipIf(!gitAvailable)('GitOpsService.clone (real git)', () => {
     const summary = await makeOps().clone(src, parent('p-ws'));
     expect(summary.name).toBe('Shared WS');
     expect(summary.storageMode).toBe('git');
+  });
+
+  it('produces a file diff (committed HEAD vs working tree)', async () => {
+    const remote = join(root, 'diff.git');
+    execFileSync('git', ['init', '--bare', '--initial-branch=main', remote]);
+    const ops = makeOps();
+    const summary = await ops.clone(remote, parent('p-diff'));
+
+    const manifest = join(summary.path, 'workspace.json');
+    const committed = readFileSync(manifest, 'utf8');
+    writeFileSync(manifest, committed.replace(/"name":\s*"[^"]*"/, '"name": "Edited"'));
+
+    const diff = await ops.fileDiff('workspace.json');
+    expect(diff.old).toBe(committed);
+    expect(diff.current).toContain('Edited');
+    expect(diff.current).not.toBe(committed);
+
+    // A path with no committed/working version yields nulls (new / deleted).
+    const missing = await ops.fileDiff('does/not/exist.json');
+    expect(missing.old).toBeNull();
+    expect(missing.current).toBeNull();
   });
 
   it('rejects a non-empty repository that is not a Swaft workspace', async () => {
