@@ -35,6 +35,7 @@ export {
   PlayIcon,
   RunFromIcon,
   GridIcon,
+  GitBranchIcon,
 } from './icons';
 export { Menu, type MenuItem } from './Menu';
 export { ConfirmDialog } from './ConfirmDialog';

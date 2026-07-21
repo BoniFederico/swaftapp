@@ -36,6 +36,8 @@ interface WorkspaceContextValue {
   pickCreateTarget(defaultName?: string): Promise<string | null>;
   /** Native "open" for an existing `.swaft`; returns the chosen path or null. */
   pickOpenTarget(): Promise<string | null>;
+  /** Native directory picker (for a Git workspace folder); returns the path or null. */
+  pickDirectory(): Promise<string | null>;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
@@ -137,6 +139,13 @@ export function WorkspaceProvider({
       pickOpenTarget: async () => {
         try {
           return (await client.call('dialog.openTarget')).path;
+        } catch {
+          return null;
+        }
+      },
+      pickDirectory: async () => {
+        try {
+          return (await client.call('dialog.pickDirectory')).path;
         } catch {
           return null;
         }

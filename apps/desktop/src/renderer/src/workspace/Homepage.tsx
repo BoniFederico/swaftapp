@@ -14,7 +14,7 @@ import { useWorkspace } from './WorkspaceProvider';
  */
 export function Homepage() {
   const { t } = useI18n();
-  const { recent, open, pickOpenTarget } = useWorkspace();
+  const { recent, open, pickOpenTarget, pickDirectory } = useWorkspace();
 
   const [wizardOpen, setWizardOpen] = useState(false);
   const [pwDialogOpen, setPwDialogOpen] = useState(false);
@@ -35,6 +35,11 @@ export function Homepage() {
 
   async function openViaDialog() {
     const path = await pickOpenTarget();
+    if (path) await tryOpen(path);
+  }
+
+  async function openFolder() {
+    const path = await pickDirectory();
     if (path) await tryOpen(path);
   }
 
@@ -61,6 +66,9 @@ export function Homepage() {
             <Button onClick={() => setWizardOpen(true)}>{t('home.create')}</Button>
             <Button variant="secondary" onClick={() => void openViaDialog()}>
               {t('home.open')}
+            </Button>
+            <Button variant="secondary" onClick={() => void openFolder()}>
+              {t('home.openFolder')}
             </Button>
           </div>
 

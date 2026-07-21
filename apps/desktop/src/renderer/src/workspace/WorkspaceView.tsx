@@ -11,6 +11,7 @@ import { ScenarioView } from '../scenario/ScenarioView';
 import { TemplateEditorModal } from '../document/TemplateEditorModal';
 import { EnvironmentPicker } from '../environment/EnvironmentPicker';
 import { EnvironmentProvider } from '../environment/EnvironmentProvider';
+import { GitStatusButton } from '../git/GitStatusButton';
 import { useI18n } from '../i18n/I18nProvider';
 import { SettingsModal, type SettingsSectionId } from '../settings/SettingsModal';
 import {
@@ -223,16 +224,21 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
             {current?.name}
           </div>
           <div className="ws-meta">
-            <span className="ui-badge">{t('ws.storageLocal')}</span>
+            <span className="ui-badge">
+              {t(current?.storageMode === 'git' ? 'ws.storageGit' : 'ws.storageLocal')}
+            </span>
             <span className="ui-badge">
               {t('ws.executionMode')}: {current?.executionMode}
             </span>
-            <span className="ui-badge">
-              {current?.encrypted ? t('ws.encrypted') : t('ws.notEncrypted')}
-            </span>
+            {current?.storageMode !== 'git' && (
+              <span className="ui-badge">
+                {current?.encrypted ? t('ws.encrypted') : t('ws.notEncrypted')}
+              </span>
+            )}
           </div>
         </div>
         <div className="ws-actions">
+          {current?.storageMode === 'git' && <GitStatusButton client={client} />}
           <EnvironmentPicker onManage={() => openSettings('environments')} />
           <IconButton label={t('ws.settings')} onClick={() => openSettings('general')}>
             <SettingsIcon />

@@ -17,6 +17,14 @@ function Icon({ children, ...props }: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function GitBranchIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M6 3a3 3 0 0 0-1 5.83V15.2A3 3 0 1 0 7 15.2V8.83a3 3 0 0 0 0-5.66V3zm0 2a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm0 12a1 1 0 1 1 0 2 1 1 0 0 1 0-2zM17 3a3 3 0 0 0-1 5.83V9a3 3 0 0 1-3 3h-2v2h2a5 5 0 0 0 5-5v-.17A3 3 0 0 0 17 3zm0 2a1 1 0 1 1 0 2 1 1 0 0 1 0-2z" />
+    </Icon>
+  );
+}
+
 export function LockIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Icon {...props}>
