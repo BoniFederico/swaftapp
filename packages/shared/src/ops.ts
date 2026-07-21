@@ -249,6 +249,11 @@ export const templateRenderRequestSchema = z
   .object({ id: z.string().min(1), values: z.record(z.unknown()) })
   .strict();
 
+/** Free-text search across template names and contents (draft + release sources). */
+export const templateSearchRequestSchema = z
+  .object({ query: z.string().trim().min(1).max(512) })
+  .strict();
+
 export const inputStateGetRequestSchema = z.object({ templateId: z.string().min(1) }).strict();
 export const inputStateSetRequestSchema = z
   .object({ templateId: z.string().min(1), values: z.record(z.unknown()) })
@@ -441,6 +446,7 @@ export const OP_NAMES = [
   'template.rename',
   'template.delete',
   'template.get',
+  'template.search',
   'template.updateSource',
   'template.deleteDraft',
   'template.analyze',
@@ -527,6 +533,7 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'template.rename': renameRequestSchema,
   'template.delete': idRequestSchema,
   'template.get': idRequestSchema,
+  'template.search': templateSearchRequestSchema,
   'template.updateSource': templateUpdateSourceRequestSchema,
   'template.deleteDraft': idRequestSchema,
   'template.analyze': idRequestSchema,
@@ -1009,6 +1016,7 @@ export interface TagsResponse {
 export type RenameRequest = z.infer<typeof renameRequestSchema>;
 export type IdRequest = z.infer<typeof idRequestSchema>;
 export type TemplateCreateRequest = z.infer<typeof templateCreateRequestSchema>;
+export type TemplateSearchRequest = z.infer<typeof templateSearchRequestSchema>;
 export type TemplateUpdateSourceRequest = z.infer<typeof templateUpdateSourceRequestSchema>;
 export type TemplateRenderRequest = z.infer<typeof templateRenderRequestSchema>;
 export type InputStateGetRequest = z.infer<typeof inputStateGetRequestSchema>;
@@ -1016,6 +1024,10 @@ export type InputStateSetRequest = z.infer<typeof inputStateSetRequestSchema>;
 
 export interface TemplateResponse {
   template: TemplateDto;
+}
+/** Ids of the templates whose name or content matches a free-text search. */
+export interface TemplateSearchResponse {
+  ids: string[];
 }
 export interface RequirementsResponse {
   requirements: RequirementDto[];
@@ -1201,6 +1213,7 @@ export interface OpContracts {
   'template.rename': { request: RenameRequest; response: TreeResponse };
   'template.delete': { request: IdRequest; response: TreeResponse };
   'template.get': { request: IdRequest; response: TemplateResponse };
+  'template.search': { request: TemplateSearchRequest; response: TemplateSearchResponse };
   'template.updateSource': { request: TemplateUpdateSourceRequest; response: TemplateResponse };
   'template.deleteDraft': { request: IdRequest; response: TemplateResponse };
   'template.analyze': { request: IdRequest; response: RequirementsResponse };

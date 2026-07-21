@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
-  DEFAULT_SUBTYPE,
   type FolderDto,
   type OpName,
   type TagDto,
@@ -19,14 +19,17 @@ import {
   ConfirmDialog,
   DocumentIcon,
   EmptyIcon,
+  FilterIcon,
   FolderIcon,
   IconButton,
   LabelIcon,
   Menu,
+  SearchIcon,
   TagIcon,
   useToast,
   type MenuItem,
 } from '../ui';
+import { usePopover } from '../ui/usePopover';
 import { CreateProjectDialog } from './CreateProjectDialog';
 import { CreateTemplateDialog } from './CreateTemplateDialog';
 import { NameDialog } from './NameDialog';
@@ -35,7 +38,6 @@ import { badgeColor, rowBadge } from './badges';
 import { notifyTreeChanged, subscribeTreeChanged } from './treeBus';
 import { useWorkspaceOptional } from './WorkspaceProvider';
 
-type ViewMode = 'tree' | 'tags' | 'type';
 /** What the per-row trailing chip shows: subtype badges, tag dots, or nothing (3-state cycle). */
 type BadgeMode = 'subtype' | 'tag' | 'none';
 const BADGE_MODE_KEY = 'swaft:badgeMode';
@@ -64,39 +66,72 @@ function TypeIcon({ type }: { type: TemplateType }) {
   }
 }
 
-/** A compact segmented control (Tree / Tags / Type) driving how the templates are grouped. */
-function ViewModeControl({
-  mode,
+/** Funnel button filtering the tree to one template type; its menu offers All + the four types. */
+function TypeFilterButton({
+  value,
   onChange,
-  labels,
 }: {
-  mode: ViewMode;
-  onChange: (m: ViewMode) => void;
-  labels: Record<ViewMode, string>;
+  value: TemplateType | null;
+  onChange: (type: TemplateType | null) => void;
 }) {
-  const modes: ViewMode[] = ['tree', 'tags', 'type'];
+  const { t } = useI18n();
+  const { open, setOpen, pos, triggerRef, popRef, toggle } = usePopover<HTMLUListElement>();
+  const options: { type: TemplateType | null; label: string }[] = [
+    { type: null, label: t('tree.filterAll') },
+    { type: 'document', label: t('tpl.document') },
+    { type: 'api', label: t('tpl.api') },
+    { type: 'capability', label: t('tpl.capability') },
+    { type: 'action', label: t('tpl.action') },
+  ];
   return (
-    <div className="seg" role="tablist" aria-label={labels.tree}>
-      {modes.map((m) => (
-        <button
-          key={m}
-          type="button"
-          role="tab"
-          aria-selected={mode === m}
-          className={`seg__btn${mode === m ? ' seg__btn--active' : ''}`}
-          onClick={() => onChange(m)}
-        >
-          {labels[m]}
-        </button>
-      ))}
-    </div>
+    <>
+      <IconButton
+        ref={triggerRef}
+        label={t('tree.filter')}
+        className="tree__filter"
+        data-active={value !== null}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={toggle}
+      >
+        <FilterIcon />
+      </IconButton>
+      {open &&
+        createPortal(
+          <ul
+            ref={popRef}
+            role="menu"
+            className="ui-menu"
+            style={{ position: 'fixed', top: pos.top, left: pos.left }}
+          >
+            {options.map((opt) => (
+              <li key={opt.type ?? 'all'} role="none">
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={value === opt.type}
+                  className={`ui-menu__item${value === opt.type ? ' ui-menu__item--active' : ''}`}
+                  onClick={() => {
+                    setOpen(false);
+                    onChange(opt.type);
+                  }}
+                >
+                  {opt.type && <TypeIcon type={opt.type} />}
+                  {opt.label}
+                </button>
+              </li>
+            ))}
+          </ul>,
+          document.body,
+        )}
+    </>
   );
 }
 
 /**
- * The Working Tree: project picker + a grouped list of folders/templates. The grouping switches
- * between Tree (nested folders, drag-and-drop), Tags (a section per tag + Untagged) and Type (a
- * section per type, sub-grouped by subtype). Templates open on click (view) / double-click (editor);
+ * The Working Tree: project picker + the nested folder/template tree (drag-and-drop). A search box
+ * narrows it to templates whose name or content matches (folders auto-expand around the hits), and a
+ * funnel button filters by template type. Templates open on click (view) / double-click (editor);
  * folders expand on click. Destructive actions confirm and report via toast.
  */
 export function WorkingTree({
@@ -129,13 +164,15 @@ export function WorkingTree({
   const [tree, setTree] = useState<WorkspaceTree>(EMPTY);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [restored, setRestored] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('tree');
   const [badgeMode, setBadgeMode] = useState<BadgeMode>(() => {
     const saved = typeof localStorage !== 'undefined' ? localStorage.getItem(BADGE_MODE_KEY) : null;
     return saved === 'tag' || saved === 'none' ? saved : 'subtype';
   });
+  const [query, setQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState<TemplateType | null>(null);
+  /** Ids matching the text search (name or content), or null when no text search is active. */
+  const [matchIds, setMatchIds] = useState<Set<string> | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [closedSections, setClosedSections] = useState<Set<string>>(new Set());
   const [projectOpen, setProjectOpen] = useState(false);
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [createTpl, setCreateTpl] = useState<{ folderId: string | null } | null>(null);
@@ -178,6 +215,32 @@ export function WorkingTree({
     if (selectedProject) localStorage.setItem(projectKey, selectedProject);
     else localStorage.removeItem(projectKey);
   }, [restored, projectKey, selectedProject]);
+
+  // Debounced free-text search over names + contents. Content (draft/release sources) lives only in
+  // the backend — the tree carries summaries — so matching ids come from `template.search`. Re-runs
+  // when the tree changes so results track mutations made while a search is active.
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) {
+      setMatchIds(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void client
+        .call('template.search', { query: q })
+        .then((res) => {
+          if (!cancelled) setMatchIds(new Set(res.ids));
+        })
+        .catch(() => {
+          if (!cancelled) setMatchIds(new Set());
+        });
+    }, 200);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [client, query, tree]);
 
   // Persist the last row-badge choice (global, across workspaces).
   function cycleBadgeMode() {
@@ -300,17 +363,7 @@ export function WorkingTree({
       return next;
     });
   }
-  const sectionOpen = (key: string) => !closedSections.has(key);
-  function toggleSection(key: string) {
-    setClosedSections((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }
-
-  // --- drag & drop (Tree view only) ------------------------------------------
+  // --- drag & drop -----------------------------------------------------------
   async function dropOn(targetFolderId: string | null) {
     const item = dragItem.current;
     dragItem.current = null;
@@ -331,7 +384,11 @@ export function WorkingTree({
     if (targetFolderId) expand(targetFolderId);
   }
 
-  // --- selectors -------------------------------------------------------------
+  // --- selectors (search + type filter applied) ------------------------------
+  const filterActive = matchIds !== null || typeFilter !== null;
+  const matchesFilters = (tpl: TemplateSummary): boolean =>
+    (matchIds === null || matchIds.has(tpl.id)) && (typeFilter === null || tpl.type === typeFilter);
+
   const projectFolderIds = useMemo(
     () => new Set(tree.folders.filter((f) => f.projectId === selectedProject).map((f) => f.id)),
     [tree.folders, selectedProject],
@@ -341,9 +398,11 @@ export function WorkingTree({
       (f) => f.projectId === selectedProject && (f.parentFolderId ?? null) === parentId,
     );
   const folderTemplates = (folderId: string): TemplateSummary[] =>
-    tree.templates.filter((tpl) => tpl.folderId === folderId);
+    tree.templates.filter((tpl) => tpl.folderId === folderId && matchesFilters(tpl));
   const rootTemplates = (): TemplateSummary[] =>
-    tree.templates.filter((tpl) => !tpl.folderId && tpl.projectId === selectedProject);
+    tree.templates.filter(
+      (tpl) => !tpl.folderId && tpl.projectId === selectedProject && matchesFilters(tpl),
+    );
   const projectTemplates = useMemo(
     () =>
       tree.templates.filter(
@@ -353,6 +412,10 @@ export function WorkingTree({
       ),
     [tree.templates, projectFolderIds, selectedProject],
   );
+  /** Whether a folder's subtree keeps any template under the active search/type filters. */
+  const subtreeHasMatches = (folderId: string): boolean =>
+    folderTemplates(folderId).length > 0 ||
+    childFolders(folderId).some((f) => subtreeHasMatches(f.id));
   const tagById = useMemo(() => new Map(tree.tags.map((t) => [t.id, t])), [tree.tags]);
 
   // --- row renderers ---------------------------------------------------------
@@ -387,9 +450,7 @@ export function WorkingTree({
   function renderTemplate(tpl: TemplateSummary, depth: number, draggable = false) {
     const badge = badgeMode === 'subtype' ? rowBadge(tpl) : null;
     const tags =
-      badgeMode === 'tag' && viewMode !== 'tags'
-        ? tpl.tagIds.map((id) => tagById.get(id)).filter(Boolean)
-        : null;
+      badgeMode === 'tag' ? tpl.tagIds.map((id) => tagById.get(id)).filter(Boolean) : null;
     return (
       <div
         key={`tpl-${tpl.id}`}
@@ -440,9 +501,12 @@ export function WorkingTree({
   }
 
   function renderFolder(folder: FolderDto, depth: number) {
+    // Under an active search/type filter, folders with no surviving templates disappear and the
+    // rest auto-expand so the hits are visible in place.
+    if (filterActive && !subtreeHasMatches(folder.id)) return null;
     const subfolders = childFolders(folder.id);
     const templates = folderTemplates(folder.id);
-    const isOpen = expanded.has(folder.id);
+    const isOpen = filterActive || expanded.has(folder.id);
     const hasChildren = subfolders.length > 0 || templates.length > 0;
     const items: MenuItem[] = [
       {
@@ -515,121 +579,8 @@ export function WorkingTree({
     );
   }
 
-  function renderSection(key: string, header: React.ReactNode, templates: TemplateSummary[]) {
-    const isOpen = sectionOpen(key);
-    return (
-      <div key={key}>
-        <div
-          className="tree-item tree-section"
-          onClick={() => toggleSection(key)}
-          {...rowKeyProps(() => toggleSection(key))}
-        >
-          <span className="tree-item__twisty" aria-hidden="true">
-            <ChevronIcon className={`tree-twisty${isOpen ? ' tree-twisty--open' : ''}`} />
-          </span>
-          {header}
-          <span className="tree-section__spacer" />
-          <span className="tree-section__count">{templates.length}</span>
-        </div>
-        {isOpen && <div>{templates.map((tpl) => renderTemplate(tpl, 1))}</div>}
-      </div>
-    );
-  }
-
-  function renderTagsView() {
-    const sections: React.ReactNode[] = [];
-    for (const tag of tree.tags) {
-      const templates = projectTemplates.filter((tpl) => tpl.tagIds.includes(tag.id));
-      if (templates.length === 0) continue;
-      sections.push(
-        renderSection(
-          `tag:${tag.id}`,
-          <span className="tree-tag" style={{ background: tag.color ?? 'var(--primary)' }}>
-            {tag.name}
-          </span>,
-          templates,
-        ),
-      );
-    }
-    const untagged = projectTemplates.filter((tpl) => tpl.tagIds.length === 0);
-    sections.push(
-      renderSection(
-        'untagged',
-        <span className="tree-section__label">{t('tree.untagged')}</span>,
-        untagged,
-      ),
-    );
-    return sections;
-  }
-
-  function renderTypeView() {
-    const types: TemplateType[] = ['document', 'api', 'capability', 'action'];
-    return types.map((type) => {
-      const ofType = projectTemplates.filter((tpl) => tpl.type === type);
-      if (ofType.length === 0) return null;
-      const bySub = new Map<string, TemplateSummary[]>();
-      for (const tpl of ofType) {
-        // Subtype-less (legacy) templates group under the type's default subtype, not a "—" folder.
-        const sub = tpl.subtype ?? DEFAULT_SUBTYPE[type];
-        const list = bySub.get(sub) ?? [];
-        list.push(tpl);
-        bySub.set(sub, list);
-      }
-      const key = `type:${type}`;
-      const isOpen = sectionOpen(key);
-      return (
-        <div key={key}>
-          <div
-            className="tree-item tree-section"
-            onClick={() => toggleSection(key)}
-            {...rowKeyProps(() => toggleSection(key))}
-          >
-            <span className="tree-item__twisty" aria-hidden="true">
-              <ChevronIcon className={`tree-twisty${isOpen ? ' tree-twisty--open' : ''}`} />
-            </span>
-            <TypeIcon type={type} />
-            <span className="tree-section__label">{t(`tpl.${type}`)}</span>
-            <span className="tree-section__spacer" />
-            <span className="tree-section__count">{ofType.length}</span>
-          </div>
-          {isOpen && (
-            <div>
-              {[...bySub.entries()].map(([sub, templates]) => {
-                const subKey = `subtype:${type}:${sub}`;
-                const subOpen = sectionOpen(subKey);
-                return (
-                  <div key={subKey}>
-                    <div
-                      className="tree-item tree-folder"
-                      style={{ paddingLeft: 20 }}
-                      onClick={() => toggleSection(subKey)}
-                      {...rowKeyProps(() => toggleSection(subKey))}
-                    >
-                      <span className="tree-item__twisty" aria-hidden="true">
-                        <ChevronIcon className={`tree-twisty${subOpen ? ' tree-twisty--open' : ''}`} />
-                      </span>
-                      <FolderIcon className="tree-item__icon tree-item__icon--folder" />
-                      <span className="tree-item__name">{sub}</span>
-                      <span className="tree-section__count">{templates.length}</span>
-                    </div>
-                    {subOpen && <div>{templates.map((tpl) => renderTemplate(tpl, 2))}</div>}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      );
-    });
-  }
-
   const selected = tree.projects.find((p) => p.id === selectedProject) ?? null;
   const roots = childFolders(null);
-  const viewLabels: Record<ViewMode, string> = {
-    tree: t('tree.viewTree'),
-    tags: t('tree.viewTags'),
-    type: t('tree.viewType'),
-  };
 
   const dialogTitle =
     dialog?.mode === 'createFolder'
@@ -657,8 +608,19 @@ export function WorkingTree({
       {selected?.description && <div className="tree__project-desc">{selected.description}</div>}
 
       {selected && (
-        <div className="tree__viewmodes">
-          <ViewModeControl mode={viewMode} onChange={setViewMode} labels={viewLabels} />
+        <div className="tree__searchbar">
+          <div className="tree-search">
+            <SearchIcon className="tree-search__icon" />
+            <input
+              type="search"
+              className="tree-search__input"
+              placeholder={t('tree.searchPlaceholder')}
+              aria-label={t('tree.search')}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+          <TypeFilterButton value={typeFilter} onChange={setTypeFilter} />
           <IconButton
             label={t(`tree.badge.${badgeMode}`)}
             className="tree__badgetoggle"
@@ -700,25 +662,20 @@ export function WorkingTree({
         className="tree__body"
         data-dragover={dragOver === 'root'}
         onDragOver={(e) => {
-          if (viewMode !== 'tree') return;
           e.preventDefault();
           setDragOver('root');
         }}
         onDragLeave={() => setDragOver((cur) => (cur === 'root' ? null : cur))}
         onDrop={(e) => {
-          if (viewMode !== 'tree') return;
           e.preventDefault();
           void dropOn(null);
         }}
       >
-        {viewMode === 'tree' && (
-          <>
-            {roots.map((f) => renderFolder(f, 0))}
-            {rootTemplates().map((tpl) => renderTemplate(tpl, 0, true))}
-          </>
+        {roots.map((f) => renderFolder(f, 0))}
+        {rootTemplates().map((tpl) => renderTemplate(tpl, 0, true))}
+        {filterActive && !projectTemplates.some(matchesFilters) && (
+          <div className="tree__noresults">{t('tree.noResults')}</div>
         )}
-        {viewMode === 'tags' && renderTagsView()}
-        {viewMode === 'type' && renderTypeView()}
       </div>
 
       <CreateProjectDialog

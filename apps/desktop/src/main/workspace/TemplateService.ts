@@ -203,6 +203,25 @@ export class TemplateService extends RepoBase {
     );
   }
 
+  /**
+   * Ids of live templates whose name or content contains `query` (case-insensitive substring).
+   * Content covers the draft source (when the draft still exists) and every release's source, so a
+   * match kept only in an older release still surfaces the template.
+   */
+  async search(query: string): Promise<string[]> {
+    const like = `%${query.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    const rows = await this.adapter.all<{ id: string }>(
+      `SELECT DISTINCT t.id FROM templates t
+         LEFT JOIN releases r ON r.template_id = t.id AND r.deleted_at IS NULL
+        WHERE t.deleted_at IS NULL
+          AND (t.name LIKE ? ESCAPE '\\'
+            OR (t.has_draft != 0 AND t.source LIKE ? ESCAPE '\\')
+            OR r.source LIKE ? ESCAPE '\\')`,
+      [like, like, like],
+    );
+    return rows.map((r) => r.id);
+  }
+
   async updateSource(
     id: string,
     source: string,

@@ -514,21 +514,56 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Same left padding as .tree__actions so the segmented control lines up exactly with the
-   Create template / Create folder buttons in the row below; the badge toggle sits at its right,
-   aligned with the collapse chevron above. */
-.tree__viewmodes {
+/* Same left padding as .tree__actions so the search box lines up exactly with the
+   Create template / Create folder buttons in the row below; the filter and badge toggles sit at its
+   right, aligned with the collapse chevron above. */
+.tree__searchbar {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--border);
 }
-.tree__viewmodes .seg {
+.tree-search {
+  position: relative;
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
 }
-/* Segmented control (Tree / Tags / Type). */
+.tree-search__icon {
+  position: absolute;
+  left: var(--space-2);
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+.tree-search__input {
+  width: 100%;
+  min-width: 0;
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2) var(--space-1) 26px;
+}
+.tree-search__input:focus {
+  border-color: var(--primary);
+  outline: none;
+}
+/* The funnel lights up while a type filter is active. */
+.tree__filter[data-active='true'] {
+  color: var(--primary);
+}
+.tree__noresults {
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+/* Segmented control (Edit / Preview in the folder notes). */
 .seg {
   display: flex;
   width: 100%;
@@ -677,7 +712,7 @@ body {
   color: var(--text-muted);
   border: 1px solid var(--border);
 }
-/* Tag dots on a template row (Tree/Type views). */
+/* Tag dots on a template row. */
 .tree-item__tags {
   flex: 0 0 auto;
   display: inline-flex;
@@ -687,41 +722,6 @@ body {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-}
-/* Section headers in the Tags/Type grouping views. */
-.tree-section {
-  font-weight: 600;
-}
-.tree-section__label {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.tree-section__spacer {
-  flex: 1;
-}
-.tree-section__count {
-  flex: 0 0 auto;
-  font-size: 10px;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-  padding-right: var(--space-1);
-}
-/* A tag badge used as a Tags-view section header — sized to the tag name, not the whole row. */
-.tree-tag {
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 100%;
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  color: #fff;
-  padding: 1px 8px;
-  border-radius: 999px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* ---------- API View (Postman/Bruno-style) ---------- */
@@ -1307,7 +1307,9 @@ body {
   z-index: 150;
 }
 .ui-menu__item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   width: 100%;
   text-align: left;
   padding: var(--space-2) var(--space-3);
@@ -1324,6 +1326,11 @@ body {
 }
 .ui-menu__item--danger {
   color: var(--danger);
+}
+/* The currently applied choice in a radio-style menu (e.g. the tree's type filter). */
+.ui-menu__item--active {
+  color: var(--primary);
+  font-weight: 600;
 }
 .ui-menu__item--accent {
   color: var(--primary);
