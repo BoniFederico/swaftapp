@@ -9,11 +9,13 @@ import {
 } from '@swaft/shared';
 import { ApiClient, ApiError } from '../api-client/client';
 import { useI18n } from '../i18n/I18nProvider';
-import { Button, IconButton, SaveIcon, useToast } from '../ui';
+import { Button, ConfirmDialog, IconButton, SaveIcon, useToast } from '../ui';
 import { notifyTreeChanged, subscribeTreeChanged } from '../workspace/treeBus';
 import { newId, removeEdge, removeNode } from './graph-model';
 import { NodeInspector } from './NodeInspector';
 import { ScenarioCanvas, type ResolvedTemplate, type Selection } from './ScenarioCanvas';
+import { ScenarioRunPanel } from './ScenarioRunPanel';
+import { useScenarioRun } from './useScenarioRun';
 
 const SNAP_KEY = 'swaft:scenarioSnap';
 const INSPECTOR_W_KEY = 'swaft:scenarioInspectorW';
@@ -120,6 +122,36 @@ export function ScenarioView({
   }, [client]);
 
   const resolveTemplate = useCallback((id: string) => templates.get(id) ?? null, [templates]);
+
+  // Run lifecycle (start/stop/poll/history) + the run panel.
+  const runCtl = useScenarioRun(client, templateId);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [confirmRun, setConfirmRun] = useState<{ startNodeId?: string } | null>(null);
+  /** True when any block references an action template (an effect) → a run needs authorization. */
+  const hasActionBlocks = useMemo(
+    () =>
+      graph.nodes.some(
+        (n) => n.kind === 'template' && (n.templateType === 'action' || templates.get(n.ref ?? '')?.type === 'action'),
+      ),
+    [graph.nodes, templates],
+  );
+
+  const startRun = useCallback(
+    (authorizeActions: boolean, startNodeId?: string) => {
+      setPanelOpen(true);
+      void runCtl.start({ startNodeId, mode: 'single', authorizeActions }).catch((e) =>
+        toast.show(e instanceof ApiError ? e.swaft.message : String(e), 'error'),
+      );
+    },
+    [runCtl, toast],
+  );
+
+  function requestRun() {
+    // Run from the selected node if one is picked, else from the graph's start node.
+    const startNodeId = selection?.kind === 'node' ? selection.id : undefined;
+    if (hasActionBlocks) setConfirmRun({ startNodeId });
+    else startRun(false, startNodeId);
+  }
 
   /**
    * Apply a graph change and record it for undo. `coalesce` groups consecutive edits under the same key
@@ -300,6 +332,23 @@ export function ScenarioView({
         >
           {t('scenario.snap')}
         </Button>
+        <span className="scenario__toolbar-sep" />
+        {runCtl.active ? (
+          <Button variant="danger" onClick={() => void runCtl.stop()}>
+            {t('scenario.stop')}
+          </Button>
+        ) : (
+          <Button variant="primary" className="scenario__run-btn" onClick={requestRun}>
+            {selection?.kind === 'node' ? t('scenario.runFromHere') : t('scenario.run')}
+          </Button>
+        )}
+        <Button
+          variant={panelOpen ? 'secondary' : 'ghost'}
+          aria-pressed={panelOpen}
+          onClick={() => setPanelOpen((o) => !o)}
+        >
+          {t('scenario.runs')}
+        </Button>
         <span className="scenario__toolbar-hint muted">{t('scenario.dropHint')}</span>
         <Button variant="primary" disabled={!dirty} onClick={() => void save()}>
           <SaveIcon />
@@ -312,6 +361,7 @@ export function ScenarioView({
           graph={graph}
           selection={selection}
           snapEnabled={snapEnabled}
+          nodeStatus={runCtl.nodeStatus}
           onChange={(next) => commit(next)}
           onSelect={setSelection}
           resolveTemplate={resolveTemplate}
@@ -357,6 +407,22 @@ export function ScenarioView({
           </>
         )}
       </div>
+
+      {panelOpen && <ScenarioRunPanel controller={runCtl} />}
+
+      <ConfirmDialog
+        open={confirmRun !== null}
+        title={t('scenario.authorizeTitle')}
+        message={t('scenario.authorizeMessage')}
+        confirmLabel={t('scenario.authorizeConfirm')}
+        cancelLabel={t('name.cancel')}
+        onConfirm={() => {
+          const start = confirmRun ?? {};
+          setConfirmRun(null);
+          startRun(true, start.startNodeId);
+        }}
+        onClose={() => setConfirmRun(null)}
+      />
 
       {!loaded && <span className="muted scenario__loading">{t('doc.loading')}</span>}
     </div>

@@ -68,6 +68,7 @@ export function ScenarioCanvas({
   graph,
   selection,
   snapEnabled,
+  nodeStatus,
   onChange,
   onSelect,
   resolveTemplate,
@@ -75,6 +76,8 @@ export function ScenarioCanvas({
   graph: ScenarioGraph;
   selection: Selection | null;
   snapEnabled: boolean;
+  /** Per-node run status (succeeded/failed/branch/awaiting) for the progress highlight. */
+  nodeStatus?: Record<string, string>;
   onChange: (graph: ScenarioGraph) => void;
   onSelect: (sel: Selection | null) => void;
   resolveTemplate: (id: string) => ResolvedTemplate | null;
@@ -297,6 +300,7 @@ export function ScenarioCanvas({
             node={node}
             selected={selection?.kind === 'node' && selection.id === node.id}
             dropTarget={dropTargetId === node.id}
+            runStatus={nodeStatus?.[node.id]}
             template={node.ref ? resolveTemplate(node.ref) : null}
             onPointerDown={onNodePointerDown}
             onPortPointerDown={onPortPointerDown}
@@ -312,6 +316,7 @@ function NodeView({
   node,
   selected,
   dropTarget,
+  runStatus,
   template,
   onPointerDown,
   onPortPointerDown,
@@ -319,6 +324,7 @@ function NodeView({
   node: ScenarioNode;
   selected: boolean;
   dropTarget: boolean;
+  runStatus?: string;
   template: ResolvedTemplate | null;
   onPointerDown: (e: ReactPointerEvent, node: ScenarioNode) => void;
   onPortPointerDown: (e: ReactPointerEvent, node: ScenarioNode, branch: ScenarioBranch | null) => void;
@@ -326,7 +332,10 @@ function NodeView({
   const { w, h } = nodeSize(node.kind);
   const hasInput = node.kind !== 'start';
   const ports = outputPorts(node);
-  const cls = `scenario-node scenario-node--${node.kind}${selected ? ' is-selected' : ''}${dropTarget ? ' is-drop-target' : ''}`;
+  const cls =
+    `scenario-node scenario-node--${node.kind}` +
+    `${selected ? ' is-selected' : ''}${dropTarget ? ' is-drop-target' : ''}` +
+    `${runStatus ? ` scenario-node--run-${runStatus}` : ''}`;
   return (
     <div
       className={cls}

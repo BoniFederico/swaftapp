@@ -2119,6 +2119,143 @@ body {
   width: 100%;
   justify-content: center;
 }
+.scenario__run-btn {
+  font-weight: 600;
+}
+
+/* Node run-status highlight during/after a run. */
+.scenario-node--run-succeeded.scenario-node--template,
+.scenario-node--run-succeeded.scenario-node--start,
+.scenario-node--run-succeeded.scenario-node--delay {
+  box-shadow: 0 0 0 2px var(--status-ok);
+}
+.scenario-node--run-failed.scenario-node--template,
+.scenario-node--run-failed.scenario-node--start,
+.scenario-node--run-failed.scenario-node--delay {
+  box-shadow: 0 0 0 2px var(--status-err);
+}
+.scenario-node--run-awaiting.scenario-node--template {
+  box-shadow: 0 0 0 2px var(--status-warn);
+}
+.scenario-node--run-succeeded .scenario-node__diamond polygon,
+.scenario-node--run-branch-true .scenario-node__diamond polygon {
+  stroke: var(--status-ok);
+  stroke-width: 2.5;
+}
+.scenario-node--run-branch-false .scenario-node__diamond polygon {
+  stroke: var(--status-err);
+  stroke-width: 2.5;
+}
+
+/* Run panel (below the canvas). */
+.scenario-run {
+  flex: 0 0 auto;
+  height: 220px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  overflow: hidden;
+}
+.scenario-run__cols {
+  display: flex;
+  height: 100%;
+}
+.scenario-run__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-3);
+  gap: var(--space-2);
+  overflow-y: auto;
+}
+.scenario-run__history {
+  flex: 0 0 260px;
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-3);
+  gap: var(--space-2);
+  overflow-y: auto;
+}
+.scenario-run__history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.scenario-run__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}
+.scenario-run__err {
+  color: var(--danger);
+  font-size: var(--fs-sm);
+}
+.scenario-run__pending {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--status-warn);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--status-warn) 8%, transparent);
+}
+.scenario-run__steps,
+.scenario-run__runs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.scenario-run__step,
+.scenario-run__run {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.scenario-run__step:hover,
+.scenario-run__run:hover {
+  background: var(--surface-2);
+}
+.scenario-run__run.is-active {
+  border-color: var(--primary);
+}
+.scenario-run__step-kind {
+  font-weight: 600;
+}
+.scenario-run__spacer {
+  flex: 1;
+}
+.scenario-run__time {
+  flex: 0 0 auto;
+}
+/* Step/run status badges. */
+.scenario-step--failed,
+.scenario-run__status--failed {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.scenario-run__status--completed {
+  color: var(--status-ok);
+  border-color: var(--status-ok);
+}
+.scenario-run__status--awaiting-input {
+  color: var(--status-warn);
+  border-color: var(--status-warn);
+}
 
 /* ---------- Render View ---------- */
 .render-view {
