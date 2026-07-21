@@ -1,4 +1,5 @@
 import type { ActionService } from './actions/ActionService';
+import type { ScenarioService } from './actions/ScenarioService';
 import type { AppStore } from './app-store/AppStore';
 import type { HttpService } from './http/HttpService';
 import type { SecretService } from './secret/SecretService';
@@ -76,5 +77,7 @@ export const { get: getBatcherService, set: setBatcherService } =
   serviceSlot<BatcherService>('BatcherService');
 export const { get: getActionService, set: setActionService } =
   serviceSlot<ActionService>('ActionService');
+export const { get: getScenarioService, set: setScenarioService } =
+  serviceSlot<ScenarioService>('ScenarioService');
 export const { get: getEnvironmentService, set: setEnvironmentService } =
   serviceSlot<EnvironmentService>('EnvironmentService');

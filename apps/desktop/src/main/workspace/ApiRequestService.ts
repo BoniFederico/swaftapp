@@ -156,6 +156,8 @@ export class ApiRequestService {
     templateId: string,
     req: HttpRequestModel,
     values: Record<string, unknown>,
+    /** Scenario run context, so `${ previous('alias') }` resolves when this request runs in a scenario. */
+    scenario?: SeeboRenderContext['scenario'],
   ): Promise<{
     request: HttpRequestModel;
     rendered: boolean;
@@ -163,7 +165,7 @@ export class ApiRequestService {
     /** Actions inherited from the folder chain (apply order: root-most first), to run around the call. */
     folderActions: RequestAction[];
   }> {
-    const ctx = await this.ctx(templateId);
+    const ctx: SeeboRenderContext = { ...(await this.ctx(templateId)), scenario };
     const policy = await this.policyOf(templateId);
     const dataCapabilities = await this.host.dataCapabilityNames();
     const rendered =

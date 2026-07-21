@@ -58,6 +58,23 @@ describe('.swaft schema classification', () => {
     db.close();
   });
 
+  it('the v25 migration adds the scenario run-history tables to an existing (pre-v25) file', async () => {
+    const db = await openSqliteDb();
+    const step = MIGRATIONS.find((m) => m.to === 25);
+    expect(step, 'a migration to v25 must exist').toBeDefined();
+    db.exec(step!.sql);
+    // Both local-only run tables are created and usable.
+    db.run(
+      `INSERT INTO scenario_runs (id, scenario_id, status, mode, step_count, started_at) VALUES ('r1','s1','running','single',0,'t')`,
+    );
+    db.run(
+      `INSERT INTO scenario_run_steps (id, run_id, seq, node_id, kind, status, created_at) VALUES ('st1','r1',0,'n1','api','succeeded','t')`,
+    );
+    expect(db.get<Row>(`SELECT scenario_id FROM scenario_runs WHERE id='r1'`)?.scenario_id).toBe('s1');
+    expect(db.get<Row>(`SELECT kind FROM scenario_run_steps WHERE id='st1'`)?.kind).toBe('api');
+    db.close();
+  });
+
   it('stores no secrets table (🟠 secure-local lives in the OS keychain, never in .swaft)', async () => {
     const db = await openSqliteDb();
     db.exec(SCHEMA_DDL);

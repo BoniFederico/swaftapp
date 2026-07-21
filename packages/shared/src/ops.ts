@@ -403,6 +403,27 @@ export const envSelectionSetRequestSchema = z
   .object({ environmentId: z.string().min(1).nullable() })
   .strict();
 
+// --- Scenarios (M11): run a workflow graph, poll its progress -----------------
+
+export const scenarioRunModeSchema = z.enum(['single', 'batch']);
+export const scenarioRunRequestSchema = z
+  .object({
+    /** The scenario template id. */
+    id: z.string().min(1),
+    /** Node to start from (default: the graph's single start node). */
+    startNodeId: z.string().min(1).optional(),
+    /** `single` pauses for missing inputs (attended); `batch` fails the step (unattended). */
+    mode: scenarioRunModeSchema.default('single'),
+    /** One acknowledgement authorizing every action block in the run (sandbox still forbids prod). */
+    authorizeActions: z.boolean().default(false),
+  })
+  .strict();
+export const scenarioRunRefRequestSchema = z.object({ runId: z.string().min(1) }).strict();
+export const scenarioProvideInputRequestSchema = z
+  .object({ runId: z.string().min(1), values: z.record(z.unknown()) })
+  .strict();
+export const scenarioRunListRequestSchema = z.object({ scenarioId: z.string().min(1) }).strict();
+
 /** The canonical list of op names. The IPC router allow-list is derived from this. */
 export const OP_NAMES = [
   'system.ping',
@@ -487,6 +508,12 @@ export const OP_NAMES = [
   'env.delete',
   'env.selection.get',
   'env.selection.set',
+  'scenario.run',
+  'scenario.runStatus',
+  'scenario.stop',
+  'scenario.provideInput',
+  'scenario.runList',
+  'scenario.runClear',
 ] as const;
 export type OpName = (typeof OP_NAMES)[number];
 
@@ -574,6 +601,12 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'env.delete': idRequestSchema,
   'env.selection.get': emptyRequestSchema,
   'env.selection.set': envSelectionSetRequestSchema,
+  'scenario.run': scenarioRunRequestSchema,
+  'scenario.runStatus': scenarioRunRefRequestSchema,
+  'scenario.stop': scenarioRunRefRequestSchema,
+  'scenario.provideInput': scenarioProvideInputRequestSchema,
+  'scenario.runList': scenarioRunListRequestSchema,
+  'scenario.runClear': scenarioRunListRequestSchema,
 };
 
 /**
@@ -999,6 +1032,82 @@ export interface EnvironmentSelectionResponse {
   environmentId: string | null;
 }
 
+// --- Scenario run DTOs ------------------------------------------------------
+
+/**
+ * The canonical output envelope every executed scenario block produces, addressed from a later block's
+ * formulas via `previous('alias')`. API blocks add HTTP fields; action/capability blocks add their
+ * value/logs. Always an object, so member access in formulas is predictable.
+ */
+export interface BlockOutput {
+  kind: 'api' | 'action' | 'capability' | 'decision' | 'delay' | 'start';
+  ok: boolean;
+  output: unknown;
+  /** API metadata (never bodies): the method + url the call used. */
+  method?: string;
+  url?: string;
+  status?: number;
+  statusText?: string;
+  headers?: Record<string, string>;
+  body?: string;
+  json?: unknown;
+  durationMs?: number;
+  logs?: string[];
+  envWrites?: string[];
+  error?: string | null;
+}
+
+export type ScenarioRunStatus = 'running' | 'awaiting-input' | 'completed' | 'failed' | 'cancelled';
+export type ScenarioRunMode = z.infer<typeof scenarioRunModeSchema>;
+
+export interface ScenarioRunDto {
+  id: string;
+  scenarioId: string;
+  status: ScenarioRunStatus;
+  mode: ScenarioRunMode;
+  startNodeId: string | null;
+  stepCount: number;
+  error: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+/** One executed node in a run (redacted: metadata + a truncated output snapshot, never inputs/bodies). */
+export interface ScenarioRunStepDto {
+  id: string;
+  runId: string;
+  seq: number;
+  nodeId: string;
+  alias: string | null;
+  kind: string;
+  status: string;
+  method: string | null;
+  url: string | null;
+  httpStatus: number | null;
+  message: string | null;
+  output: unknown;
+  durationMs: number | null;
+  createdAt: string;
+}
+
+export interface ScenarioRunStatusResponse {
+  run: ScenarioRunDto;
+  steps: ScenarioRunStepDto[];
+  /** When `run.status === 'awaiting-input'`: the paused node and the inputs it still needs. */
+  pending: { nodeId: string; requirements: RequirementDto[] } | null;
+}
+export interface ScenarioRunStartedResponse {
+  runId: string;
+}
+export interface ScenarioRunsResponse {
+  runs: ScenarioRunDto[];
+}
+
+export type ScenarioRunRequest = z.infer<typeof scenarioRunRequestSchema>;
+export type ScenarioRunRefRequest = z.infer<typeof scenarioRunRefRequestSchema>;
+export type ScenarioProvideInputRequest = z.infer<typeof scenarioProvideInputRequestSchema>;
+export type ScenarioRunListRequest = z.infer<typeof scenarioRunListRequestSchema>;
+
 export type NameColorRequest = z.infer<typeof nameColorRequestSchema>;
 export type ProjectCreateRequest = z.infer<typeof projectCreateRequestSchema>;
 export type FolderCreateRequest = z.infer<typeof folderCreateRequestSchema>;
@@ -1256,6 +1365,12 @@ export interface OpContracts {
   'env.delete': { request: IdRequest; response: EnvironmentsResponse };
   'env.selection.get': { request: EmptyRequest; response: EnvironmentSelectionResponse };
   'env.selection.set': { request: EnvSelectionSetRequest; response: EnvironmentSelectionResponse };
+  'scenario.run': { request: ScenarioRunRequest; response: ScenarioRunStartedResponse };
+  'scenario.runStatus': { request: ScenarioRunRefRequest; response: ScenarioRunStatusResponse };
+  'scenario.stop': { request: ScenarioRunRefRequest; response: OkResponse };
+  'scenario.provideInput': { request: ScenarioProvideInputRequest; response: OkResponse };
+  'scenario.runList': { request: ScenarioRunListRequest; response: ScenarioRunsResponse };
+  'scenario.runClear': { request: ScenarioRunListRequest; response: ScenarioRunsResponse };
 }
 
 export type OpRequest<N extends OpName> = OpContracts[N]['request'];
