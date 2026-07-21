@@ -24,6 +24,13 @@ export interface WorkspaceServiceDeps {
   /** Called after a workspace is opened/created (used to update the recent list). */
   onOpened?: (summary: WorkspaceSummary) => void;
   now?: () => Date;
+  /** Optional `git` persistence; when provided, the `git` storage mode becomes available. */
+  git?: WorkspacePersistence;
+  /**
+   * Probe a target's kind so `open` can pick local (a `.swaft` file) vs git (a repo directory).
+   * Defaults to treating every target as a file (git mode disabled) when omitted.
+   */
+  probePath?: (path: string) => Promise<'file' | 'dir' | 'missing'>;
 }
 
 interface OpenState {
@@ -60,6 +67,14 @@ export class WorkspaceService {
     return (this.deps.now?.() ?? new Date()).toISOString();
   }
 
+  /** The `git` persistence, or a clear error when git mode is not available in this build/host. */
+  private requireGit(): WorkspacePersistence {
+    if (!this.deps.git) {
+      throw new AppError('GIT_MODE_UNAVAILABLE', 'policy', 'Git workspaces are not available.');
+    }
+    return this.deps.git;
+  }
+
   /**
    * Lifecycle transitions and saves run one at a time. IPC handlers are not serialized by Electron,
    * so without this two concurrent saves could write serialized images out of order (older image
@@ -86,11 +101,18 @@ export class WorkspaceService {
     }
 
     // Presence of a secret is what turns encryption on downstream.
-    const secret = req.encrypt ? password : undefined;
+    const mode: StorageMode = req.storageMode ?? 'local';
+    if (mode === 'git' && req.encrypt) {
+      throw new AppError(
+        'ENCRYPTION_NOT_SUPPORTED',
+        'validation',
+        'Git workspaces are stored as plain files and cannot be encrypted.',
+      );
+    }
+    const secret = mode === 'local' && req.encrypt ? password : undefined;
     const executionMode: ExecutionMode = req.executionMode ?? 'sandbox';
-    // Storage mode is immutable and derived from the chosen persistence (only `local` today;
-    // git selection is added in a later phase — see git.md).
-    const persistence = this.local;
+    // Storage mode is immutable and drives the persistence strategy.
+    const persistence = mode === 'git' ? this.requireGit() : this.local;
     const deviceId = this.deps.deviceId();
 
     await this.closeCurrent();
@@ -122,8 +144,13 @@ export class WorkspaceService {
   }
 
   private async doOpen(req: WorkspaceOpenRequest): Promise<WorkspaceSummary> {
-    // Only `local` persistence exists today; a mode probe (file vs directory) is added with git.
-    const persistence = this.local;
+    // A `.swaft` file opens as `local`; a directory opens as a `git` repo. Without a probe (tests)
+    // every target is treated as a local file.
+    const kind = (await this.deps.probePath?.(req.path)) ?? 'file';
+    if (kind === 'missing') {
+      throw new AppError('WORKSPACE_NOT_FOUND', 'not_found', 'Workspace not found.');
+    }
+    const persistence = kind === 'dir' ? this.requireGit() : this.local;
 
     // Open is atomic: materialize the new workspace first (this throws WORKSPACE_NOT_FOUND /
     // PASSWORD_REQUIRED / WRONG_WORKSPACE_PASSWORD / SCHEMA_TOO_NEW / INVALID_WORKSPACE without
@@ -181,6 +208,47 @@ export class WorkspaceService {
       this.rev++;
       await this.closeCurrent();
     });
+  }
+
+  /**
+   * Rebuild the in-memory store from disk for the open workspace. Used after an external change to
+   * the on-disk form — chiefly a `git pull` / branch checkout, which rewrites the workspace files
+   * under the app. Re-materialization is atomic (a failure leaves the current store intact), and the
+   * summary is refreshed since name/icon/execution mode may have changed on the incoming revision.
+   */
+  reload(): Promise<WorkspaceSummary> {
+    return this.locked(() => this.doReload());
+  }
+
+  private async doReload(): Promise<WorkspaceSummary> {
+    if (!this.state) throw new AppError('WORKSPACE_REQUIRED', 'policy', 'No workspace is open.');
+    const { persistence, summary, password } = this.state;
+    const opened = await persistence.open({ location: summary.path, password });
+    try {
+      const meta = await opened.adapter.getMeta();
+      if (!meta) {
+        throw new AppError(
+          'INVALID_WORKSPACE',
+          'validation',
+          'The workspace is missing its metadata.',
+        );
+      }
+      const next: WorkspaceSummary = {
+        name: meta.name,
+        icon: meta.icon,
+        path: summary.path,
+        storageMode: meta.storage_mode as StorageMode,
+        executionMode: meta.execution_mode as ExecutionMode,
+        encrypted: opened.encrypted,
+      };
+      await this.state.adapter.close().catch(() => undefined);
+      this.state = { summary: next, adapter: opened.adapter, persistence, password };
+      this.rev++;
+      return next;
+    } catch (err) {
+      await opened.adapter.close().catch(() => undefined);
+      throw err;
+    }
   }
 
   /**

@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { writeFileAtomic } from './storage/atomic-file';
 import { parseJsonOr } from './util/json';
 import { app, dialog, session, type BrowserWindow } from 'electron';
@@ -53,6 +53,8 @@ import { SettingsService } from './workspace/SettingsService';
 import { TemplateDataProvider } from './workspace/TemplateDataProvider';
 import { TemplateService } from './workspace/TemplateService';
 import { WorkspaceService } from './workspace/WorkspaceService';
+import { GitPersistence } from './workspace/persistence/GitPersistence';
+import { SystemGitService } from './git/GitService';
 
 const SWAFT_FILTER = { name: 'Swaft Workspace', extensions: ['swaft'] };
 
@@ -74,9 +76,11 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
   const appStore = new AppStore(join(app.getPath('userData'), 'app-store.json'));
   const crypto = new CryptoService();
   const workerFile = join(__dirname, 'dbWorker.js');
+  const createBackend = (bytes?: Uint8Array) => createDbBackend({ workerFile, bytes });
+  const git = new SystemGitService();
 
   const workspaceService = new WorkspaceService({
-    createBackend: (bytes) => createDbBackend({ workerFile, bytes }),
+    createBackend,
     crypto,
     fs: {
       read: async (path) => {
@@ -91,6 +95,15 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
     },
     deviceId: () => appStore.getDeviceId(),
     onOpened: (summary) => appStore.recordRecent(summary),
+    // `git` storage mode: a workspace is a directory of versioned files (see git.md).
+    git: new GitPersistence({ createBackend, git, deviceId: () => appStore.getDeviceId() }),
+    probePath: async (path) => {
+      try {
+        return (await stat(path)).isDirectory() ? 'dir' : 'file';
+      } catch {
+        return 'missing';
+      }
+    },
   });
 
   const dialogs: PlatformDialogs = {

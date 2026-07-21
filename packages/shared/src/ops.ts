@@ -64,7 +64,10 @@ export const executionModeSchema = z.enum(['sandbox', 'dev']);
 export const workspaceCreateRequestSchema = z
   .object({
     name: z.string().trim().min(1).max(120),
+    /** A `.swaft` file path for `local`, or a repository directory for `git`. */
     location: z.string().min(1),
+    /** Persistence backend; defaults to `local`. `git` never encrypts. */
+    storageMode: z.enum(['local', 'git']).optional(),
     encrypt: z.boolean(),
     password: z.string().min(8).max(256).optional(),
     executionMode: executionModeSchema.optional(),
