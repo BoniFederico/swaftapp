@@ -4,9 +4,10 @@ import { useI18n } from '../i18n/I18nProvider';
 import { Button, TextField } from '../ui';
 
 /**
- * The right-hand inspector for the selected scenario node: kind-specific fields (a template block's
- * alias, a decision's boolean formula, a delay's duration) plus delete. Edits are emitted as immutable
- * patches; the parent applies them to the graph.
+ * The right-hand inspector for the selected scenario node: kind-specific fields (a block's alias, a
+ * decision's boolean formula, a delay's duration, a start's alias) plus delete. Edits are emitted as
+ * immutable patches; `field` names the edited field so the parent can coalesce consecutive edits to
+ * the same field into a single undo step.
  */
 export function NodeInspector({
   node,
@@ -16,7 +17,7 @@ export function NodeInspector({
 }: {
   node: ScenarioNode;
   templateName: string | null;
-  onChange: (patch: Partial<ScenarioNode>) => void;
+  onChange: (patch: Partial<ScenarioNode>, field?: string) => void;
   onDelete: () => void;
 }) {
   const { t } = useI18n();
@@ -36,9 +37,20 @@ export function NodeInspector({
             <TextField
               label={t('scenario.alias')}
               value={node.alias ?? ''}
-              onChange={(e) => onChange({ alias: e.target.value })}
+              onChange={(e) => onChange({ alias: e.target.value }, 'alias')}
             />
             <span className="field-hint">{t('scenario.aliasHint')}</span>
+          </>
+        )}
+
+        {node.kind === 'start' && (
+          <>
+            <TextField
+              label={t('scenario.alias')}
+              value={node.alias ?? ''}
+              onChange={(e) => onChange({ alias: e.target.value }, 'alias')}
+            />
+            <span className="field-hint">{t('scenario.startHint')}</span>
           </>
         )}
 
@@ -47,7 +59,7 @@ export function NodeInspector({
             <TextField
               label={t('scenario.label')}
               value={node.label ?? ''}
-              onChange={(e) => onChange({ label: e.target.value })}
+              onChange={(e) => onChange({ label: e.target.value }, 'label')}
             />
             <div className="ui-field">
               <span className="ui-field__label">{t('scenario.condition')}</span>
@@ -55,7 +67,7 @@ export function NodeInspector({
                 ariaLabel={t('scenario.condition')}
                 placeholder="${ previous('login').status == 200 }"
                 value={node.condition ?? ''}
-                onChange={(v) => onChange({ condition: v })}
+                onChange={(v) => onChange({ condition: v }, 'condition')}
               />
             </div>
             <span className="field-hint">{t('scenario.conditionHint')}</span>
@@ -76,13 +88,11 @@ export function NodeInspector({
               value={(node.ms ?? 0) / 1000}
               onChange={(e) => {
                 const secs = Number(e.target.value);
-                onChange({ ms: Number.isFinite(secs) ? Math.max(0, Math.round(secs * 1000)) : 0 });
+                onChange({ ms: Number.isFinite(secs) ? Math.max(0, Math.round(secs * 1000)) : 0 }, 'ms');
               }}
             />
           </div>
         )}
-
-        {node.kind === 'start' && <span className="muted">{t('scenario.startHint')}</span>}
       </div>
 
       <div className="scenario-inspector__foot">

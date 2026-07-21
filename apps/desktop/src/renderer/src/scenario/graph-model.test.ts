@@ -8,6 +8,8 @@ import {
   moveNode,
   outputPorts,
   removeNode,
+  snap,
+  snapPoint,
   updateNode,
 } from './graph-model';
 
@@ -64,6 +66,17 @@ describe('edge rules', () => {
     x = addEdge(x, { id: 'et2', from: 'd', to: 't2', branch: 'true' });
     expect(x.edges.filter((e) => e.branch === 'true').map((e) => e.to)).toEqual(['t2']);
     expect(x.edges.filter((e) => e.branch === 'false')).toHaveLength(1);
+  });
+});
+
+describe('snap', () => {
+  it('rounds to the nearest grid line', () => {
+    expect(snap(0, 20)).toBe(0);
+    expect(snap(9, 20)).toBe(0);
+    expect(snap(11, 20)).toBe(20);
+    expect(snap(-9, 20)).toBe(0);
+    expect(snap(-11, 20)).toBe(-20);
+    expect(snapPoint({ x: 23, y: 37 }, 20)).toEqual({ x: 20, y: 40 });
   });
 });
 

@@ -1781,10 +1781,31 @@ body {
 .scenario__toolbar .ui-btn {
   font-size: var(--fs-sm);
   padding: var(--space-1) var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.scenario__toolbar .ui-icon-btn {
+  width: 30px;
+  height: 30px;
+}
+.scenario__toolbar-sep {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 var(--space-1);
+}
+.scenario__snap.is-on {
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  color: var(--primary);
 }
 .scenario__toolbar-hint {
   margin-left: auto;
   font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .scenario__main {
   flex: 1;
@@ -1798,13 +1819,19 @@ body {
   transform: translate(-50%, -50%);
 }
 
-/* The pannable/zoomable canvas surface. */
+/* The pannable/zoomable canvas surface, with a dot grid that pans/zooms via inline background-size /
+   background-position (no giant DOM element — cheap and always aligned to the world). */
 .scenario__canvas {
   flex: 1;
   min-width: 0;
   position: relative;
   overflow: hidden;
-  background: var(--surface-2);
+  background-color: var(--surface-2);
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--text-muted) 32%, transparent) 1px,
+    transparent 1.6px
+  );
   cursor: grab;
   touch-action: none;
   user-select: none;
@@ -1829,13 +1856,19 @@ body {
   top: 0;
   left: 0;
   overflow: visible;
-  pointer-events: none;
 }
 
-/* Edges (behind nodes). */
+/* Edges (behind nodes). The visible path never captures clicks; a fat transparent hit path does. */
 .scenario-edge {
   stroke: var(--text-muted);
   stroke-width: 2.5;
+  pointer-events: none;
+}
+.scenario-edge-hit {
+  stroke: transparent;
+  stroke-width: 14;
+  pointer-events: stroke;
+  cursor: pointer;
 }
 .scenario-edge--true {
   stroke: var(--status-ok);
@@ -1846,6 +1879,11 @@ body {
 .scenario-edge--pending {
   stroke: var(--primary);
   stroke-dasharray: 5 4;
+  pointer-events: none;
+}
+.scenario-edge.is-selected {
+  stroke: var(--primary);
+  stroke-width: 3.5;
 }
 
 /* Nodes. */
@@ -1879,6 +1917,10 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 0;
+}
+.scenario-node__labels--center {
+  align-items: center;
+  text-align: center;
 }
 .scenario-node__name {
   font-size: var(--fs-sm);
@@ -1997,20 +2039,51 @@ body {
   border-color: var(--status-err);
   background: var(--status-err);
 }
-/* Make output ports obvious when the node is hovered, and pop on direct hover. */
-.scenario-node:hover .scenario-port--out {
+/* Make output ports obvious when the node is hovered (but NOT while drawing an edge — during a draw
+   the *target* input side lights up, not the source's output side). */
+.scenario__canvas:not(.is-drawing) .scenario-node:hover .scenario-port--out {
   border-color: var(--primary);
 }
-.scenario-port--out:hover {
+.scenario__canvas:not(.is-drawing) .scenario-port--out:hover {
   transform: scale(1.25);
   border-color: var(--primary);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 22%, transparent);
 }
+/* Valid drop target while drawing an edge — highlight the node and its INPUT side. */
+.scenario-node.is-drop-target .scenario-port--in {
+  border-color: var(--primary);
+  background: var(--primary);
+  transform: scale(1.25);
+}
+.scenario-node--template.is-drop-target,
+.scenario-node--delay.is-drop-target,
+.scenario-node--start.is-drop-target {
+  box-shadow: 0 0 0 2px var(--primary);
+}
+.scenario-node--decision.is-drop-target .scenario-node__diamond polygon {
+  stroke: var(--primary);
+  stroke-width: 2.5;
+}
 
-/* Inspector. */
-.scenario-inspector {
+/* Inspector — width lives on the host so a divider can resize it (like the doc input/output split). */
+.scenario-inspector-host {
   flex: 0 0 auto;
-  width: 280px;
+  min-width: 0;
+  display: flex;
+}
+.scenario__isplit {
+  flex: 0 0 auto;
+  width: 8px;
+  margin: 0 -4px;
+  cursor: ew-resize;
+  z-index: 2;
+}
+.scenario__isplit:hover {
+  background: color-mix(in srgb, var(--primary) 30%, transparent);
+}
+.scenario-inspector {
+  flex: 1;
+  min-width: 0;
   border-left: 1px solid var(--border);
   background: var(--surface);
   display: flex;

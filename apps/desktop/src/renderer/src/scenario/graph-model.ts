@@ -151,6 +151,20 @@ export function addEdge(graph: ScenarioGraph, edge: ScenarioEdge): ScenarioGraph
   return { ...graph, edges: [...edges, { ...edge, branch }] };
 }
 
+/** World-space grid step (px) for the background grid and optional snap-to-grid. */
+export const GRID = 20;
+
+/** Round a scalar to the nearest grid line (normalizing -0 → 0). */
+export function snap(v: number, grid: number = GRID): number {
+  const r = Math.round(v / grid) * grid;
+  return r === 0 ? 0 : r;
+}
+
+/** Snap a point to the grid. */
+export function snapPoint(p: Point, grid: number = GRID): Point {
+  return { x: snap(p.x, grid), y: snap(p.y, grid) };
+}
+
 /** A fresh unique id for a node/edge. Uses the platform UUID (available in the renderer). */
 export function newId(prefix: 'n' | 'e'): string {
   const uuid =

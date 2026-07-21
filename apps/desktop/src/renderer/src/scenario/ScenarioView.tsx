@@ -9,21 +9,23 @@ import {
 } from '@swaft/shared';
 import { ApiClient, ApiError } from '../api-client/client';
 import { useI18n } from '../i18n/I18nProvider';
-import { Button, useToast } from '../ui';
+import { Button, IconButton, SaveIcon, useToast } from '../ui';
 import { notifyTreeChanged, subscribeTreeChanged } from '../workspace/treeBus';
-import { newId } from './graph-model';
+import { newId, removeEdge, removeNode } from './graph-model';
 import { NodeInspector } from './NodeInspector';
-import { ScenarioCanvas, type ResolvedTemplate } from './ScenarioCanvas';
+import { ScenarioCanvas, type ResolvedTemplate, type Selection } from './ScenarioCanvas';
 
-/** How long after the last edit the graph is auto-saved into the template source. */
-const SAVE_DEBOUNCE_MS = 600;
+const SNAP_KEY = 'swaft:scenarioSnap';
+const INSPECTOR_W_KEY = 'swaft:scenarioInspectorW';
+const MIN_INSPECTOR = 240;
+const MAX_INSPECTOR = 520;
 
 /**
  * Scenario View — the visual workflow editor for `scenario` templates (see docs `scenarios.md`). The
- * graph rides in the template `source` as JSON; this view parses it defensively, edits it on a
- * pan/zoom canvas (drag templates in from the Working Tree, add decision/delay nodes, wire them), and
- * auto-saves back via `template.updateSource`. A malformed hand-edited source degrades to a read-only
- * error state instead of clobbering the file.
+ * graph rides in the template `source` as JSON; this view parses it defensively and edits it on a
+ * pan/zoom canvas (drag templates in from the Working Tree, add decision/delay/start nodes, wire and
+ * select them). Editing is **explicit-save** (a Save button + Ctrl+S; a dirty dot until saved) with a
+ * full undo/redo history. A malformed hand-edited source degrades to a read-only error state.
  */
 export function ScenarioView({
   client,
@@ -39,19 +41,31 @@ export function ScenarioView({
   const { t } = useI18n();
   const toast = useToast();
   const [graph, setGraph] = useState<ScenarioGraph>(EMPTY_SCENARIO_GRAPH);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const graphRef = useRef(graph);
+  graphRef.current = graph;
+  const [selection, setSelection] = useState<Selection | null>(null);
   const [parseError, setParseError] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  /** Templates that can be dropped/referenced as blocks: id → { name, type }. */
   const [templates, setTemplates] = useState<Map<string, ResolvedTemplate>>(new Map());
+  const [snapEnabled, setSnapEnabled] = useState(() => localStorage.getItem(SNAP_KEY) !== 'off');
+  const [inspectorWidth, setInspectorWidth] = useState(() => {
+    const v = Number(localStorage.getItem(INSPECTOR_W_KEY));
+    return Number.isFinite(v) && v >= MIN_INSPECTOR && v <= MAX_INSPECTOR ? v : 300;
+  });
 
-  // The last source we persisted, so the tree-change reload can skip the echo of our own save.
+  // Undo / redo history + the saved baseline for the dirty flag. Stacks are refs (they never drive a
+  // render on their own); a version counter re-renders so the toolbar's enabled state stays in sync.
+  const undoStack = useRef<ScenarioGraph[]>([]);
+  const redoStack = useRef<ScenarioGraph[]>([]);
+  const coalesceKey = useRef<string | null>(null);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const syncHist = useCallback(() => {
+    setCanUndo(undoStack.current.length > 0);
+    setCanRedo(redoStack.current.length > 0);
+  }, []);
   const savedSourceRef = useRef<string | null>(null);
   const [savedSource, setSavedSource] = useState<string | null>(null);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // The latest serialized graph not yet written (debounced), so an unmount can flush it — the tab is
-  // a preview tab that unmounts when the user switches away, and a pending edit must not be lost.
-  const pendingSourceRef = useRef<string | null>(null);
 
   // Load (and reload on external save) the graph. Never overwrite from an unparseable source.
   useEffect(() => {
@@ -66,6 +80,9 @@ export function ScenarioView({
         setParseError(!ok);
         if (ok) {
           setGraph(parsed);
+          undoStack.current = [];
+          redoStack.current = [];
+          syncHist();
           const normalized = serializeScenarioGraph(parsed);
           savedSourceRef.current = normalized;
           setSavedSource(normalized);
@@ -81,9 +98,9 @@ export function ScenarioView({
       cancelled = true;
       unsubscribe();
     };
-  }, [client, templateId, onTitleChange]);
+  }, [client, templateId, onTitleChange, syncHist]);
 
-  // The templates a scenario can reference: api / action / capability (executable kinds).
+  // Templates a scenario can reference (executable kinds): id → { name, type }.
   useEffect(() => {
     const refresh = () =>
       void client
@@ -104,104 +121,145 @@ export function ScenarioView({
 
   const resolveTemplate = useCallback((id: string) => templates.get(id) ?? null, [templates]);
 
-  // Write the pending graph now (debounce elapsed, or flushed on unmount). `notify` is skipped on the
-  // unmount path (no live subscribers to refresh). Returns the write promise (fire-and-forget on unmount).
-  const flushSave = useCallback(
-    (notify: boolean) => {
-      const source = pendingSourceRef.current;
-      if (source == null || source === savedSourceRef.current) return;
-      pendingSourceRef.current = null;
-      savedSourceRef.current = source; // optimistic: the reload must treat this as our own echo
-      void client
-        .call('template.updateSource', { id: templateId, source })
-        .then(() => {
-          if (notify) {
-            setSavedSource(source);
-            notifyTreeChanged();
-          }
-        })
-        .catch((e) => {
-          if (notify) toast.show(e instanceof ApiError ? e.swaft.message : String(e), 'error');
-        });
-    },
-    [client, templateId, toast],
-  );
-
-  // Debounced auto-save: serialize the graph and persist it. Skipped while the source is unparseable
-  // (read-only error state) so we never clobber a file the user is hand-fixing.
-  const persist = useCallback(
-    (next: ScenarioGraph) => {
-      pendingSourceRef.current = serializeScenarioGraph(next);
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => flushSave(true), SAVE_DEBOUNCE_MS);
-    },
-    [flushSave],
-  );
-
-  const applyGraph = useCallback(
-    (next: ScenarioGraph) => {
+  /**
+   * Apply a graph change and record it for undo. `coalesce` groups consecutive edits under the same key
+   * (e.g. typing in one inspector field) into a single undo step; a different/absent key starts a new
+   * step. The canvas never coalesces (each drag/edge/drop is its own step).
+   */
+  const commit = useCallback(
+    (next: ScenarioGraph, coalesce?: string) => {
+      if (coalesce && coalesce === coalesceKey.current) {
+        setGraph(next);
+        return;
+      }
+      undoStack.current.push(graphRef.current);
+      redoStack.current = [];
+      coalesceKey.current = coalesce ?? null;
       setGraph(next);
-      persist(next);
+      syncHist();
     },
-    [persist],
+    [syncHist],
   );
 
-  // Flush a pending save on unmount so switching away from this (preview) tab never drops the last edit.
-  useEffect(
-    () => () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      flushSave(false);
-    },
-    [flushSave],
-  );
+  const undo = useCallback(() => {
+    if (undoStack.current.length === 0) return;
+    redoStack.current.push(graphRef.current);
+    setGraph(undoStack.current.pop()!);
+    coalesceKey.current = null;
+    setSelection(null);
+    syncHist();
+  }, [syncHist]);
+
+  const redo = useCallback(() => {
+    if (redoStack.current.length === 0) return;
+    undoStack.current.push(graphRef.current);
+    setGraph(redoStack.current.pop()!);
+    coalesceKey.current = null;
+    setSelection(null);
+    syncHist();
+  }, [syncHist]);
 
   const dirty = savedSource !== null && !parseError && serializeScenarioGraph(graph) !== savedSource;
   useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
 
-  const selected = useMemo(
-    () => graph.nodes.find((n) => n.id === selectedId) ?? null,
-    [graph.nodes, selectedId],
+  const save = useCallback(async () => {
+    const source = serializeScenarioGraph(graphRef.current);
+    if (source === savedSourceRef.current) return;
+    try {
+      await client.call('template.updateSource', { id: templateId, source });
+      savedSourceRef.current = source;
+      setSavedSource(source);
+      notifyTreeChanged();
+      toast.show(t('toast.saved'), 'success');
+    } catch (e) {
+      toast.show(e instanceof ApiError ? e.swaft.message : String(e), 'error');
+    }
+  }, [client, templateId, toast, t]);
+
+  const selectedNode = useMemo(
+    () => (selection?.kind === 'node' ? (graph.nodes.find((n) => n.id === selection.id) ?? null) : null),
+    [selection, graph.nodes],
   );
 
-  /** Add a non-template node (decision/delay/start) near the top-left, lightly cascaded. */
   function addControlNode(kind: ScenarioNode['kind']) {
     const n = graph.nodes.length;
     const node: ScenarioNode = {
       id: newId('n'),
       kind,
-      position: { x: 160 + (n % 5) * 24, y: 240 + (n % 5) * 24 },
+      position: { x: 160 + (n % 5) * 40, y: 200 + (n % 5) * 40 },
       ...(kind === 'delay' ? { ms: 1000 } : {}),
       ...(kind === 'decision' ? { condition: '' } : {}),
     };
-    applyGraph({ ...graph, nodes: [...graph.nodes, node] });
-    setSelectedId(node.id);
+    commit({ ...graph, nodes: [...graph.nodes, node] });
+    setSelection({ kind: 'node', id: node.id });
   }
 
-  function deleteSelected() {
-    if (!selectedId) return;
-    applyGraph({
-      nodes: graph.nodes.filter((nd) => nd.id !== selectedId),
-      edges: graph.edges.filter((e) => e.from !== selectedId && e.to !== selectedId),
-      version: 1,
-    });
-    setSelectedId(null);
-  }
+  const deleteSelection = useCallback(() => {
+    const sel = selection;
+    if (!sel) return;
+    commit(sel.kind === 'node' ? removeNode(graphRef.current, sel.id) : removeEdge(graphRef.current, sel.id));
+    setSelection(null);
+  }, [selection, commit]);
 
-  // Delete/Backspace removes the selected node — unless the focus is in a text field.
+  // Keyboard: delete selection, undo/redo, save — ignored while a text field has focus.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
-      const el = document.activeElement;
-      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || (el as HTMLElement).isContentEditable)) return;
-      if (selectedId) {
+      const el = document.activeElement as HTMLElement | null;
+      const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        deleteSelected();
+        void save();
+        return;
+      }
+      if (typing) return;
+      if (mod && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+        return;
+      }
+      if (mod && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        redo();
+        return;
+      }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selection) {
+        e.preventDefault();
+        deleteSelection();
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, graph]);
+  }, [save, undo, redo, deleteSelection, selection]);
+
+  function toggleSnap() {
+    setSnapEnabled((s) => {
+      const next = !s;
+      localStorage.setItem(SNAP_KEY, next ? 'on' : 'off');
+      return next;
+    });
+  }
+
+  // Inspector resize: dragging the divider left grows the (right-hand) inspector.
+  function startInspectorResize(e: React.PointerEvent) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = inspectorWidth;
+    const onMove = (ev: PointerEvent) => {
+      const w = Math.max(MIN_INSPECTOR, Math.min(MAX_INSPECTOR, startW + (startX - ev.clientX)));
+      setInspectorWidth(w);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      localStorage.setItem(INSPECTOR_W_KEY, String(inspectorWidthRef.current));
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }
+  const inspectorWidthRef = useRef(inspectorWidth);
+  inspectorWidthRef.current = inspectorWidth;
 
   if (parseError) {
     return (
@@ -227,30 +285,89 @@ export function ScenarioView({
         <Button variant="secondary" onClick={() => addControlNode('delay')}>
           {t('scenario.addDelay')}
         </Button>
+        <span className="scenario__toolbar-sep" />
+        <IconButton label={t('scenario.undo')} disabled={!canUndo} onClick={undo}>
+          <UndoGlyph />
+        </IconButton>
+        <IconButton label={t('scenario.redo')} disabled={!canRedo} onClick={redo}>
+          <UndoGlyph flip />
+        </IconButton>
+        <Button
+          variant={snapEnabled ? 'secondary' : 'ghost'}
+          className={snapEnabled ? 'scenario__snap is-on' : 'scenario__snap'}
+          aria-pressed={snapEnabled}
+          onClick={toggleSnap}
+        >
+          {t('scenario.snap')}
+        </Button>
         <span className="scenario__toolbar-hint muted">{t('scenario.dropHint')}</span>
+        <Button variant="primary" disabled={!dirty} onClick={() => void save()}>
+          <SaveIcon />
+          <span>{t('scenario.save')}</span>
+        </Button>
       </div>
 
       <div className="scenario__main">
         <ScenarioCanvas
           graph={graph}
-          selectedId={selectedId}
-          onChange={applyGraph}
-          onSelect={setSelectedId}
+          selection={selection}
+          snapEnabled={snapEnabled}
+          onChange={(next) => commit(next)}
+          onSelect={setSelection}
           resolveTemplate={resolveTemplate}
         />
-        {selected && (
-          <NodeInspector
-            node={selected}
-            templateName={selected.ref ? (resolveTemplate(selected.ref)?.name ?? null) : null}
-            onChange={(patch) =>
-              applyGraph({ ...graph, nodes: graph.nodes.map((nd) => (nd.id === selected.id ? { ...nd, ...patch } : nd)) })
-            }
-            onDelete={deleteSelected}
-          />
+        {selection && (
+          <>
+            <div
+              className="scenario__isplit"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label={t('scenario.resizeInspector')}
+              onPointerDown={startInspectorResize}
+            />
+            <div className="scenario-inspector-host" style={{ width: inspectorWidth }}>
+              {selectedNode ? (
+                <NodeInspector
+                  node={selectedNode}
+                  templateName={selectedNode.ref ? (resolveTemplate(selectedNode.ref)?.name ?? null) : null}
+                  onChange={(patch, field) =>
+                    commit(
+                      { ...graph, nodes: graph.nodes.map((nd) => (nd.id === selectedNode.id ? { ...nd, ...patch } : nd)) },
+                      field ? `field:${selectedNode.id}:${field}` : undefined,
+                    )
+                  }
+                  onDelete={deleteSelection}
+                />
+              ) : (
+                <aside className="scenario-inspector" aria-label={t('scenario.inspector')}>
+                  <div className="scenario-inspector__head">
+                    <span className="scenario-inspector__kind">{t('scenario.kind.edge')}</span>
+                  </div>
+                  <div className="scenario-inspector__body">
+                    <span className="muted">{t('scenario.edgeHint')}</span>
+                  </div>
+                  <div className="scenario-inspector__foot">
+                    <Button variant="danger" onClick={deleteSelection}>
+                      {t('scenario.deleteEdge')}
+                    </Button>
+                  </div>
+                </aside>
+              )}
+            </div>
+          </>
         )}
       </div>
 
       {!loaded && <span className="muted scenario__loading">{t('doc.loading')}</span>}
     </div>
+  );
+}
+
+/** Curved undo arrow (flip for redo). */
+function UndoGlyph({ flip }: { flip?: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style={flip ? { transform: 'scaleX(-1)' } : undefined}>
+      <path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z" />
+    </svg>
   );
 }
