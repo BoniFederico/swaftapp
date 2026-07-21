@@ -48,6 +48,8 @@ interface RunState {
   projectId: string | null;
   mode: ScenarioRunMode;
   authorizeActions: boolean;
+  /** Run only the start node (a single block), without following its outgoing edges. */
+  onlyNode: boolean;
   outputs: Record<string, BlockOutput>;
   previousAlias: string | null;
   cancelled: boolean;
@@ -112,8 +114,10 @@ export class ScenarioService extends RepoBase {
   async run(req: {
     id: string;
     startNodeId?: string;
+    onlyNode?: boolean;
     mode: ScenarioRunMode;
     authorizeActions: boolean;
+    source?: string;
   }): Promise<{ runId: string }> {
     const { runId } = await this.startRun(req);
     return { runId };
@@ -122,15 +126,20 @@ export class ScenarioService extends RepoBase {
   /**
    * Create a run and begin executing it in the background. Returns its id plus a `done` promise that
    * resolves when the run reaches a terminal state — used by the batch loop to sequence runs.
+   *
+   * When `req.source` is provided, that graph is run verbatim (the currently-edited, possibly unsaved
+   * version from the editor); otherwise the scenario's selected stored version is resolved.
    */
   private async startRun(req: {
     id: string;
     startNodeId?: string;
+    onlyNode?: boolean;
     mode: ScenarioRunMode;
     authorizeActions: boolean;
+    source?: string;
   }): Promise<{ runId: string; done: Promise<void> }> {
     const scenario = await this.deps.templates.requireTemplate(req.id);
-    const { source } = await this.deps.releases.resolveSource(req.id);
+    const source = req.source ?? (await this.deps.releases.resolveSource(req.id)).source;
     const { graph } = parseScenarioGraph(source);
     const startNodeId = req.startNodeId ?? graph.nodes.find((n) => n.kind === 'start')?.id ?? null;
 
@@ -153,6 +162,7 @@ export class ScenarioService extends RepoBase {
       projectId: scenario.projectId ?? (await this.deps.templates.projectIdOf(req.id)),
       mode: req.mode,
       authorizeActions: req.authorizeActions,
+      onlyNode: req.onlyNode ?? false,
       outputs: {},
       previousAlias: null,
       cancelled: false,
@@ -171,6 +181,8 @@ export class ScenarioService extends RepoBase {
     count: number;
     interRunDelayMs: number;
     authorizeActions: boolean;
+    startNodeId?: string;
+    source?: string;
   }): Promise<{ batchId: string }> {
     const batchId = randomUUID();
     const batch = {
@@ -208,13 +220,22 @@ export class ScenarioService extends RepoBase {
 
   private async batchLoop(
     batch: ScenarioBatchDto & { cancelled: boolean },
-    req: { id: string; count: number; interRunDelayMs: number; authorizeActions: boolean },
+    req: {
+      id: string;
+      count: number;
+      interRunDelayMs: number;
+      authorizeActions: boolean;
+      startNodeId?: string;
+      source?: string;
+    },
   ): Promise<void> {
     for (let i = 0; i < req.count && !batch.cancelled; i++) {
       const { runId, done } = await this.startRun({
         id: req.id,
+        startNodeId: req.startNodeId,
         mode: 'batch',
         authorizeActions: req.authorizeActions,
+        source: req.source,
       });
       batch.currentRunId = runId;
       await done;
@@ -326,6 +347,8 @@ export class ScenarioService extends RepoBase {
         node = this.nextNode(state, current);
       }
       seq++;
+      // A single-block run executes exactly the start node, then stops (no traversal).
+      if (state.onlyNode) break;
     }
     if (state.cancelled) await this.finish(state, 'cancelled', null);
     else if (seq >= MAX_STEPS) await this.finish(state, 'failed', `Exceeded ${MAX_STEPS} steps.`);

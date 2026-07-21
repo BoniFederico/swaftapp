@@ -423,8 +423,10 @@ export const handlers: Record<OpName, Handler> = {
       return getScenarioService().run({
         id: r.id,
         startNodeId: r.startNodeId,
+        onlyNode: r.onlyNode,
         mode: r.mode,
         authorizeActions: r.authorizeActions,
+        source: r.source,
       });
     }),
   'scenario.runStatus': (p) =>
@@ -452,6 +454,8 @@ export const handlers: Record<OpName, Handler> = {
         count: r.count,
         interRunDelayMs: r.interRunDelayMs,
         authorizeActions: r.authorizeActions,
+        startNodeId: r.startNodeId,
+        source: r.source,
       });
     }),
   'scenario.batchStatus': (p) =>

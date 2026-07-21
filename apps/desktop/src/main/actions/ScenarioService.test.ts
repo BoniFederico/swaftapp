@@ -243,6 +243,43 @@ describe('ScenarioService runner', () => {
     expect((await scenario.list(sid)).length).toBe(3);
   });
 
+  it('runs a batch starting from a chosen node (skipping earlier ones)', async () => {
+    const { scenario, newTemplate, newScenario } = await setup();
+    const a = await newTemplate('A', 'api');
+    const b = await newTemplate('B', 'api');
+    const graph: ScenarioGraph = {
+      version: 1,
+      nodes: [
+        { id: 'start', kind: 'start', position: at(0) },
+        { id: 'na', kind: 'template', ref: a, templateType: 'api', alias: 'a', position: at(1) },
+        { id: 'nb', kind: 'template', ref: b, templateType: 'api', alias: 'b', position: at(2) },
+      ],
+      edges: [
+        { id: 'e0', from: 'start', to: 'na' },
+        { id: 'e1', from: 'na', to: 'nb' },
+      ],
+    };
+    const sid = await newScenario('Flow', graph);
+
+    const { batchId } = await scenario.runBatch({
+      id: sid,
+      count: 1,
+      interRunDelayMs: 0,
+      authorizeActions: false,
+      startNodeId: 'nb',
+    });
+    const start = Date.now();
+    while (Date.now() - start < 3000) {
+      if (scenario.batchStatus(batchId).status === 'completed') break;
+      await new Promise((r) => setTimeout(r, 8));
+    }
+    const runs = await scenario.list(sid);
+    expect(runs.length).toBe(1);
+    const status = await scenario.status(runs[0]!.id);
+    // Started at 'nb' → only 'b' ran; 'a' was skipped.
+    expect(status.steps.map((st) => st.alias)).toEqual(['b']);
+  });
+
   it('stops a batch after the current run', async () => {
     const { scenario, newScenario } = await setup();
     const graph: ScenarioGraph = {
@@ -265,6 +302,67 @@ describe('ScenarioService runner', () => {
     }
     expect(scenario.batchStatus(batchId).status).toBe('cancelled');
     expect(scenario.batchStatus(batchId).completed).toBeLessThan(100);
+  });
+
+  it('runs the current in-memory source override, not the stored version', async () => {
+    const { scenario, newTemplate, newScenario, waitFor } = await setup();
+    const a = await newTemplate('A', 'api');
+    // Stored graph: just a start node (a normal run would execute nothing else).
+    const stored: ScenarioGraph = {
+      version: 1,
+      nodes: [{ id: 'start', kind: 'start', position: at(0) }],
+      edges: [],
+    };
+    const sid = await newScenario('Flow', stored);
+    // The edited (unsaved) graph adds an API block after the start.
+    const edited: ScenarioGraph = {
+      version: 1,
+      nodes: [
+        { id: 'start', kind: 'start', position: at(0) },
+        { id: 'na', kind: 'template', ref: a, templateType: 'api', alias: 'a', position: at(1) },
+      ],
+      edges: [{ id: 'e0', from: 'start', to: 'na' }],
+    };
+
+    const { runId } = await scenario.run({
+      id: sid,
+      mode: 'single',
+      authorizeActions: false,
+      source: serializeScenarioGraph(edited),
+    });
+    const done = await waitFor(runId, (s) => s.run.status === 'completed');
+    // The override graph ran: the API block executed even though it is not in the stored source.
+    expect(done.steps.some((st) => st.alias === 'a')).toBe(true);
+  });
+
+  it('runs a single block only (onlyNode) without following its edges', async () => {
+    const { scenario, newTemplate, newScenario, waitFor } = await setup();
+    const a = await newTemplate('A', 'api');
+    const b = await newTemplate('B', 'api');
+    const graph: ScenarioGraph = {
+      version: 1,
+      nodes: [
+        { id: 'start', kind: 'start', position: at(0) },
+        { id: 'na', kind: 'template', ref: a, templateType: 'api', alias: 'a', position: at(1) },
+        { id: 'nb', kind: 'template', ref: b, templateType: 'api', alias: 'b', position: at(2) },
+      ],
+      edges: [
+        { id: 'e0', from: 'start', to: 'na' },
+        { id: 'e1', from: 'na', to: 'nb' },
+      ],
+    };
+    const sid = await newScenario('Flow', graph);
+
+    const { runId } = await scenario.run({
+      id: sid,
+      startNodeId: 'na',
+      onlyNode: true,
+      mode: 'single',
+      authorizeActions: false,
+    });
+    const done = await waitFor(runId, (s) => s.run.status === 'completed');
+    expect(done.steps.map((st) => st.alias)).toEqual(['a']);
+    expect(done.steps.some((st) => st.alias === 'b')).toBe(false);
   });
 
   it('stops a run cooperatively while it waits on a delay', async () => {

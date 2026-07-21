@@ -412,10 +412,17 @@ export const scenarioRunRequestSchema = z
     id: z.string().min(1),
     /** Node to start from (default: the graph's single start node). */
     startNodeId: z.string().min(1).optional(),
+    /** Execute only the start node (a single block), without following its outgoing edges. */
+    onlyNode: z.boolean().optional(),
     /** `single` pauses for missing inputs (attended); `batch` fails the step (unattended). */
     mode: scenarioRunModeSchema.default('single'),
     /** One acknowledgement authorizing every action block in the run (sandbox still forbids prod). */
     authorizeActions: z.boolean().default(false),
+    /**
+     * The graph to run, verbatim — the currently-edited (possibly unsaved) source. When omitted the
+     * run resolves the scenario's selected version from storage.
+     */
+    source: z.string().optional(),
   })
   .strict();
 export const scenarioRunRefRequestSchema = z.object({ runId: z.string().min(1) }).strict();
@@ -431,6 +438,10 @@ export const scenarioRunBatchRequestSchema = z
     count: z.number().int().min(1).max(1000),
     interRunDelayMs: z.number().int().min(0).max(3_600_000).default(0),
     authorizeActions: z.boolean().default(false),
+    /** Node each run starts from (default: the graph's single start node). */
+    startNodeId: z.string().min(1).optional(),
+    /** The graph to run, verbatim (the currently-edited source); omitted → resolve stored version. */
+    source: z.string().optional(),
   })
   .strict();
 export const scenarioBatchRefRequestSchema = z.object({ batchId: z.string().min(1) }).strict();
