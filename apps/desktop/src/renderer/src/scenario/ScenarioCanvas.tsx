@@ -240,7 +240,7 @@ export function ScenarioCanvas({
         className="scenario__world"
         style={{ transform: `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`, transformOrigin: '0 0' }}
       >
-        <svg className="scenario__edges" width={0} height={0} style={{ overflow: 'visible' }} aria-hidden="true">
+        <svg className="scenario__edges" style={{ overflow: 'visible' }} aria-hidden="true">
           {graph.edges.map((edge) => {
             const a = edgeSource(graph, edge);
             const b = edgeTarget(graph, edge);

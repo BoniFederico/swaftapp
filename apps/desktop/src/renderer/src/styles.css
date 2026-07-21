@@ -1828,12 +1828,14 @@ body {
   position: absolute;
   top: 0;
   left: 0;
+  overflow: visible;
+  pointer-events: none;
 }
 
 /* Edges (behind nodes). */
 .scenario-edge {
   stroke: var(--text-muted);
-  stroke-width: 2;
+  stroke-width: 2.5;
 }
 .scenario-edge--true {
   stroke: var(--status-ok);
@@ -1924,15 +1926,21 @@ body {
   border-style: solid;
   box-shadow: 0 0 0 1px var(--primary);
 }
-/* Decision: a diamond drawn in SVG behind an upright label. */
+/* Decision: a diamond drawn in SVG behind an upright, centered label. */
 .scenario-node--decision {
   background: transparent;
+}
+.scenario-node--decision .scenario-node__body {
+  justify-content: center;
+  padding: 0;
 }
 .scenario-node__diamond {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+  /* Never intercept pointer events meant for the ports/body underneath. */
+  pointer-events: none;
 }
 .scenario-node__diamond polygon {
   fill: var(--surface);
@@ -1948,12 +1956,13 @@ body {
   font-family: var(--font-mono);
 }
 
-/* Ports — small handles to draw edges from/to. */
+/* Ports — handles to draw edges from/to. Kept visually small but with a generous invisible grab
+   ring (::after) so they are easy to hit; output ports light up on node hover for discoverability. */
 .scenario-port {
   position: absolute;
-  width: 12px;
-  height: 12px;
-  margin-top: -6px;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
   border-radius: 50%;
   background: var(--surface);
   border: 2px solid var(--text-muted);
@@ -1964,12 +1973,20 @@ body {
   font-weight: 700;
   line-height: 1;
   color: #fff;
+  transition: transform 0.1s ease, box-shadow 0.1s ease, border-color 0.1s ease;
+}
+/* Enlarge the clickable area well beyond the dot so it is easy to grab. */
+.scenario-port::after {
+  content: '';
+  position: absolute;
+  inset: -9px;
+  border-radius: 50%;
 }
 .scenario-port--in {
-  left: -6px;
+  left: -7px;
 }
 .scenario-port--out {
-  right: -6px;
+  right: -7px;
   cursor: crosshair;
 }
 .scenario-port--true {
@@ -1980,8 +1997,14 @@ body {
   border-color: var(--status-err);
   background: var(--status-err);
 }
-.scenario-port--plain:hover {
+/* Make output ports obvious when the node is hovered, and pop on direct hover. */
+.scenario-node:hover .scenario-port--out {
   border-color: var(--primary);
+}
+.scenario-port--out:hover {
+  transform: scale(1.25);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 22%, transparent);
 }
 
 /* Inspector. */
