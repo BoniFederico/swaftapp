@@ -167,6 +167,8 @@ export const handlers: Record<OpName, Handler> = {
     }),
   'git.publish': (p) =>
     svc(async () => ({ status: await getGitOpsService().publish((p as GitPublishRequest).url) })),
+  'git.available': () => svc(async () => getGitOpsService().available()),
+  'git.reload': () => svc(async () => ({ status: await getGitOpsService().reload() })),
 
   // Organization tree (M5)
   'tree.get': () => svc(async () => ({ tree: await getOrganizationService().getTree() })),

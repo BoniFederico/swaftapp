@@ -26,6 +26,8 @@ interface WorkspaceContextValue {
   loading: boolean;
   busy: boolean;
   errorCode: string | null;
+  /** Whether git is usable in this host; null while unknown. Gates the Git storage mode. */
+  gitAvailable: boolean | null;
   create(req: WorkspaceCreateRequest): Promise<void>;
   open(path: string, password?: string): Promise<void>;
   /** Clone a Git repository from `url` into `parentDir`, then open it. */
@@ -56,6 +58,7 @@ export function WorkspaceProvider({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [gitAvailable, setGitAvailable] = useState<boolean | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -77,11 +80,18 @@ export function WorkspaceProvider({
     void (async () => {
       await refresh();
       if (!cancelled) setLoading(false);
+      // Probe git once so the wizard can gate the Git storage mode (best-effort).
+      try {
+        const res = await client.call('git.available');
+        if (!cancelled) setGitAvailable(res.available);
+      } catch {
+        if (!cancelled) setGitAvailable(false);
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [refresh]);
+  }, [refresh, client]);
 
   const run = useCallback(
     async (fn: () => Promise<void>) => {
@@ -106,6 +116,7 @@ export function WorkspaceProvider({
       loading,
       busy,
       errorCode,
+      gitAvailable,
       clearError: () => setErrorCode(null),
       create: (req) =>
         run(async () => {
@@ -161,7 +172,7 @@ export function WorkspaceProvider({
         }
       },
     }),
-    [current, recent, loading, busy, errorCode, run, client, refresh],
+    [current, recent, loading, busy, errorCode, gitAvailable, run, client, refresh],
   );
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;

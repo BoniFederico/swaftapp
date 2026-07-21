@@ -502,6 +502,8 @@ export const OP_NAMES = [
   'git.discard',
   'git.clone',
   'git.publish',
+  'git.available',
+  'git.reload',
   'tree.get',
   'project.create',
   'project.rename',
@@ -609,6 +611,8 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'git.discard': emptyRequestSchema,
   'git.clone': gitCloneRequestSchema,
   'git.publish': gitPublishRequestSchema,
+  'git.available': emptyRequestSchema,
+  'git.reload': emptyRequestSchema,
   'tree.get': emptyRequestSchema,
   'project.create': projectCreateRequestSchema,
   'project.rename': renameRequestSchema,
@@ -780,6 +784,15 @@ export interface GitFileChange {
   path: string;
   status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked' | 'conflicted';
   staged: boolean;
+  /** Human-readable label resolved from the workspace (e.g. "Template: Release notes"), if known. */
+  label?: string;
+}
+
+export interface GitAvailabilityResponse {
+  /** Whether a usable `git` binary is on PATH in the main process. */
+  available: boolean;
+  /** The `git --version` string, or null when unavailable. */
+  version: string | null;
 }
 
 /** The open Git workspace's repository state, surfaced to the Git panel. */
@@ -1445,6 +1458,8 @@ export interface OpContracts {
   'git.discard': { request: EmptyRequest; response: GitStatusResponse };
   'git.clone': { request: GitCloneRequest; response: WorkspaceResponse };
   'git.publish': { request: GitPublishRequest; response: GitStatusResponse };
+  'git.available': { request: EmptyRequest; response: GitAvailabilityResponse };
+  'git.reload': { request: EmptyRequest; response: GitStatusResponse };
   'tree.get': { request: EmptyRequest; response: TreeResponse };
   'project.create': { request: ProjectCreateRequest; response: TreeResponse };
   'project.rename': { request: RenameRequest; response: TreeResponse };

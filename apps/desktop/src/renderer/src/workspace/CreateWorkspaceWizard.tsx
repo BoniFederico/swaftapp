@@ -13,7 +13,8 @@ import { workspaceErrorKey } from './workspace-errors';
  */
 export function CreateWorkspaceWizard({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t } = useI18n();
-  const { create, busy, errorCode, clearError, pickCreateTarget, pickDirectory } = useWorkspace();
+  const { create, busy, errorCode, clearError, pickCreateTarget, pickDirectory, gitAvailable } =
+    useWorkspace();
 
   const [name, setName] = useState('');
   const [storageMode, setStorageMode] = useState<StorageMode>('local');
@@ -111,11 +112,16 @@ export function CreateWorkspaceWizard({ open, onClose }: { open: boolean; onClos
           onChange={(v) => changeMode(v as StorageMode)}
           options={[
             { value: 'local', label: t('wizard.storageModeLocal') },
-            { value: 'git', label: t('wizard.storageModeGit') },
+            // Only offer Git when a git binary is available in the host.
+            ...(gitAvailable === false ? [] : [{ value: 'git', label: t('wizard.storageModeGit') }]),
           ]}
         />
         <div className="field-hint">
-          {isGit ? t('wizard.storageGitHint') : t('wizard.storageImmutable')}
+          {gitAvailable === false
+            ? t('wizard.gitUnavailable')
+            : isGit
+              ? t('wizard.storageGitHint')
+              : t('wizard.storageImmutable')}
         </div>
 
         <div className="ui-field">

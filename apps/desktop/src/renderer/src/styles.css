@@ -3972,6 +3972,9 @@ body {
   padding: var(--space-1) var(--space-2);
   font-size: var(--fs-sm);
 }
+.git-file {
+  align-items: flex-start;
+}
 .git-file__mark {
   width: 16px;
   text-align: center;
@@ -3979,6 +3982,25 @@ body {
   font-family: var(--font-mono, monospace);
   color: var(--text-muted);
   flex-shrink: 0;
+  line-height: 1.5;
+}
+.git-file__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.git-file__name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.git-panel__conflict {
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  color: color-mix(in srgb, #d1495b 88%, var(--text));
+  background: color-mix(in srgb, #d1495b 12%, transparent);
+  border: 1px solid color-mix(in srgb, #d1495b 40%, var(--border));
 }
 .git-file--added .git-file__mark,
 .git-file--untracked .git-file__mark {

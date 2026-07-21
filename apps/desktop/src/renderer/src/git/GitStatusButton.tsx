@@ -42,6 +42,12 @@ export function GitStatusButton({ client }: { client: ApiClient }) {
   useEffect(() => {
     if (open) void load();
   }, [open, load]);
+  // Re-check status when the window regains focus, so external edits/CLI pulls are reflected.
+  useEffect(() => {
+    const onFocus = () => void load();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [load]);
 
   /** Run a git op, update status, and (when it changed files on disk) refresh the workspace + tree. */
   async function op(run: () => Promise<{ status: GitStatusDto }>, reload = false): Promise<boolean> {
@@ -89,6 +95,7 @@ export function GitStatusButton({ client }: { client: ApiClient }) {
   const dirty = status ? !status.clean : false;
   const aheadBehind = status && (status.ahead || status.behind);
   const hasRemote = status?.remoteUrl != null;
+  const hasConflicts = status?.files.some((f) => f.status === 'conflicted') ?? false;
 
   return (
     <>
@@ -129,6 +136,12 @@ export function GitStatusButton({ client }: { client: ApiClient }) {
             {hasRemote && (
               <div className="git-panel__remote muted" title={status?.remoteUrl ?? undefined}>
                 {status?.remoteUrl}
+              </div>
+            )}
+
+            {hasConflicts && (
+              <div className="git-panel__conflict" role="alert">
+                {t('git.conflict')}
               </div>
             )}
 
@@ -184,7 +197,10 @@ export function GitStatusButton({ client }: { client: ApiClient }) {
                       <span className="git-file__mark" aria-hidden="true">
                         {f.status[0]!.toUpperCase()}
                       </span>
-                      <span className="git-file__path">{f.path}</span>
+                      <span className="git-file__text">
+                        <span className="git-file__name">{f.label ?? f.path}</span>
+                        {f.label && <span className="git-file__path muted">{f.path}</span>}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -199,7 +215,11 @@ export function GitStatusButton({ client }: { client: ApiClient }) {
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
               />
-              <Button variant="primary" disabled={busy || !dirty || !message.trim()} onClick={() => void commit()}>
+              <Button
+                variant="primary"
+                disabled={busy || !dirty || hasConflicts || !message.trim()}
+                onClick={() => void commit()}
+              >
                 {t('git.commit')}
               </Button>
             </div>
@@ -235,6 +255,9 @@ export function GitStatusButton({ client }: { client: ApiClient }) {
                   {t('git.publish')}
                 </Button>
               )}
+              <Button variant="ghost" disabled={busy} onClick={() => void op(() => client.call('git.reload'), true)}>
+                {t('git.reload')}
+              </Button>
               <Button
                 variant="ghost"
                 disabled={busy || !dirty}

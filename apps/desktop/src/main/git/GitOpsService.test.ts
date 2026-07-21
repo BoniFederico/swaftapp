@@ -13,7 +13,30 @@ import type { LocalAdapter } from '../workspace/LocalAdapter';
 import { MemoryDirFs } from '../workspace/projection/dir-fs';
 import { GitPersistence } from '../workspace/persistence/GitPersistence';
 import { WorkspaceService } from '../workspace/WorkspaceService';
-import { GitOpsService } from './GitOpsService';
+import { entityNameForPath, GitOpsService } from './GitOpsService';
+
+describe('entityNameForPath', () => {
+  const names = {
+    projects: new Map([['p1', 'Billing']]),
+    folders: new Map([['f1', 'Calls']]),
+    tags: new Map([['t1', 'ops']]),
+    environments: new Map([['e1', 'staging']]),
+    templates: new Map([['tpl1', 'Release notes']]),
+  };
+  it('maps entity file paths to display names', () => {
+    expect(entityNameForPath('projects/p1.json', names)).toBe('Billing');
+    expect(entityNameForPath('folders/f1.json', names)).toBe('Calls');
+    expect(entityNameForPath('environments/e1.json', names)).toBe('staging');
+    expect(entityNameForPath('templates/tpl1/template.json', names)).toBe('Release notes');
+    expect(entityNameForPath('templates/tpl1/source.md', names)).toBe('Release notes');
+    expect(entityNameForPath('templates/tpl1/releases/r1.json', names)).toBe('Release notes');
+  });
+  it('returns undefined for chrome/unknown files', () => {
+    expect(entityNameForPath('workspace.json', names)).toBeUndefined();
+    expect(entityNameForPath('settings.json', names)).toBeUndefined();
+    expect(entityNameForPath('projects/unknown.json', names)).toBeUndefined();
+  });
+});
 
 const STATUS: GitStatus = {
   branch: 'main',
@@ -29,6 +52,8 @@ const STATUS: GitStatus = {
 class FakeGit implements GitService {
   readonly calls: string[] = [];
   onPull: (() => void) | undefined;
+  /** The status the next `status()` call returns (tests can override). */
+  nextStatus: GitStatus = STATUS;
   /** Files present in the repo the moment `commitAll` ran (to check save-before-commit). */
   filesAtCommit: string[] = [];
 
@@ -39,7 +64,7 @@ class FakeGit implements GitService {
   isRepo = () => Promise.resolve(true);
   isEmptyRepo = () => Promise.resolve(true);
   init = () => Promise.resolve();
-  status = () => Promise.resolve(STATUS);
+  status = () => Promise.resolve(this.nextStatus);
   currentBranch = () => Promise.resolve('main');
   listBranches = () => Promise.resolve(['main', 'dev']);
   createBranch = (_d: string, n: string) => (this.calls.push(`createBranch:${n}`), Promise.resolve());
@@ -145,6 +170,35 @@ describe('GitOpsService', () => {
     const { git, ops } = await setup();
     await ops.checkout('dev');
     expect(git.calls).toContain('checkout:dev');
+  });
+
+  it('reports git availability', async () => {
+    const { ops } = await setup();
+    expect(await ops.available()).toEqual({ available: true, version: 'git version fake' });
+  });
+
+  it('reloads the store from disk on demand', async () => {
+    const { fs, ws, ops } = await setup();
+    const manifest = JSON.parse(fs.snapshot().get('workspace.json')!);
+    await fs.writeFile('workspace.json', JSON.stringify({ ...manifest, name: 'Reloaded' }));
+    await ops.reload();
+    expect(ws.current()?.name).toBe('Reloaded');
+  });
+
+  it('labels changed files with the entity name', async () => {
+    const { git, ws, ops } = await setup();
+    await insProject(ws.requireAdapter(), 'p1', 'Billing');
+    git.nextStatus = {
+      ...STATUS,
+      clean: false,
+      files: [
+        { path: 'projects/p1.json', status: 'modified', staged: false },
+        { path: 'workspace.json', status: 'modified', staged: false },
+      ],
+    };
+    const status = await ops.status();
+    expect(status.files.find((f) => f.path === 'projects/p1.json')?.label).toBe('Billing');
+    expect(status.files.find((f) => f.path === 'workspace.json')?.label).toBeUndefined();
   });
 
   it('publishes: adds origin then pushes', async () => {

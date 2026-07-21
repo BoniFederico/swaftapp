@@ -1,9 +1,29 @@
 import { existsSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import type { GitStatusDto, WorkspaceSummary } from '@swaft/shared';
+import type { GitAvailabilityResponse, GitFileChange, GitStatusDto, WorkspaceSummary } from '@swaft/shared';
 import { AppError } from '../errors';
 import type { WorkspaceService } from '../workspace/WorkspaceService';
 import type { GitService } from './GitService';
+
+/** id→name maps used to turn a changed file path into a human label. */
+interface NameMaps {
+  projects: Map<string, string>;
+  folders: Map<string, string>;
+  tags: Map<string, string>;
+  environments: Map<string, string>;
+  templates: Map<string, string>;
+}
+
+/** Resolve the display name of the entity a versioned file belongs to (or undefined for chrome files). */
+export function entityNameForPath(path: string, names: NameMaps): string | undefined {
+  let m: RegExpExecArray | null;
+  if ((m = /^projects\/(.+)\.json$/.exec(path))) return names.projects.get(m[1]!);
+  if ((m = /^folders\/(.+)\.json$/.exec(path))) return names.folders.get(m[1]!);
+  if ((m = /^tags\/(.+)\.json$/.exec(path))) return names.tags.get(m[1]!);
+  if ((m = /^environments\/(.+)\.json$/.exec(path))) return names.environments.get(m[1]!);
+  if ((m = /^templates\/([^/]+)\//.exec(path))) return names.templates.get(m[1]!);
+  return undefined;
+}
 
 /**
  * Orchestrates the `git.*` ops against the open Git workspace: it bridges the {@link GitService}
@@ -30,6 +50,18 @@ export class GitOpsService {
     return current.path;
   }
 
+  /** Whether git is usable in the main process (gates the Git storage mode in the UI). */
+  async available(): Promise<GitAvailabilityResponse> {
+    const [available, version] = await Promise.all([this.git.isAvailable(), this.git.version()]);
+    return { available, version };
+  }
+
+  /** Re-materialize the in-memory store from disk (after an external edit / CLI pull). */
+  async reload(): Promise<GitStatusDto> {
+    await this.ws.reload();
+    return this.status();
+  }
+
   async status(): Promise<GitStatusDto> {
     const dir = this.dir();
     const [status, branches, remoteUrl] = await Promise.all([
@@ -37,7 +69,29 @@ export class GitOpsService {
       this.git.listBranches(dir),
       this.git.originUrl(dir),
     ]);
-    return { ...status, branches, remoteUrl };
+    return { ...status, files: await this.withLabels(status.files), branches, remoteUrl };
+  }
+
+  /** Enrich changed files with the display name of the entity they belong to. */
+  private async withLabels(files: GitFileChange[]): Promise<GitFileChange[]> {
+    if (files.length === 0) return files;
+    const adapter = this.ws.requireAdapter();
+    const nameMap = async (table: string): Promise<Map<string, string>> => {
+      const rows = await adapter.all<{ id: string; name: string }>(`SELECT id, name FROM ${table}`);
+      return new Map(rows.map((r) => [r.id, r.name]));
+    };
+    const [projects, folders, tags, environments, templates] = await Promise.all([
+      nameMap('projects'),
+      nameMap('folders'),
+      nameMap('tags'),
+      nameMap('environments'),
+      nameMap('templates'),
+    ]);
+    const names: NameMaps = { projects, folders, tags, environments, templates };
+    return files.map((f) => {
+      const label = entityNameForPath(f.path, names);
+      return label ? { ...f, label } : f;
+    });
   }
 
   /**
