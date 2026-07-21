@@ -284,7 +284,10 @@ export function parseStatus(out: string): GitStatus {
     }
 
     const xy = line.slice(0, 2);
-    const path = line.slice(3);
+    // Renames/copies are emitted as "old -> new"; keep the current (new) path.
+    const raw = line.slice(3);
+    const arrow = raw.indexOf(' -> ');
+    const path = arrow === -1 ? raw : raw.slice(arrow + 4);
     if (xy === '??') {
       files.push({ path, status: 'untracked', staged: false });
       continue;

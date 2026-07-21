@@ -10,7 +10,7 @@ import type { CryptoService } from '../crypto/CryptoService';
 import type { DbBackend } from '../storage/db-backend';
 import type { LocalAdapter } from './LocalAdapter';
 import { LocalFilePersistence, type WorkspaceFs } from './persistence/LocalFilePersistence';
-import type { WorkspacePersistence } from './persistence/WorkspacePersistence';
+import type { OpenedWorkspace, WorkspacePersistence } from './persistence/WorkspacePersistence';
 
 export type { WorkspaceFs };
 
@@ -124,19 +124,40 @@ export class WorkspaceService {
       location: req.location,
       secret,
     });
+    return this.swapIn(opened, { path: req.location, persistence, password: secret, notify: true });
+  }
 
-    const summary: WorkspaceSummary = {
-      name: req.name,
-      icon: null,
-      path: req.location,
-      storageMode: persistence.kind,
-      executionMode,
-      encrypted: opened.encrypted,
-    };
-    this.state = { summary, adapter: opened.adapter, persistence, password: secret };
-    this.rev++;
-    this.deps.onOpened?.(summary);
-    return summary;
+  /**
+   * Swap a freshly materialized workspace in as the current one: read its metadata into a summary,
+   * atomically replace the previous store, and bump the revision. On any failure the just-opened
+   * adapter is closed and the error rethrown, leaving the current workspace untouched.
+   */
+  private async swapIn(
+    opened: OpenedWorkspace,
+    ctx: { path: string; persistence: WorkspacePersistence; password?: string; notify: boolean },
+  ): Promise<WorkspaceSummary> {
+    try {
+      const meta = await opened.adapter.getMeta();
+      if (!meta) {
+        throw new AppError('INVALID_WORKSPACE', 'validation', 'The workspace is missing its metadata.');
+      }
+      const summary: WorkspaceSummary = {
+        name: meta.name,
+        icon: meta.icon,
+        path: ctx.path,
+        storageMode: meta.storage_mode as StorageMode,
+        executionMode: meta.execution_mode as ExecutionMode,
+        encrypted: opened.encrypted,
+      };
+      await this.closeCurrent();
+      this.state = { summary, adapter: opened.adapter, persistence: ctx.persistence, password: ctx.password };
+      this.rev++;
+      if (ctx.notify) this.deps.onOpened?.(summary);
+      return summary;
+    } catch (err) {
+      await opened.adapter.close().catch(() => undefined);
+      throw err;
+    }
   }
 
   open(req: WorkspaceOpenRequest): Promise<WorkspaceSummary> {
@@ -156,38 +177,12 @@ export class WorkspaceService {
     // PASSWORD_REQUIRED / WRONG_WORKSPACE_PASSWORD / SCHEMA_TOO_NEW / INVALID_WORKSPACE without
     // touching the currently-open one), and only then swap it in.
     const opened = await persistence.open({ location: req.path, password: req.password });
-    try {
-      const meta = await opened.adapter.getMeta();
-      if (!meta) {
-        throw new AppError(
-          'INVALID_WORKSPACE',
-          'validation',
-          'The workspace file is missing its metadata.',
-        );
-      }
-
-      const summary: WorkspaceSummary = {
-        name: meta.name,
-        icon: meta.icon,
-        path: req.path,
-        storageMode: meta.storage_mode as StorageMode,
-        executionMode: meta.execution_mode as ExecutionMode,
-        encrypted: opened.encrypted,
-      };
-      await this.closeCurrent();
-      this.state = {
-        summary,
-        adapter: opened.adapter,
-        persistence,
-        password: opened.encrypted ? req.password : undefined,
-      };
-      this.rev++;
-      this.deps.onOpened?.(summary);
-      return summary;
-    } catch (err) {
-      await opened.adapter.close().catch(() => undefined);
-      throw err;
-    }
+    return this.swapIn(opened, {
+      path: req.path,
+      persistence,
+      password: opened.encrypted ? req.password : undefined,
+      notify: true,
+    });
   }
 
   /** Re-serialize (and re-encrypt) the open workspace to disk. Used by editing flows (M5+). */
@@ -224,31 +219,8 @@ export class WorkspaceService {
     if (!this.state) throw new AppError('WORKSPACE_REQUIRED', 'policy', 'No workspace is open.');
     const { persistence, summary, password } = this.state;
     const opened = await persistence.open({ location: summary.path, password });
-    try {
-      const meta = await opened.adapter.getMeta();
-      if (!meta) {
-        throw new AppError(
-          'INVALID_WORKSPACE',
-          'validation',
-          'The workspace is missing its metadata.',
-        );
-      }
-      const next: WorkspaceSummary = {
-        name: meta.name,
-        icon: meta.icon,
-        path: summary.path,
-        storageMode: meta.storage_mode as StorageMode,
-        executionMode: meta.execution_mode as ExecutionMode,
-        encrypted: opened.encrypted,
-      };
-      await this.state.adapter.close().catch(() => undefined);
-      this.state = { summary: next, adapter: opened.adapter, persistence, password };
-      this.rev++;
-      return next;
-    } catch (err) {
-      await opened.adapter.close().catch(() => undefined);
-      throw err;
-    }
+    // A reload is not a fresh open, so it does not touch the recent list (notify: false).
+    return this.swapIn(opened, { path: summary.path, persistence, password, notify: false });
   }
 
   /**

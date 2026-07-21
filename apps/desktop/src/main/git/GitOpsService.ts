@@ -5,24 +5,25 @@ import { AppError } from '../errors';
 import type { WorkspaceService } from '../workspace/WorkspaceService';
 import type { GitService } from './GitService';
 
-/** id→name maps used to turn a changed file path into a human label. */
-interface NameMaps {
-  projects: Map<string, string>;
-  folders: Map<string, string>;
-  tags: Map<string, string>;
-  environments: Map<string, string>;
-  templates: Map<string, string>;
+/** The 🟢 collection tables whose files carry a human-named entity. */
+type EntityTable = 'projects' | 'folders' | 'tags' | 'environments' | 'templates';
+type NameMaps = Record<EntityTable, Map<string, string>>;
+
+/** Which entity (table + id) a versioned file belongs to, or undefined for chrome/unknown files. */
+export function entityRefForPath(path: string): { table: EntityTable; id: string } | undefined {
+  let m: RegExpExecArray | null;
+  if ((m = /^projects\/(.+)\.json$/.exec(path))) return { table: 'projects', id: m[1]! };
+  if ((m = /^folders\/(.+)\.json$/.exec(path))) return { table: 'folders', id: m[1]! };
+  if ((m = /^tags\/(.+)\.json$/.exec(path))) return { table: 'tags', id: m[1]! };
+  if ((m = /^environments\/(.+)\.json$/.exec(path))) return { table: 'environments', id: m[1]! };
+  if ((m = /^templates\/([^/]+)\//.exec(path))) return { table: 'templates', id: m[1]! };
+  return undefined;
 }
 
-/** Resolve the display name of the entity a versioned file belongs to (or undefined for chrome files). */
+/** Resolve the display name of the entity a versioned file belongs to (or undefined). */
 export function entityNameForPath(path: string, names: NameMaps): string | undefined {
-  let m: RegExpExecArray | null;
-  if ((m = /^projects\/(.+)\.json$/.exec(path))) return names.projects.get(m[1]!);
-  if ((m = /^folders\/(.+)\.json$/.exec(path))) return names.folders.get(m[1]!);
-  if ((m = /^tags\/(.+)\.json$/.exec(path))) return names.tags.get(m[1]!);
-  if ((m = /^environments\/(.+)\.json$/.exec(path))) return names.environments.get(m[1]!);
-  if ((m = /^templates\/([^/]+)\//.exec(path))) return names.templates.get(m[1]!);
-  return undefined;
+  const ref = entityRefForPath(path);
+  return ref ? names[ref.table].get(ref.id) : undefined;
 }
 
 /**
@@ -74,22 +75,31 @@ export class GitOpsService {
 
   /** Enrich changed files with the display name of the entity they belong to. */
   private async withLabels(files: GitFileChange[]): Promise<GitFileChange[]> {
-    if (files.length === 0) return files;
+    const refs = files.map((f) => entityRefForPath(f.path));
+    const tables = new Set(refs.flatMap((r) => (r ? [r.table] : [])));
+    if (tables.size === 0) return files;
+
+    // Query only the tables actually referenced by the changed files.
     const adapter = this.ws.requireAdapter();
-    const nameMap = async (table: string): Promise<Map<string, string>> => {
-      const rows = await adapter.all<{ id: string; name: string }>(`SELECT id, name FROM ${table}`);
-      return new Map(rows.map((r) => [r.id, r.name]));
+    const names: NameMaps = {
+      projects: new Map(),
+      folders: new Map(),
+      tags: new Map(),
+      environments: new Map(),
+      templates: new Map(),
     };
-    const [projects, folders, tags, environments, templates] = await Promise.all([
-      nameMap('projects'),
-      nameMap('folders'),
-      nameMap('tags'),
-      nameMap('environments'),
-      nameMap('templates'),
-    ]);
-    const names: NameMaps = { projects, folders, tags, environments, templates };
-    return files.map((f) => {
-      const label = entityNameForPath(f.path, names);
+    await Promise.all(
+      [...tables].map(async (table) => {
+        const rows = await adapter.all<{ id: string; name: string }>(
+          `SELECT id, name FROM ${table}`,
+        );
+        names[table] = new Map(rows.map((r) => [r.id, r.name]));
+      }),
+    );
+
+    return files.map((f, i) => {
+      const ref = refs[i];
+      const label = ref ? names[ref.table].get(ref.id) : undefined;
       return label ? { ...f, label } : f;
     });
   }

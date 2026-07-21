@@ -36,18 +36,17 @@ export function GitStatusButton({ client }: { client: ApiClient }) {
     }
   }, [client]);
 
+  // Load on mount and whenever the window regains focus (to reflect external edits / CLI pulls).
   useEffect(() => {
     void load();
-  }, [load]);
-  useEffect(() => {
-    if (open) void load();
-  }, [open, load]);
-  // Re-check status when the window regains focus, so external edits/CLI pulls are reflected.
-  useEffect(() => {
     const onFocus = () => void load();
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, [load]);
+  // Refresh when the panel is opened.
+  useEffect(() => {
+    if (open) void load();
+  }, [open, load]);
 
   /** Run a git op, update status, and (when it changed files on disk) refresh the workspace + tree. */
   async function op(run: () => Promise<{ status: GitStatusDto }>, reload = false): Promise<boolean> {

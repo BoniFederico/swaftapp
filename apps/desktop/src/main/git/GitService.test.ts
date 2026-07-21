@@ -36,6 +36,11 @@ describe('parseStatus', () => {
     expect(s.branch).toBeNull();
   });
 
+  it('keeps the new path for a rename entry', () => {
+    const s = parseStatus('## main\nR  old/name.json -> new/name.json\n');
+    expect(s.files).toEqual([{ path: 'new/name.json', status: 'renamed', staged: true }]);
+  });
+
   it('classifies file changes and staged state', () => {
     const s = parseStatus(
       ['## main', ' M modified.txt', 'A  staged-add.txt', '?? new.txt', 'UU conflict.txt', ' D gone.txt'].join(
