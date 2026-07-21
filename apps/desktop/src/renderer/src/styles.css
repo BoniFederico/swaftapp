@@ -1811,6 +1811,7 @@ body {
   flex: 1;
   min-height: 0;
   display: flex;
+  position: relative;
 }
 .scenario__loading {
   position: absolute;
@@ -2065,27 +2066,38 @@ body {
   stroke-width: 2.5;
 }
 
-/* Inspector — width lives on the host so a divider can resize it (like the doc input/output split). */
-.scenario-inspector-host {
-  flex: 0 0 auto;
-  min-width: 0;
+/* Inspector — a floating card pinned top-right over the canvas, only as tall as its content (up to a
+   max, then its body scrolls). A thin handle on its left edge resizes the width. */
+.scenario-inspector-float {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  max-height: calc(100% - 2 * var(--space-3));
   display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+  z-index: 5;
 }
-.scenario__isplit {
-  flex: 0 0 auto;
-  width: 8px;
-  margin: 0 -4px;
+.scenario-inspector-float__resize {
+  position: absolute;
+  left: -3px;
+  top: 0;
+  bottom: 0;
+  width: 9px;
   cursor: ew-resize;
-  z-index: 2;
+  z-index: 6;
 }
-.scenario__isplit:hover {
+.scenario-inspector-float__resize:hover {
   background: color-mix(in srgb, var(--primary) 30%, transparent);
 }
 .scenario-inspector {
   flex: 1;
+  min-height: 0;
   min-width: 0;
-  border-left: 1px solid var(--border);
-  background: var(--surface);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -2175,6 +2187,19 @@ body {
 }
 .scenario-run__vsplit:hover {
   background: color-mix(in srgb, var(--primary) 30%, transparent);
+}
+/* The always-visible bar: title + status + the minimize/maximize toggle. */
+.scenario-run__bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.scenario-run__bar-title {
+  font-size: var(--fs-sm);
+  font-weight: 600;
 }
 .scenario-run__cols {
   flex: 1;

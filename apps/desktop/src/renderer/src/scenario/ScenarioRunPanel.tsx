@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ScenarioRunStepDto } from '@swaft/shared';
 import { useI18n } from '../i18n/I18nProvider';
-import { Button, CloseIcon, IconButton, useFocusTrap } from '../ui';
+import { Button, ChevronIcon, CloseIcon, IconButton, useFocusTrap } from '../ui';
 import { InputPanel } from '../document/InputPanel';
 import type { ScenarioRunController } from './useScenarioRun';
 
@@ -18,12 +18,16 @@ function shortTime(iso: string): string {
  */
 export function ScenarioRunPanel({
   controller,
+  minimized,
+  onToggleMinimize,
   height,
   historyWidth,
   onResize,
   onHistoryResize,
 }: {
   controller: ScenarioRunController;
+  minimized: boolean;
+  onToggleMinimize: () => void;
   height: number;
   historyWidth: number;
   /** Pointer-down on the top divider (vertical resize of the whole panel). */
@@ -41,14 +45,30 @@ export function ScenarioRunPanel({
   useEffect(() => setInputs({}), [pendingNode]);
 
   return (
-    <div className="scenario-run" style={{ height }}>
-      <div
-        className="scenario-run__vsplit"
-        role="separator"
-        aria-orientation="horizontal"
-        aria-label={t('scenario.resizeRun')}
-        onPointerDown={onResize}
-      />
+    <div className="scenario-run" style={minimized ? undefined : { height }}>
+      {!minimized && (
+        <div
+          className="scenario-run__vsplit"
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label={t('scenario.resizeRun')}
+          onPointerDown={onResize}
+        />
+      )}
+      <div className="scenario-run__bar">
+        <span className="scenario-run__bar-title">{t('scenario.runs')}</span>
+        {status && (
+          <span className={`ui-badge scenario-run__status--${status.run.status}`}>{status.run.status}</span>
+        )}
+        <span className="scenario-run__spacer" />
+        <IconButton
+          label={minimized ? t('scenario.maximize') : t('scenario.minimize')}
+          onClick={onToggleMinimize}
+        >
+          <ChevronIcon style={{ transform: minimized ? 'rotate(180deg)' : undefined }} />
+        </IconButton>
+      </div>
+      {!minimized && (
       <div className="scenario-run__cols">
         <div className="scenario-run__main">
           {status ? (
@@ -137,6 +157,7 @@ export function ScenarioRunPanel({
           )}
         </div>
       </div>
+      )}
 
       {detail && <StepDetail step={detail} onClose={() => setDetail(null)} />}
     </div>

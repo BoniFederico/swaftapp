@@ -21,6 +21,7 @@ const SNAP_KEY = 'swaft:scenarioSnap';
 const INSPECTOR_W_KEY = 'swaft:scenarioInspectorW';
 const RUN_H_KEY = 'swaft:scenarioRunH';
 const RUN_HISTORY_W_KEY = 'swaft:scenarioRunHistoryW';
+const RUN_MIN_KEY = 'swaft:scenarioRunMin';
 const MIN_INSPECTOR = 240;
 const MAX_INSPECTOR = 520;
 const MIN_RUN_H = 120;
@@ -171,10 +172,16 @@ export function ScenarioView({
 
   const resolveTemplate = useCallback((id: string) => templates.get(id) ?? null, [templates]);
 
-  // Run lifecycle (start/stop/poll/history) + the run panel.
+  // Run lifecycle (start/stop/poll/history) + the run panel (always docked, minimizable).
   const runCtl = useScenarioRun(client, templateId);
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [runMinimized, setRunMinimized] = useState(() => localStorage.getItem(RUN_MIN_KEY) !== 'off');
   const [confirmRun, setConfirmRun] = useState<{ startNodeId?: string } | null>(null);
+  function toggleRunMinimized() {
+    setRunMinimized((m) => {
+      localStorage.setItem(RUN_MIN_KEY, m ? 'off' : 'on');
+      return !m;
+    });
+  }
   /** True when any block references an action template (an effect) → a run needs authorization. */
   const hasActionBlocks = useMemo(
     () =>
@@ -186,7 +193,8 @@ export function ScenarioView({
 
   const startRun = useCallback(
     (authorizeActions: boolean, startNodeId?: string) => {
-      setPanelOpen(true);
+      setRunMinimized(false); // auto-expand the panel when a run starts
+      localStorage.setItem(RUN_MIN_KEY, 'off');
       void runCtl.start({ startNodeId, mode: 'single', authorizeActions }).catch((e) =>
         toast.show(e instanceof ApiError ? e.swaft.message : String(e), 'error'),
       );
@@ -374,13 +382,6 @@ export function ScenarioView({
             {selection?.kind === 'node' ? t('scenario.runFromHere') : t('scenario.run')}
           </Button>
         )}
-        <Button
-          variant={panelOpen ? 'secondary' : 'ghost'}
-          aria-pressed={panelOpen}
-          onClick={() => setPanelOpen((o) => !o)}
-        >
-          {t('scenario.runs')}
-        </Button>
         <span className="scenario__toolbar-hint muted">{t('scenario.dropHint')}</span>
         <Button variant="primary" disabled={!dirty} onClick={() => void save()}>
           <SaveIcon />
@@ -399,9 +400,9 @@ export function ScenarioView({
           resolveTemplate={resolveTemplate}
         />
         {selection && (
-          <>
+          <div className="scenario-inspector-float" style={{ width: inspectorWidth }}>
             <div
-              className="scenario__isplit"
+              className="scenario-inspector-float__resize"
               role="separator"
               aria-orientation="vertical"
               aria-label={t('scenario.resizeInspector')}
@@ -409,8 +410,7 @@ export function ScenarioView({
                 beginResize(e, 'x', inspectorWidth, MIN_INSPECTOR, MAX_INSPECTOR, setInspectorWidth, INSPECTOR_W_KEY)
               }
             />
-            <div className="scenario-inspector-host" style={{ width: inspectorWidth }}>
-              {selectedNode ? (
+            {selectedNode ? (
                 <NodeInspector
                   node={selectedNode}
                   templateName={selectedNode.ref ? (resolveTemplate(selectedNode.ref)?.name ?? null) : null}
@@ -441,24 +441,23 @@ export function ScenarioView({
                   </div>
                 </aside>
               )}
-            </div>
-          </>
+          </div>
         )}
       </div>
 
-      {panelOpen && (
-        <ScenarioRunPanel
-          controller={runCtl}
-          height={runPanelHeight}
-          historyWidth={runHistoryWidth}
-          onResize={(e) =>
-            beginResize(e, 'y', runPanelHeight, MIN_RUN_H, MAX_RUN_H, setRunPanelHeight, RUN_H_KEY)
-          }
-          onHistoryResize={(e) =>
-            beginResize(e, 'x', runHistoryWidth, MIN_HISTORY, MAX_HISTORY, setRunHistoryWidth, RUN_HISTORY_W_KEY)
-          }
-        />
-      )}
+      <ScenarioRunPanel
+        controller={runCtl}
+        minimized={runMinimized}
+        onToggleMinimize={toggleRunMinimized}
+        height={runPanelHeight}
+        historyWidth={runHistoryWidth}
+        onResize={(e) =>
+          beginResize(e, 'y', runPanelHeight, MIN_RUN_H, MAX_RUN_H, setRunPanelHeight, RUN_H_KEY)
+        }
+        onHistoryResize={(e) =>
+          beginResize(e, 'x', runHistoryWidth, MIN_HISTORY, MAX_HISTORY, setRunHistoryWidth, RUN_HISTORY_W_KEY)
+        }
+      />
 
       <ConfirmDialog
         open={confirmRun !== null}
