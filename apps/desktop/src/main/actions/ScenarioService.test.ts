@@ -215,6 +215,58 @@ describe('ScenarioService runner', () => {
     await waitFor(r2.runId, (s) => s.run.status === 'completed');
   });
 
+  it('runs a batch of N runs back to back and reports progress', async () => {
+    const { scenario, newTemplate, newScenario, waitFor } = await setup();
+    void waitFor;
+    const a = await newTemplate('A', 'api');
+    const graph: ScenarioGraph = {
+      version: 1,
+      nodes: [
+        { id: 'start', kind: 'start', position: at(0) },
+        { id: 'na', kind: 'template', ref: a, templateType: 'api', alias: 'a', position: at(1) },
+      ],
+      edges: [{ id: 'e0', from: 'start', to: 'na' }],
+    };
+    const sid = await newScenario('Flow', graph);
+
+    const { batchId } = await scenario.runBatch({ id: sid, count: 3, interRunDelayMs: 0, authorizeActions: false });
+    const start = Date.now();
+    while (Date.now() - start < 3000) {
+      if (scenario.batchStatus(batchId).status === 'completed') break;
+      await new Promise((r) => setTimeout(r, 8));
+    }
+    const b = scenario.batchStatus(batchId);
+    expect(b.status).toBe('completed');
+    expect(b.total).toBe(3);
+    expect(b.completed).toBe(3);
+    // The 3 runs are all in the scenario's history.
+    expect((await scenario.list(sid)).length).toBe(3);
+  });
+
+  it('stops a batch after the current run', async () => {
+    const { scenario, newScenario } = await setup();
+    const graph: ScenarioGraph = {
+      version: 1,
+      nodes: [
+        { id: 'start', kind: 'start', position: at(0) },
+        { id: 'nd', kind: 'delay', ms: 3000, position: at(1) },
+      ],
+      edges: [{ id: 'e0', from: 'start', to: 'nd' }],
+    };
+    const sid = await newScenario('Flow', graph);
+    const { batchId } = await scenario.runBatch({ id: sid, count: 100, interRunDelayMs: 0, authorizeActions: false });
+    // Let the first run start, then cancel.
+    await new Promise((r) => setTimeout(r, 30));
+    await scenario.stopBatch(batchId);
+    const start = Date.now();
+    while (Date.now() - start < 3000) {
+      if (scenario.batchStatus(batchId).status === 'cancelled') break;
+      await new Promise((r) => setTimeout(r, 8));
+    }
+    expect(scenario.batchStatus(batchId).status).toBe('cancelled');
+    expect(scenario.batchStatus(batchId).completed).toBeLessThan(100);
+  });
+
   it('stops a run cooperatively while it waits on a delay', async () => {
     const { scenario, newScenario, waitFor } = await setup();
     const graph: ScenarioGraph = {

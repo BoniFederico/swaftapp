@@ -38,6 +38,8 @@ import {
   type ScenarioRunRefRequest,
   type ScenarioProvideInputRequest,
   type ScenarioRunListRequest,
+  type ScenarioRunBatchRequest,
+  type ScenarioBatchRefRequest,
   type TemplateCreateRequest,
   type TemplateRefRequest,
   type TemplateSearchRequest,
@@ -442,4 +444,21 @@ export const handlers: Record<OpName, Handler> = {
     svc(async () => ({ runs: await getScenarioService().list((p as ScenarioRunListRequest).scenarioId) })),
   'scenario.runClear': (p) =>
     svc(async () => ({ runs: await getScenarioService().clear((p as ScenarioRunListRequest).scenarioId) })),
+  'scenario.runBatch': (p) =>
+    svc(async () => {
+      const r = p as ScenarioRunBatchRequest;
+      return getScenarioService().runBatch({
+        id: r.id,
+        count: r.count,
+        interRunDelayMs: r.interRunDelayMs,
+        authorizeActions: r.authorizeActions,
+      });
+    }),
+  'scenario.batchStatus': (p) =>
+    svc(() => ({ batch: getScenarioService().batchStatus((p as ScenarioBatchRefRequest).batchId) })),
+  'scenario.stopBatch': (p) =>
+    svc(async () => {
+      await getScenarioService().stopBatch((p as ScenarioBatchRefRequest).batchId);
+      return { ok: true as const };
+    }),
 };

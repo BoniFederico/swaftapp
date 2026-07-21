@@ -29,6 +29,11 @@ const MAX_RUN_H = 520;
 const MIN_HISTORY = 160;
 const MAX_HISTORY = 460;
 
+/** A pending launch awaiting action-authorization: a single run (optionally from a node) or a batch. */
+type Launch =
+  | { kind: 'run'; startNodeId?: string }
+  | { kind: 'batch'; count: number; interRunDelayMs: number };
+
 /** Read a persisted pixel size, clamped, or a default. */
 function storedSize(key: string, def: number, min: number, max: number): number {
   const v = Number(localStorage.getItem(key));
@@ -175,7 +180,8 @@ export function ScenarioView({
   // Run lifecycle (start/stop/poll/history) + the run panel (always docked, minimizable).
   const runCtl = useScenarioRun(client, templateId);
   const [runMinimized, setRunMinimized] = useState(() => localStorage.getItem(RUN_MIN_KEY) !== 'off');
-  const [confirmRun, setConfirmRun] = useState<{ startNodeId?: string } | null>(null);
+  // A launch awaiting the action-authorization confirmation: a single run or a batch.
+  const [pendingLaunch, setPendingLaunch] = useState<Launch | null>(null);
   function toggleRunMinimized() {
     setRunMinimized((m) => {
       localStorage.setItem(RUN_MIN_KEY, m ? 'off' : 'on');
@@ -191,22 +197,26 @@ export function ScenarioView({
     [graph.nodes, templates],
   );
 
-  const startRun = useCallback(
-    (authorizeActions: boolean, startNodeId?: string) => {
+  const launch = useCallback(
+    (l: Launch, authorizeActions: boolean) => {
       setRunMinimized(false); // auto-expand the panel when a run starts
       localStorage.setItem(RUN_MIN_KEY, 'off');
-      void runCtl.start({ startNodeId, mode: 'single', authorizeActions }).catch((e) =>
-        toast.show(e instanceof ApiError ? e.swaft.message : String(e), 'error'),
-      );
+      const go =
+        l.kind === 'run'
+          ? runCtl.start({ startNodeId: l.startNodeId, mode: 'single', authorizeActions })
+          : runCtl.startBatch({ count: l.count, interRunDelayMs: l.interRunDelayMs, authorizeActions });
+      void go.catch((e) => toast.show(e instanceof ApiError ? e.swaft.message : String(e), 'error'));
     },
     [runCtl, toast],
   );
 
+  /** Launch a run/batch — through the authorization confirmation first when the graph has actions. */
+  function request(l: Launch) {
+    if (hasActionBlocks) setPendingLaunch(l);
+    else launch(l, false);
+  }
   function requestRun() {
-    // Run from the selected node if one is picked, else from the graph's start node.
-    const startNodeId = selection?.kind === 'node' ? selection.id : undefined;
-    if (hasActionBlocks) setConfirmRun({ startNodeId });
-    else startRun(false, startNodeId);
+    request({ kind: 'run', startNodeId: selection?.kind === 'node' ? selection.id : undefined });
   }
 
   /**
@@ -449,6 +459,7 @@ export function ScenarioView({
         controller={runCtl}
         minimized={runMinimized}
         onToggleMinimize={toggleRunMinimized}
+        onRunBatch={(count, interRunDelayMs) => request({ kind: 'batch', count, interRunDelayMs })}
         height={runPanelHeight}
         historyWidth={runHistoryWidth}
         onResize={(e) =>
@@ -460,17 +471,17 @@ export function ScenarioView({
       />
 
       <ConfirmDialog
-        open={confirmRun !== null}
+        open={pendingLaunch !== null}
         title={t('scenario.authorizeTitle')}
         message={t('scenario.authorizeMessage')}
         confirmLabel={t('scenario.authorizeConfirm')}
         cancelLabel={t('name.cancel')}
         onConfirm={() => {
-          const start = confirmRun ?? {};
-          setConfirmRun(null);
-          startRun(true, start.startNodeId);
+          const l = pendingLaunch;
+          setPendingLaunch(null);
+          if (l) launch(l, true);
         }}
-        onClose={() => setConfirmRun(null)}
+        onClose={() => setPendingLaunch(null)}
       />
 
       <ConfirmDialog

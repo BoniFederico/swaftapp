@@ -4,6 +4,8 @@ import {
   type BlockOutput,
   type HttpRequestModel,
   type RequirementDto,
+  type ScenarioBatchDto,
+  type ScenarioBatchStatus,
   type ScenarioGraph,
   type ScenarioNode,
   type ScenarioRunDto,
@@ -97,6 +99,7 @@ interface StepRow {
  */
 export class ScenarioService extends RepoBase {
   private readonly active = new Map<string, RunState>();
+  private readonly batches = new Map<string, ScenarioBatchDto & { cancelled: boolean }>();
 
   constructor(
     ws: WorkspaceService,
@@ -112,6 +115,20 @@ export class ScenarioService extends RepoBase {
     mode: ScenarioRunMode;
     authorizeActions: boolean;
   }): Promise<{ runId: string }> {
+    const { runId } = await this.startRun(req);
+    return { runId };
+  }
+
+  /**
+   * Create a run and begin executing it in the background. Returns its id plus a `done` promise that
+   * resolves when the run reaches a terminal state — used by the batch loop to sequence runs.
+   */
+  private async startRun(req: {
+    id: string;
+    startNodeId?: string;
+    mode: ScenarioRunMode;
+    authorizeActions: boolean;
+  }): Promise<{ runId: string; done: Promise<void> }> {
     const scenario = await this.deps.templates.requireTemplate(req.id);
     const { source } = await this.deps.releases.resolveSource(req.id);
     const { graph } = parseScenarioGraph(source);
@@ -144,9 +161,80 @@ export class ScenarioService extends RepoBase {
     };
     this.active.set(runId, state);
     await this.insertRun(run);
-    // Fire-and-forget: the loop persists progress; the renderer polls it. Failures are recorded.
-    void this.loop(state).catch((e) => void this.finish(state, 'failed', errMsg(e)));
-    return { runId };
+    const done = this.loop(state).catch((e) => void this.finish(state, 'failed', errMsg(e)));
+    return { runId, done };
+  }
+
+  /** Start a batch of `count` unattended runs, spaced by `interRunDelayMs`; poll via {@link batchStatus}. */
+  async runBatch(req: {
+    id: string;
+    count: number;
+    interRunDelayMs: number;
+    authorizeActions: boolean;
+  }): Promise<{ batchId: string }> {
+    const batchId = randomUUID();
+    const batch = {
+      id: batchId,
+      scenarioId: req.id,
+      total: req.count,
+      completed: 0,
+      status: 'running' as ScenarioBatchStatus,
+      currentRunId: null as string | null,
+      cancelled: false,
+    };
+    this.batches.set(batchId, batch);
+    void this.batchLoop(batch, req).catch(() => {
+      batch.status = 'failed';
+      batch.currentRunId = null;
+    });
+    return { batchId };
+  }
+
+  batchStatus(batchId: string): ScenarioBatchDto {
+    const b = this.batches.get(batchId);
+    if (!b) throw new AppError('SCENARIO_BATCH_NOT_FOUND', 'not_found', 'Batch not found.');
+    const { cancelled, ...dto } = b;
+    void cancelled;
+    return dto;
+  }
+
+  /** Cancel a batch: stop the run in flight and end the loop after it settles. */
+  async stopBatch(batchId: string): Promise<void> {
+    const b = this.batches.get(batchId);
+    if (!b) return;
+    b.cancelled = true;
+    if (b.currentRunId) await this.stop(b.currentRunId);
+  }
+
+  private async batchLoop(
+    batch: ScenarioBatchDto & { cancelled: boolean },
+    req: { id: string; count: number; interRunDelayMs: number; authorizeActions: boolean },
+  ): Promise<void> {
+    for (let i = 0; i < req.count && !batch.cancelled; i++) {
+      const { runId, done } = await this.startRun({
+        id: req.id,
+        mode: 'batch',
+        authorizeActions: req.authorizeActions,
+      });
+      batch.currentRunId = runId;
+      await done;
+      batch.completed++;
+      batch.currentRunId = null;
+      if (i < req.count - 1 && !batch.cancelled && req.interRunDelayMs > 0) {
+        await this.batchDelay(batch, req.interRunDelayMs);
+      }
+    }
+    batch.status = batch.cancelled ? 'cancelled' : 'completed';
+    batch.currentRunId = null;
+  }
+
+  private async batchDelay(batch: { cancelled: boolean }, ms: number): Promise<void> {
+    const step = 100;
+    let waited = 0;
+    while (waited < ms && !batch.cancelled) {
+      await new Promise((r) => setTimeout(r, Math.min(step, ms - waited)));
+      waited += step;
+    }
   }
 
   /** Current run status + its steps (+ the paused node's pending inputs, if any). */

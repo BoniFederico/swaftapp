@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
+  ScenarioBatchDto,
   ScenarioRunDto,
   ScenarioRunMode,
   ScenarioRunStatusResponse,
@@ -19,8 +20,13 @@ export interface ScenarioRunController {
   active: boolean;
   runs: ScenarioRunDto[];
   nodeStatus: Record<string, NodeRunStatus>;
+  /** The batch currently running (or last finished), or null. */
+  batch: ScenarioBatchDto | null;
+  batchActive: boolean;
   start: (opts: { startNodeId?: string; mode: ScenarioRunMode; authorizeActions: boolean }) => Promise<void>;
+  startBatch: (opts: { count: number; interRunDelayMs: number; authorizeActions: boolean }) => Promise<void>;
   stop: () => Promise<void>;
+  stopBatch: () => Promise<void>;
   provideInput: (values: Record<string, unknown>) => Promise<void>;
   view: (runId: string) => void;
   refreshRuns: () => void;
@@ -32,6 +38,8 @@ export function useScenarioRun(client: ApiClient, scenarioId: string): ScenarioR
   const [runId, setRunId] = useState<string | null>(null);
   const [status, setStatus] = useState<ScenarioRunStatusResponse | null>(null);
   const [runs, setRuns] = useState<ScenarioRunDto[]>([]);
+  const [batchId, setBatchId] = useState<string | null>(null);
+  const [batch, setBatch] = useState<ScenarioBatchDto | null>(null);
 
   const refreshRuns = useCallback(() => {
     void client
@@ -65,6 +73,30 @@ export function useScenarioRun(client: ApiClient, scenarioId: string): ScenarioR
     };
   }, [client, runId, refreshRuns]);
 
+  // Poll a running batch; follow its current run so the canvas + steps track live, then refresh history.
+  useEffect(() => {
+    if (!batchId) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tick = async () => {
+      try {
+        const { batch: b } = await client.call('scenario.batchStatus', { batchId });
+        if (cancelled) return;
+        setBatch(b);
+        if (b.currentRunId) setRunId(b.currentRunId);
+        if (b.status === 'running') timer = setTimeout(() => void tick(), POLL_MS);
+        else refreshRuns();
+      } catch {
+        /* stop polling on error */
+      }
+    };
+    void tick();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [client, batchId, refreshRuns]);
+
   const start = useCallback(
     async (opts: { startNodeId?: string; mode: ScenarioRunMode; authorizeActions: boolean }) => {
       const { runId: id } = await client.call('scenario.run', { id: scenarioId, ...opts });
@@ -74,9 +106,22 @@ export function useScenarioRun(client: ApiClient, scenarioId: string): ScenarioR
     [client, scenarioId],
   );
 
+  const startBatch = useCallback(
+    async (opts: { count: number; interRunDelayMs: number; authorizeActions: boolean }) => {
+      const { batchId: id } = await client.call('scenario.runBatch', { id: scenarioId, ...opts });
+      setBatch(null);
+      setBatchId(id);
+    },
+    [client, scenarioId],
+  );
+
   const stop = useCallback(async () => {
     if (runId) await client.call('scenario.stop', { runId }).catch(() => undefined);
   }, [client, runId]);
+
+  const stopBatch = useCallback(async () => {
+    if (batchId) await client.call('scenario.stopBatch', { batchId }).catch(() => undefined);
+  }, [client, batchId]);
 
   const provideInput = useCallback(
     async (values: Record<string, unknown>) => {
@@ -97,7 +142,8 @@ export function useScenarioRun(client: ApiClient, scenarioId: string): ScenarioR
     setStatus(null);
   }, [client, scenarioId]);
 
-  const active = status != null && !TERMINAL.has(status.run.status);
+  const batchActive = batch != null && batch.status === 'running';
+  const active = batchActive || (status != null && !TERMINAL.has(status.run.status));
 
   const nodeStatus = useMemo<Record<string, NodeRunStatus>>(() => {
     const map: Record<string, NodeRunStatus> = {};
@@ -110,5 +156,20 @@ export function useScenarioRun(client: ApiClient, scenarioId: string): ScenarioR
     return map;
   }, [status]);
 
-  return { status, active, runs, nodeStatus, start, stop, provideInput, view, refreshRuns, clearRuns };
+  return {
+    status,
+    active,
+    runs,
+    nodeStatus,
+    batch,
+    batchActive,
+    start,
+    startBatch,
+    stop,
+    stopBatch,
+    provideInput,
+    view,
+    refreshRuns,
+    clearRuns,
+  };
 }

@@ -424,6 +424,17 @@ export const scenarioProvideInputRequestSchema = z
   .strict();
 export const scenarioRunListRequestSchema = z.object({ scenarioId: z.string().min(1) }).strict();
 
+/** Run a scenario `count` times back-to-back, spaced by `interRunDelayMs`, unattended (batch mode). */
+export const scenarioRunBatchRequestSchema = z
+  .object({
+    id: z.string().min(1),
+    count: z.number().int().min(1).max(1000),
+    interRunDelayMs: z.number().int().min(0).max(3_600_000).default(0),
+    authorizeActions: z.boolean().default(false),
+  })
+  .strict();
+export const scenarioBatchRefRequestSchema = z.object({ batchId: z.string().min(1) }).strict();
+
 /** The canonical list of op names. The IPC router allow-list is derived from this. */
 export const OP_NAMES = [
   'system.ping',
@@ -514,6 +525,9 @@ export const OP_NAMES = [
   'scenario.provideInput',
   'scenario.runList',
   'scenario.runClear',
+  'scenario.runBatch',
+  'scenario.batchStatus',
+  'scenario.stopBatch',
 ] as const;
 export type OpName = (typeof OP_NAMES)[number];
 
@@ -607,6 +621,9 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'scenario.provideInput': scenarioProvideInputRequestSchema,
   'scenario.runList': scenarioRunListRequestSchema,
   'scenario.runClear': scenarioRunListRequestSchema,
+  'scenario.runBatch': scenarioRunBatchRequestSchema,
+  'scenario.batchStatus': scenarioBatchRefRequestSchema,
+  'scenario.stopBatch': scenarioBatchRefRequestSchema,
 };
 
 /**
@@ -1103,10 +1120,29 @@ export interface ScenarioRunsResponse {
   runs: ScenarioRunDto[];
 }
 
+/** A batch of back-to-back scenario runs. Transient (in-memory) — the runs themselves are persisted. */
+export type ScenarioBatchStatus = 'running' | 'completed' | 'cancelled' | 'failed';
+export interface ScenarioBatchDto {
+  id: string;
+  scenarioId: string;
+  total: number;
+  completed: number;
+  status: ScenarioBatchStatus;
+  currentRunId: string | null;
+}
+export interface ScenarioBatchStartedResponse {
+  batchId: string;
+}
+export interface ScenarioBatchStatusResponse {
+  batch: ScenarioBatchDto;
+}
+
 export type ScenarioRunRequest = z.infer<typeof scenarioRunRequestSchema>;
 export type ScenarioRunRefRequest = z.infer<typeof scenarioRunRefRequestSchema>;
 export type ScenarioProvideInputRequest = z.infer<typeof scenarioProvideInputRequestSchema>;
 export type ScenarioRunListRequest = z.infer<typeof scenarioRunListRequestSchema>;
+export type ScenarioRunBatchRequest = z.infer<typeof scenarioRunBatchRequestSchema>;
+export type ScenarioBatchRefRequest = z.infer<typeof scenarioBatchRefRequestSchema>;
 
 export type NameColorRequest = z.infer<typeof nameColorRequestSchema>;
 export type ProjectCreateRequest = z.infer<typeof projectCreateRequestSchema>;
@@ -1371,6 +1407,9 @@ export interface OpContracts {
   'scenario.provideInput': { request: ScenarioProvideInputRequest; response: OkResponse };
   'scenario.runList': { request: ScenarioRunListRequest; response: ScenarioRunsResponse };
   'scenario.runClear': { request: ScenarioRunListRequest; response: ScenarioRunsResponse };
+  'scenario.runBatch': { request: ScenarioRunBatchRequest; response: ScenarioBatchStartedResponse };
+  'scenario.batchStatus': { request: ScenarioBatchRefRequest; response: ScenarioBatchStatusResponse };
+  'scenario.stopBatch': { request: ScenarioBatchRefRequest; response: OkResponse };
 }
 
 export type OpRequest<N extends OpName> = OpContracts[N]['request'];

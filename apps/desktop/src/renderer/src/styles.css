@@ -2247,6 +2247,31 @@ body {
   gap: var(--space-2);
   flex: 0 0 auto;
 }
+/* Batch config / progress row. */
+.scenario-run__batch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-sm);
+}
+.scenario-run__batch-label {
+  color: var(--text-muted);
+}
+.scenario-run__num {
+  width: 64px;
+  padding: var(--space-1) var(--space-2);
+}
+.scenario-run__batch .ui-btn {
+  font-size: var(--fs-sm);
+  padding: var(--space-1) var(--space-3);
+}
+.scenario-run__batch-badge {
+  color: var(--primary);
+  border-color: var(--primary);
+}
 .scenario-run__err {
   color: var(--danger);
   font-size: var(--fs-sm);
