@@ -672,9 +672,30 @@ export function WorkingTree({
           <div className="tree__field-head">
             <span className="ui-field__label">{t('tree.project')}</span>
             <span className="row" style={{ gap: 'var(--space-1)' }}>
-              <IconButton label={t('import.trigger')} onClick={() => setImportOpen(true)}>
-                <DownloadIcon />
-              </IconButton>
+              <Menu
+                label={t('import.trigger')}
+                icon={<DownloadIcon />}
+                items={[
+                  { label: t('import.trigger'), onSelect: () => setImportOpen(true) },
+                  ...(selectedProject
+                    ? [
+                        {
+                          label: t('export.exportProject'),
+                          onSelect: () =>
+                            setExportScope({
+                              scope: { kind: 'project', projectId: selectedProject },
+                              name: tree.projects.find((p) => p.id === selectedProject)?.name ?? 'project',
+                            }),
+                        },
+                      ]
+                    : []),
+                  {
+                    label: t('export.exportWorkspace'),
+                    onSelect: () =>
+                      setExportScope({ scope: { kind: 'workspace' }, name: 'workspace' }),
+                  },
+                ]}
+              />
               <IconButton label={t('tree.collapse')} className="tree__collapse" onClick={onCollapse}>
                 <ChevronLeftIcon />
               </IconButton>

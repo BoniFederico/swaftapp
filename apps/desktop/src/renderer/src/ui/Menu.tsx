@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { IconButton } from './IconButton';
 import { MoreIcon } from './icons';
@@ -14,13 +15,22 @@ export interface MenuItem {
  * trigger's coordinates, so it anchors next to the button and escapes the Working Tree's scroll
  * clipping (and any transformed ancestor). Closes on outside-click / Escape.
  */
-export function Menu({ label, items }: { label: string; items: MenuItem[] }) {
+export function Menu({
+  label,
+  items,
+  icon,
+}: {
+  label: string;
+  items: MenuItem[];
+  /** Trigger glyph; defaults to the three-dot icon. */
+  icon?: ReactNode;
+}) {
   const { open, setOpen, pos, triggerRef, popRef, toggle } = usePopover<HTMLUListElement>();
 
   return (
     <>
       <IconButton ref={triggerRef} label={label} aria-haspopup="menu" aria-expanded={open} onClick={toggle}>
-        <MoreIcon />
+        {icon ?? <MoreIcon />}
       </IconButton>
       {open &&
         createPortal(
