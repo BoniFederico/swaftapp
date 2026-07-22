@@ -7,6 +7,18 @@ import { canonicalJson } from './canonical-json';
 import { MemoryDirFs } from './dir-fs';
 import { fromHttpFile, toHttpFile } from '@swaft/shared';
 import { dumpWorkspace, hydrateWorkspace, sourceExtension } from './projection';
+import { entityBaseName, shortId } from './naming';
+
+/** Hybrid on-disk names (D2) for the fixture entities, so path assertions track the real scheme. */
+const N = {
+  projBilling: `projects/${entityBaseName('Billing', 'proj-1')}.json`,
+  projInfra: `projects/${entityBaseName('Infra', 'proj-2')}.json`,
+  tplDoc: `templates/${entityBaseName('Release notes', 'tpl-doc')}`,
+  tplCap: `templates/${entityBaseName('slugify', 'tpl-cap')}`,
+  tplApi: `templates/${entityBaseName('Get user', 'tpl-api')}`,
+  tagDead: `tags/${entityBaseName('gone', 'tag-dead')}.json`,
+  relV1: `v1.${shortId('rel-1')}.json`,
+};
 
 /**
  * Mirror the projection's api round-trip (source → request.http + api-meta → source) so the snapshot
@@ -338,35 +350,36 @@ describe('WorkspaceProjection', () => {
 
     expect(paths).toContain('workspace.json');
     expect(paths).toContain('settings.json');
-    expect(paths).toContain('projects/proj-1.json');
-    expect(paths).toContain('templates/tpl-doc/template.json');
+    // Hybrid naming (D2): `<slug>.<shortId>` — browsable + rename-stable.
+    expect(paths).toContain(N.projBilling);
+    expect(paths).toContain(`${N.tplDoc}/template.json`);
     // Source is a verbatim sidecar with a type-appropriate extension.
-    expect(paths).toContain('templates/tpl-doc/source.md');
-    expect(paths).toContain('templates/tpl-cap/source.js');
+    expect(paths).toContain(`${N.tplDoc}/source.md`);
+    expect(paths).toContain(`${N.tplCap}/source.js`);
     // api templates are a readable `request.http`, not a JSON `source.*`.
-    expect(paths).toContain('templates/tpl-api/request.http');
-    expect(paths).not.toContain('templates/tpl-api/source.json');
-    expect(paths).toContain('templates/tpl-doc/releases/rel-1.json');
+    expect(paths).toContain(`${N.tplApi}/request.http`);
+    expect(paths).not.toContain(`${N.tplApi}/source.json`);
+    expect(paths).toContain(`${N.tplDoc}/releases/${N.relV1}`);
     // Soft-deleted rows never reach the files.
-    expect(paths.some((p) => p.startsWith('templates/tpl-dead'))).toBe(false);
-    expect(paths).not.toContain('tags/tag-dead.json');
+    expect(paths.some((p) => p.startsWith('templates/obsolete.'))).toBe(false);
+    expect(paths).not.toContain(N.tagDead);
 
     // The markdown source file holds the exact draft, unescaped.
-    expect(files.get('templates/tpl-doc/source.md')).toBe(
+    expect(files.get(`${N.tplDoc}/source.md`)).toBe(
       '# Release {{version}}\n\n- item one\n- item two\n',
     );
 
     // template.json embeds tag ids and omits the source (which lives in the sidecar).
-    const tpl = JSON.parse(files.get('templates/tpl-doc/template.json')!);
+    const tpl = JSON.parse(files.get(`${N.tplDoc}/template.json`)!);
     expect(tpl.tags).toEqual(['tag-a', 'tag-b']);
     expect(tpl).not.toHaveProperty('source');
 
     // The api request.http is a standard, readable file; structured auth + actions live in the
     // template.json `api` block (the parts `.http` can't carry).
-    const http = files.get('templates/tpl-api/request.http')!;
+    const http = files.get(`${N.tplApi}/request.http`)!;
     expect(http).toContain('POST https://api.test/u/1');
     expect(http).toContain('Accept: application/json');
-    const apiTpl = JSON.parse(files.get('templates/tpl-api/template.json')!);
+    const apiTpl = JSON.parse(files.get(`${N.tplApi}/template.json`)!);
     expect(apiTpl).not.toHaveProperty('source');
     expect(apiTpl.api.auth).toEqual({ kind: 'bearer', token: "${ secret('T') }" });
     expect(apiTpl.api.actions).toEqual([{ ref: 'log', trigger: 'pre' }]);
@@ -393,30 +406,74 @@ describe('WorkspaceProjection', () => {
     const a = await buildSampleWorkspace();
     const fs = new MemoryDirFs();
     await dumpWorkspace(a, fs);
-    expect(fs.snapshot().has('projects/proj-2.json')).toBe(true);
+    expect(fs.snapshot().has(N.projInfra)).toBe(true);
 
     await softDelete(a, 'projects', 'proj-2');
     await softDelete(a, 'templates', 'tpl-cap');
     await dumpWorkspace(a, fs);
 
     const paths = [...fs.snapshot().keys()];
-    expect(paths).not.toContain('projects/proj-2.json');
-    expect(paths).toContain('projects/proj-1.json');
-    expect(paths.some((p) => p.startsWith('templates/tpl-cap/'))).toBe(false);
-    expect(paths.some((p) => p.startsWith('templates/tpl-doc/'))).toBe(true);
+    expect(paths).not.toContain(N.projInfra);
+    expect(paths).toContain(N.projBilling);
+    expect(paths.some((p) => p.startsWith(`${N.tplCap}/`))).toBe(false);
+    expect(paths.some((p) => p.startsWith(`${N.tplDoc}/`))).toBe(true);
   });
 
   it('rewrites the source sidecar when the subtype (extension) changes', async () => {
     const a = await buildSampleWorkspace();
     const fs = new MemoryDirFs();
     await dumpWorkspace(a, fs);
-    expect(fs.snapshot().has('templates/tpl-doc/source.md')).toBe(true);
+    expect(fs.snapshot().has(`${N.tplDoc}/source.md`)).toBe(true);
 
     await a.run('UPDATE templates SET subtype = ? WHERE id = ?', ['html', 'tpl-doc']);
     await dumpWorkspace(a, fs);
     const paths = [...fs.snapshot().keys()];
-    expect(paths).toContain('templates/tpl-doc/source.html');
-    expect(paths).not.toContain('templates/tpl-doc/source.md');
+    expect(paths).toContain(`${N.tplDoc}/source.html`);
+    expect(paths).not.toContain(`${N.tplDoc}/source.md`);
+  });
+
+  it('moves the slug file on rename but keeps the same in-file id (hybrid naming)', async () => {
+    const a = await buildSampleWorkspace();
+    const fs = new MemoryDirFs();
+    await dumpWorkspace(a, fs);
+    expect(fs.snapshot().has(N.projBilling)).toBe(true);
+
+    await a.run('UPDATE projects SET name = ? WHERE id = ?', ['Payments', 'proj-1']);
+    await dumpWorkspace(a, fs);
+
+    const renamed = `projects/${entityBaseName('Payments', 'proj-1')}.json`;
+    const paths = [...fs.snapshot().keys()];
+    expect(paths).toContain(renamed);
+    expect(paths).not.toContain(N.projBilling); // old slug file removed — a pure move
+    // Identity is content-based: the id inside the file never changes.
+    expect(JSON.parse(fs.snapshot().get(renamed)!).id).toBe('proj-1');
+
+    // And it still round-trips: the renamed file rehydrates to the same id.
+    const b = await freshAdapter();
+    await b.createSchema();
+    await hydrateWorkspace(b, fs, { deviceId: 'dev-B', now: isoNow(), storageMode: 'git' });
+    const proj = await b.get<{ name: string }>("SELECT name FROM projects WHERE id = 'proj-1'");
+    expect(proj?.name).toBe('Payments');
+  });
+
+  it('hydrates legacy <id>.json files (path-independent loader, back-compat)', async () => {
+    // An older Swaft wrote flat entities as `<id>.json`; the loader keys off the in-file id, so
+    // these must still hydrate unchanged even though dump now emits `<slug>.<shortId>.json`.
+    const fs = new MemoryDirFs();
+    await fs.writeFile(
+      'workspace.json',
+      JSON.stringify({ formatVersion: 1, schemaVersion: 2, name: 'Old', executionMode: 'sandbox' }),
+    );
+    await fs.writeFile(
+      'projects/legacy-id.json',
+      JSON.stringify({ id: 'legacy-id', name: 'Legacy', color: null, description: null }),
+    );
+
+    const b = await freshAdapter();
+    await b.createSchema();
+    await hydrateWorkspace(b, fs, { deviceId: 'd', now: isoNow(), storageMode: 'git' });
+    const proj = await b.get<{ name: string }>("SELECT name FROM projects WHERE id = 'legacy-id'");
+    expect(proj?.name).toBe('Legacy');
   });
 
   it('rejects a folder with no manifest and a workspace from a newer schema', async () => {
