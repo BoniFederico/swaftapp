@@ -83,18 +83,15 @@ export function PreferencesSettings({ client }: { client: ApiClient }) {
   return (
     <div className="settings-form">
       <ThemeControls />
-      <div className="col" style={{ gap: 'var(--space-1)' }}>
-        <Select
-          label={t('settings.treeDoubleClick')}
-          value={dblClick}
-          onChange={(v) => setDblClick(v === 'pin' ? 'pin' : 'edit')}
-          options={[
-            { value: 'edit', label: t('settings.treeDoubleClick.edit') },
-            { value: 'pin', label: t('settings.treeDoubleClick.pin') },
-          ]}
-        />
-        <span className="field-hint">{t('settings.treeDoubleClickHint')}</span>
-      </div>
+      <Select
+        label={t('settings.treeDoubleClick')}
+        value={dblClick}
+        onChange={(v) => setDblClick(v === 'pin' ? 'pin' : 'edit')}
+        options={[
+          { value: 'edit', label: t('settings.treeDoubleClick.edit') },
+          { value: 'pin', label: t('settings.treeDoubleClick.pin') },
+        ]}
+      />
       <div className="settings-form__actions">
         <Button variant="ghost" disabled={!dirty} onClick={cancel}>
           {t('name.cancel')}

@@ -4393,15 +4393,6 @@ body {
   min-height: 52px;
   font-family: inherit;
 }
-.env-settings__actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  margin-top: auto;
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--border);
-}
 
 /* Variables: a bordered key/value grid with column headers, IDE table style. */
 .env-vars {

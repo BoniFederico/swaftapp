@@ -5,7 +5,7 @@ import { useEnvironments } from '../../environment/EnvironmentProvider';
 import { OWNER_KIND_LABEL } from '../../environment/ownerKind';
 import { useI18n } from '../../i18n/I18nProvider';
 import { KeyValueEditor } from '../../document/KeyValueEditor';
-import { Button, ConfirmDialog, Switch, TextField, useToast } from '../../ui';
+import { Button, ConfirmDialog, IconButton, Switch, TextField, TrashIcon, useToast } from '../../ui';
 
 /**
  * ENVIRONMENTS detail pane. The environment list + "add new" live in the Settings nav
@@ -190,6 +190,14 @@ function EnvironmentEditor({
     setDirty(true);
   }
 
+  function cancel() {
+    if (!env) return;
+    setName(env.name);
+    setDescription(env.description ?? '');
+    setVars(env.vars);
+    setDirty(false);
+  }
+
   async function save() {
     try {
       await client.call('env.update', {
@@ -225,6 +233,9 @@ function EnvironmentEditor({
         <span className={`ui-badge env-badge env-badge--${env.ownerKind}`}>{t(OWNER_KIND_LABEL[env.ownerKind])}</span>
         <span className="env-settings__spacer" />
         <Switch label={t('env.settings.active')} checked={isActive} onChange={onToggleActive} />
+        <IconButton label={t('env.settings.delete')} onClick={() => setConfirmDelete(true)}>
+          <TrashIcon />
+        </IconButton>
       </div>
 
       <TextField
@@ -256,9 +267,9 @@ function EnvironmentEditor({
         />
       </div>
 
-      <div className="env-settings__actions">
-        <Button variant="danger" onClick={() => setConfirmDelete(true)}>
-          {t('env.settings.delete')}
+      <div className="settings-form__actions">
+        <Button variant="ghost" disabled={!dirty} onClick={cancel}>
+          {t('name.cancel')}
         </Button>
         <Button variant="primary" disabled={!dirty || !name.trim()} onClick={() => void save()}>
           {t('env.settings.save')}
