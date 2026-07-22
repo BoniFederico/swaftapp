@@ -3041,19 +3041,32 @@ body {
   min-width: 0;
   overflow: auto;
   padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
-/* Simple settings form: full-width fields in a readable column, actions bottom-right. */
+/* Centered, fixed-width column: equal side margins for every section, and full height so each
+   section's action bar can pin to the bottom (same position across sections). */
+.settings-content__inner {
+  width: 100%;
+  max-width: 560px;
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+/* Simple settings form: full-width fields in a readable column; actions pinned to the bottom. */
 .settings-form {
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  max-width: 480px;
 }
 .settings-form__actions {
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
-  padding-top: var(--space-3);
+  margin-top: auto;
+  padding-top: var(--space-4);
   border-top: 1px solid var(--border);
 }
 
@@ -4340,11 +4353,13 @@ body {
 }
 
 /* ---------- Environments: settings section (master/detail) ---------- */
-/* The environments detail pane (the list lives in the Settings sub-nav now). */
+/* The environments detail pane (the list lives in the Settings sub-nav now). Fills the height so
+   the editor's action bar pins to the bottom like the other sections. */
 .env-detail {
   flex: 1;
   min-width: 0;
-  max-width: 560px;
+  display: flex;
+  flex-direction: column;
 }
 .env-settings__count {
   font-size: var(--fs-xs);
@@ -4352,6 +4367,7 @@ body {
   font-variant-numeric: tabular-nums;
 }
 .env-settings__editor {
+  flex: 1;
   gap: var(--space-4);
 }
 .env-settings__title {
@@ -4382,7 +4398,8 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  padding-top: var(--space-3);
+  margin-top: auto;
+  padding-top: var(--space-4);
   border-top: 1px solid var(--border);
 }
 

@@ -169,19 +169,23 @@ export function SettingsModal({
             onPointerDown={onNavResize}
           />
           <div className="settings-content">
-            {active === 'general' && <GeneralSettings />}
-            {active === 'restrictions' && <RestrictionsSettings client={client} />}
-            {active === 'environments' && (
-              <EnvironmentsSettings
-                client={client}
-                selectedId={envSelectedId}
-                creating={envCreating}
-                onSelect={selectEnv}
-                onCancelCreate={() => setEnvCreating(false)}
-                onDeleted={() => setEnvSelectedId(null)}
-              />
-            )}
-            {active === 'preferences' && <PreferencesSettings client={client} />}
+            {/* A centered, fixed-width column so every section has equal side margins and its
+                Save/Cancel bar lands at the same bottom-aligned position. */}
+            <div className="settings-content__inner">
+              {active === 'general' && <GeneralSettings />}
+              {active === 'restrictions' && <RestrictionsSettings client={client} />}
+              {active === 'environments' && (
+                <EnvironmentsSettings
+                  client={client}
+                  selectedId={envSelectedId}
+                  creating={envCreating}
+                  onSelect={selectEnv}
+                  onCancelCreate={() => setEnvCreating(false)}
+                  onDeleted={() => setEnvSelectedId(null)}
+                />
+              )}
+              {active === 'preferences' && <PreferencesSettings client={client} />}
+            </div>
           </div>
         </div>
       </div>
