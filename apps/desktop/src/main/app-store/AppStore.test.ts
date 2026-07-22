@@ -56,4 +56,18 @@ describe('AppStore', () => {
     expect(recent[0]?.name).toBe('A renamed');
     expect(recent[0]?.lastOpenedAt).toBe(new Date(3_000).toISOString());
   });
+
+  it('removes a recent entry (and persists), leaving the rest and the file untouched', () => {
+    const store = new AppStore(file);
+    store.recordRecent(summary('mem://a.swaft', 'A'));
+    store.recordRecent(summary('mem://b.swaft', 'B'));
+
+    store.removeRecent('mem://a.swaft');
+    expect(store.getRecent().map((r) => r.path)).toEqual(['mem://b.swaft']);
+    // Removing an unknown path is a no-op.
+    store.removeRecent('mem://missing.swaft');
+    expect(store.getRecent().map((r) => r.path)).toEqual(['mem://b.swaft']);
+    // The removal is durable across reloads.
+    expect(new AppStore(file).getRecent().map((r) => r.path)).toEqual(['mem://b.swaft']);
+  });
 });

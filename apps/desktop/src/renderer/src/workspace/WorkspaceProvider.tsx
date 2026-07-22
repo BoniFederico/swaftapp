@@ -35,6 +35,8 @@ interface WorkspaceContextValue {
   update(patch: WorkspaceUpdateRequest): Promise<void>;
   close(): Promise<void>;
   refresh(): Promise<void>;
+  /** Drop a workspace from the recent list (does not touch the file itself). */
+  forgetRecent(path: string): Promise<void>;
   clearError(): void;
   /** Native "save as" for a new `.swaft`; returns the chosen path or null. */
   pickCreateTarget(defaultName?: string): Promise<string | null>;
@@ -150,6 +152,14 @@ export function WorkspaceProvider({
           await refresh();
         }),
       refresh,
+      forgetRecent: async (path) => {
+        try {
+          const res = await client.call('workspace.forgetRecent', { path });
+          setRecent(res.items);
+        } catch {
+          // Best-effort: leave the list as-is if the backend rejects the request.
+        }
+      },
       pickCreateTarget: async (defaultName) => {
         try {
           return (await client.call('dialog.createTarget', { defaultName })).path;

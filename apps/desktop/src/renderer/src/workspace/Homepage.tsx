@@ -4,7 +4,7 @@ import { ApiError } from '../api-client/client';
 import { AccountControls } from '../auth/AccountControls';
 import { useI18n } from '../i18n/I18nProvider';
 import { PreferencesDialog } from '../settings/PreferencesDialog';
-import { EmptyState, IconButton, SearchIcon, SettingsIcon, SplitButton } from '../ui';
+import { CloseIcon, EmptyState, IconButton, SearchIcon, SettingsIcon, SplitButton } from '../ui';
 import { CloneDialog } from '../git/CloneDialog';
 import { CreateWorkspaceWizard } from './CreateWorkspaceWizard';
 import { OpenPasswordDialog } from './OpenPasswordDialog';
@@ -19,7 +19,7 @@ import { useWorkspace } from './WorkspaceProvider';
  */
 export function Homepage() {
   const { t } = useI18n();
-  const { recent, open, pickOpenTarget, pickDirectory, gitAvailable } = useWorkspace();
+  const { recent, open, pickOpenTarget, pickDirectory, gitAvailable, forgetRecent } = useWorkspace();
 
   const [query, setQuery] = useState('');
   const [wizardMode, setWizardMode] = useState<StorageMode | null>(null);
@@ -141,12 +141,19 @@ export function Homepage() {
         ) : (
           <ul className="recent-list">
             {filtered.map((w) => (
-              <li key={w.path}>
+              <li key={w.path} className="recent-row">
                 <button type="button" className="recent-item" onClick={() => void tryOpen(w.path)}>
                   <span className="recent-item__name">{w.name}</span>
                   {w.encrypted && <span className="ui-badge">{t('home.encryptedBadge')}</span>}
                   <span className="recent-item__path muted">{w.path}</span>
                 </button>
+                <IconButton
+                  label={t('home.recent.forget')}
+                  className="recent-row__remove"
+                  onClick={() => void forgetRecent(w.path)}
+                >
+                  <CloseIcon />
+                </IconButton>
               </li>
             ))}
           </ul>

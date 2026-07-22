@@ -102,4 +102,12 @@ export class AppStore {
     this.data.recent = [entry, ...others].slice(0, RECENT_LIMIT);
     this.persist();
   }
+
+  /** Drop a workspace from the recent list (the file itself is untouched). Idempotent. */
+  removeRecent(path: string): void {
+    const next = this.data.recent.filter((r) => r.path !== path);
+    if (next.length === this.data.recent.length) return; // nothing to do
+    this.data.recent = next;
+    this.persist();
+  }
 }
