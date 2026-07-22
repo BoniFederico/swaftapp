@@ -48,7 +48,10 @@ linux:
   category: Development
   artifactName: ${productName}-${version}.${ext}
 
-# GitHub Releases as the distribution feed (see deploy.md §5/§8). `electron-builder --publish` uploads
-# the artifacts; the release workflow is triggered on a version tag.
+# GitHub Releases as the distribution feed (see deploy.md §5/§8) — also drives the latest.yml update
+# metadata generated at build time. owner/repo are set explicitly so the build never depends on
+# parsing .git/config (a malformed local remote otherwise crashes the update-info step).
 publish:
   provider: github
+  owner: BoniFederico
+  repo: swaftapp
