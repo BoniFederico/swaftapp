@@ -20,6 +20,7 @@
   --space-5: 24px;
   --space-6: 32px;
   --space-7: 46px;
+  --space-8: 54px;
 
   /* radii / elevation / typography — compact, flat, IDE-like */
   --radius-sm: 4px;
@@ -3066,7 +3067,7 @@ body {
   align-items: center;
   text-align: center;
   gap: var(--space-2);
-  padding: var(--space-7) 0 var(--space-3);
+  padding: var(--space-8) 0 var(--space-3);
 }
 .brand--hero {
   font-size: calc(var(--fs-2xl) * 1.8);

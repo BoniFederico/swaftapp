@@ -57,6 +57,20 @@ describe('AppStore', () => {
     expect(recent[0]?.lastOpenedAt).toBe(new Date(3_000).toISOString());
   });
 
+  it('keeps the recent list unique across path spellings (separators, trailing slash, case on win)', () => {
+    const store = new AppStore(file);
+    // Same directory reached via `/` then `\` with a trailing slash + a redundant `.` segment.
+    store.recordRecent(summary('C:/Users/me/ws', 'WS'));
+    store.recordRecent(summary('C:\\Users\\me\\.\\ws\\', 'WS again'));
+    if (process.platform === 'win32') {
+      store.recordRecent(summary('c:\\users\\me\\ws', 'WS lowercased')); // case-insensitive on Windows
+    }
+
+    const recent = store.getRecent();
+    expect(recent).toHaveLength(1);
+    expect(recent[0]?.name).toBe(process.platform === 'win32' ? 'WS lowercased' : 'WS again');
+  });
+
   it('removes a recent entry (and persists), leaving the rest and the file untouched', () => {
     const store = new AppStore(file);
     store.recordRecent(summary('mem://a.swaft', 'A'));
