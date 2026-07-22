@@ -12,3 +12,7 @@ test-results/
 *.swaft
 .env
 .env.*
+# Code-signing certificates / keys — never commit these.
+.certs/
+*.pfx
+*.p12

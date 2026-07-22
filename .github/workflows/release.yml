@@ -53,6 +53,13 @@ jobs:
       # Linux, NSIS on Windows). No --publish here; assets are collected and released in one place
       # by the publish job below (avoids two runners racing to create the same release).
       - run: npm run dist
+        env:
+          # Code signing (opt-in): set these repo secrets to sign the Windows build. If they are
+          # unset the env vars are empty and the build is produced unsigned. See deploy.md §7.
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          # macOS (when macos-latest is added to the matrix): also expose APPLE_ID /
+          # APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID here for signing + notarization.
       - uses: actions/upload-artifact@v4
         with:
           name: dist-${{ matrix.os }}

@@ -194,11 +194,29 @@ Assunzioni prudenti per la matrix di release (build + package):
   Apple Developer (99 $/anno) + notarizzazione via `notarytool` per un'esperienza pulita.
 - **Linux (AppImage)**: nessuna firma richiesta; esperienza già liscia.
 
-**Raccomandazione**: partire **non firmati** su tutti e tre (documentare nelle release note come
-aprire l'app su Win/mac), e introdurre la firma solo quando ci sono utenti reali che la giustificano.
-electron-builder legge i certificati da secret/env (`CSC_LINK`/`CSC_KEY_PASSWORD` per Win/mac,
-`APPLE_ID`/`APPLE_APP_SPECIFIC_PASSWORD`/`APPLE_TEAM_ID` per la notarizzazione) → si aggiungono dopo
-senza cambiare l'impianto.
+**Stato: meccanismo implementato — env-driven e opt-in.** Il build firma automaticamente quando sono
+presenti le variabili del certificato, e resta **non firmato ma valido** quando non ci sono. Così non
+serve un certificato per sviluppare/rilasciare oggi, e quello vero si aggancia senza toccare
+l'impianto. (electron-builder v26 firma nativamente via env, nessuna config extra.)
+
+- **Windows** — `CSC_LINK` (path / URL / base64 del `.pfx`) + `CSC_KEY_PASSWORD`. electron-builder
+  firma exe, uninstaller e installer via `signtool` — **verificato** con un cert self-signed di test
+  (firma presente; `Status: UnknownError` solo perché self-signed → un OV/EV reale dà `Valid`).
+- **macOS** (quando si aggiungerà `macos-latest` alla matrice) — `CSC_LINK`/`CSC_KEY_PASSWORD` per la
+  firma + `APPLE_ID` / `APPLE_APP_SPECIFIC_PASSWORD` / `APPLE_TEAM_ID` per la notarizzazione.
+- **Linux (AppImage)**: nessuna firma richiesta.
+
+**In CI** (`release.yml`): il job di build legge i valori dai GitHub Secrets `WIN_CSC_LINK` /
+`WIN_CSC_KEY_PASSWORD`; se non sono impostati, gli artefatti escono non firmati (nessun errore).
+
+**Test locale (self-signed)**: `apps/desktop/scripts/gen-selfsigned-cert.ps1` genera un `.pfx` di
+prova in `.certs/` (gitignorato); poi `$env:CSC_LINK` + `$env:CSC_KEY_PASSWORD` + `npm run dist`. Un
+cert self-signed **non** rimuove i warning SmartScreen/Gatekeeper — serve solo a validare la pipeline;
+per la distribuzione serve un certificato OV/EV reale.
+
+**Raccomandazione**: per ora distribuire **non firmato** (documentando nelle release note come aprire
+l'app), e fornire un certificato reale via i secret sopra quando ci saranno utenti che lo giustificano
+— senza altre modifiche al pipeline.
 
 ---
 

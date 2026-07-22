@@ -22,6 +22,9 @@ asarUnpack:
   - '**/node_modules/sql.js/dist/*.wasm'
 
 win:
+  # Code signing is env-driven and opt-in: set CSC_LINK (path/URL/base64 of a .pfx) + CSC_KEY_PASSWORD
+  # to sign exe/uninstaller/installer via signtool; absent → an unsigned (but valid) build. See
+  # deploy.md §7 and scripts/gen-selfsigned-cert.ps1 for local testing.
   target:
     - target: nsis
       arch: [x64]
