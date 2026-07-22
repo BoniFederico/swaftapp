@@ -393,6 +393,10 @@ export const fileSaveTextRequestSchema = z
 export const fileSaveFilesRequestSchema = z
   .object({ suggestedDirName: z.string().min(1).max(255), files: z.array(exportFileSchema).max(4000) })
   .strict();
+/** Export the open workspace as a `.swaft` zip container, optionally AES-encrypted. */
+export const containerExportRequestSchema = z
+  .object({ encrypt: z.boolean(), password: z.string().optional() })
+  .strict();
 
 // --- User code: capabilities authored in JavaScript -------------------------
 
@@ -615,6 +619,7 @@ export const OP_NAMES = [
   'scenario.stopBatch',
   'collection.import',
   'collection.export',
+  'container.export',
   'file.saveText',
   'file.saveFiles',
 ] as const;
@@ -723,6 +728,7 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'scenario.stopBatch': scenarioBatchRefRequestSchema,
   'collection.import': collectionImportRequestSchema,
   'collection.export': collectionExportRequestSchema,
+  'container.export': containerExportRequestSchema,
   'file.saveText': fileSaveTextRequestSchema,
   'file.saveFiles': fileSaveFilesRequestSchema,
 };
@@ -1467,6 +1473,11 @@ export interface CollectionExportResponse {
 export interface FileSavedResponse {
   path: string | null;
 }
+export interface ContainerExportResponse {
+  /** The chosen `.swaft` path, or null if the save dialog was cancelled. */
+  path: string | null;
+}
+export type ContainerExportRequest = z.infer<typeof containerExportRequestSchema>;
 export interface FilesSavedResponse {
   dir: string | null;
   count: number;
@@ -1584,6 +1595,7 @@ export interface OpContracts {
   'scenario.stopBatch': { request: ScenarioBatchRefRequest; response: OkResponse };
   'collection.import': { request: CollectionImportRequest; response: CollectionImportResponse };
   'collection.export': { request: CollectionExportRequest; response: CollectionExportResponse };
+  'container.export': { request: ContainerExportRequest; response: ContainerExportResponse };
   'file.saveText': { request: FileSaveTextRequest; response: FileSavedResponse };
   'file.saveFiles': { request: FileSaveFilesRequest; response: FilesSavedResponse };
 }

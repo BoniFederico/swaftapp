@@ -27,6 +27,7 @@ import {
   setEnvironmentService,
   setImportService,
   setExportService,
+  setContainerService,
   setGitOpsService,
   setHttpService,
   setOrganizationService,
@@ -50,6 +51,7 @@ import { ChangelogService } from './workspace/ChangelogService';
 import { EnvironmentService } from './workspace/EnvironmentService';
 import { ExportService } from './workspace/ExportService';
 import { ImportService } from './workspace/ImportService';
+import { ContainerService } from './workspace/ContainerService';
 import { OrganizationService } from './workspace/OrganizationService';
 import { ReleaseService } from './workspace/ReleaseService';
 import { RenderService } from './workspace/RenderService';
@@ -265,6 +267,19 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
   setEnvironmentService(environments);
   setImportService(new ImportService({ organization, templates, environments }));
   setExportService(new ExportService({ organization, templates }));
+  setContainerService(
+    new ContainerService({
+      workspace: workspaceService,
+      crypto,
+      read: async (path) => {
+        try {
+          return await readFile(path);
+        } catch {
+          return null;
+        }
+      },
+    }),
+  );
   setGitOpsService(new GitOpsService(workspaceService, git));
   setPlatformDialogs(dialogs);
 }

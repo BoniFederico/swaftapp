@@ -40,6 +40,7 @@ import {
   type ScenarioBatchRefRequest,
   type CollectionImportRequest,
   type CollectionExportRequest,
+  type ContainerExportRequest,
   type FileSaveTextRequest,
   type FileSaveFilesRequest,
   type TemplateCreateRequest,
@@ -64,7 +65,7 @@ import {
 } from '@swaft/shared';
 import { mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { toErrorEnvelope } from '../errors';
+import { AppError, toErrorEnvelope } from '../errors';
 import { writeFileAtomic } from '../storage/atomic-file';
 import {
   getActionService,
@@ -78,6 +79,7 @@ import {
   getEnvironmentService,
   getImportService,
   getExportService,
+  getContainerService,
   getGitOpsService,
   getOrganizationService,
   getPlatformDialogs,
@@ -124,7 +126,15 @@ export const handlers: Record<OpName, Handler> = {
   'workspace.create': (p) =>
     svc(async () => ({ workspace: await getWorkspaceService().create(p as WorkspaceCreateRequest) })),
   'workspace.open': (p) =>
-    svc(async () => ({ workspace: await getWorkspaceService().open(p as WorkspaceOpenRequest) })),
+    svc(async () => {
+      const r = p as WorkspaceOpenRequest;
+      // A `.swaft` zip container is unzipped to a sibling folder and opened as a folder workspace
+      // (open-standards plan D1). A legacy single-file SQLite `.swaft` returns null here and opens
+      // as-is. An encrypted container throws PASSWORD_REQUIRED, prompting the same password dialog.
+      const folder = await getContainerService().openAsContainer(r.path, r.password);
+      const target: WorkspaceOpenRequest = folder ? { path: folder } : r;
+      return { workspace: await getWorkspaceService().open(target) };
+    }),
   'workspace.close': () =>
     svc(async () => {
       await getWorkspaceService().close();
@@ -513,6 +523,23 @@ export const handlers: Record<OpName, Handler> = {
     svc(async () => {
       const r = p as CollectionExportRequest;
       return getExportService().export(r.scope, r.format, r.conversion);
+    }),
+  // Package the open workspace into a portable `.swaft` zip container (D1), optionally encrypted.
+  'container.export': (p) =>
+    svc(async () => {
+      const r = p as ContainerExportRequest;
+      if (r.encrypt && (!r.password || r.password.length < 8)) {
+        throw new AppError(
+          'PASSWORD_REQUIRED',
+          'validation',
+          'A password of at least 8 characters is required to encrypt the container.',
+        );
+      }
+      const bytes = await getContainerService().export(r.encrypt ? r.password : undefined);
+      const name = getWorkspaceService().current()?.name ?? 'workspace';
+      const path = await getPlatformDialogs().pickSaveTarget(`${name}.swaft`);
+      if (path) await writeFileAtomic(path, bytes);
+      return { path };
     }),
   // Save exported content to disk via the native dialogs (main-process only).
   'file.saveText': (p) =>

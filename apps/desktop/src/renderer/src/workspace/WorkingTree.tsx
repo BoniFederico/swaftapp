@@ -483,6 +483,16 @@ export function WorkingTree({
     return { requests, skipped: inScope.length - requests };
   }
 
+  /** Export the whole workspace as a portable `.swaft` zip container (open-standards plan D1). */
+  async function exportContainer(): Promise<void> {
+    try {
+      const res = await client.call('container.export', { encrypt: false });
+      if (res.path) toast.show(t('export.containerDone'), 'success');
+    } catch (e) {
+      toast.show(e instanceof ApiError ? e.swaft.message : String(e), 'error');
+    }
+  }
+
   function templateMenu(tpl: TemplateSummary): MenuItem[] {
     return [
       { label: t('menu.edit'), onSelect: () => onOpenTemplate(tpl.id, 'edit', tpl.type, tpl.name) },
@@ -694,6 +704,7 @@ export function WorkingTree({
                     onSelect: () =>
                       setExportScope({ scope: { kind: 'workspace' }, name: 'workspace' }),
                   },
+                  { label: t('export.exportContainer'), onSelect: () => void exportContainer() },
                 ]}
               />
               <IconButton label={t('tree.collapse')} className="tree__collapse" onClick={onCollapse}>

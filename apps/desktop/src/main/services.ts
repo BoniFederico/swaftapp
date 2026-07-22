@@ -13,6 +13,7 @@ import type { ChangelogService } from './workspace/ChangelogService';
 import type { EnvironmentService } from './workspace/EnvironmentService';
 import type { ExportService } from './workspace/ExportService';
 import type { ImportService } from './workspace/ImportService';
+import type { ContainerService } from './workspace/ContainerService';
 import type { OrganizationService } from './workspace/OrganizationService';
 import type { ReleaseService } from './workspace/ReleaseService';
 import type { RenderService } from './workspace/RenderService';
@@ -92,3 +93,5 @@ export const { get: getImportService, set: setImportService } =
   serviceSlot<ImportService>('ImportService');
 export const { get: getExportService, set: setExportService } =
   serviceSlot<ExportService>('ExportService');
+export const { get: getContainerService, set: setContainerService } =
+  serviceSlot<ContainerService>('ContainerService');
