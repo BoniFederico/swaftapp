@@ -19,6 +19,13 @@ const NAV: { id: SettingsSectionId; label: TranslationKey }[] = [
   { id: 'preferences', label: 'set.preferences' },
 ];
 
+// Resizable nav column (persisted); clamped so neither pane collapses.
+const NAV_MIN = 180;
+const NAV_MAX = 360;
+const NAV_DEFAULT = 224;
+const MIN_CONTENT = 340;
+const NAV_W_KEY = 'swaft:settingsNavW';
+
 /**
  * Workspace Settings, presented as an overlay modal (over the workspace, not inside it). Left nav
  * selects a section; the right pane shows it.
@@ -45,7 +52,36 @@ export function SettingsModal({
   const { t } = useI18n();
   const [section, setSection] = useState<SettingsSectionId>('general');
   const modalRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   useFocusTrap(modalRef, open);
+
+  // Persisted, resizable nav column. Seed once from storage (clamped) so persisting can't race a load.
+  const [navWidth, setNavWidth] = useState<number>(() => {
+    const stored = Number(localStorage.getItem(NAV_W_KEY));
+    return Number.isFinite(stored) && stored > 0
+      ? Math.max(NAV_MIN, Math.min(NAV_MAX, stored))
+      : NAV_DEFAULT;
+  });
+  useEffect(() => {
+    localStorage.setItem(NAV_W_KEY, String(navWidth));
+  }, [navWidth]);
+
+  function onNavResize(e: React.PointerEvent) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = navWidth;
+    const bodyW = bodyRef.current?.getBoundingClientRect().width ?? 900;
+    const max = Math.max(NAV_MIN, Math.min(NAV_MAX, bodyW - MIN_CONTENT));
+    const onMove = (ev: PointerEvent) => {
+      setNavWidth(Math.max(NAV_MIN, Math.min(max, startW + (ev.clientX - startX))));
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }
 
   const nav = sections ? NAV.filter((n) => sections.includes(n.id)) : NAV;
   // Keep the shown section within the allowed set, falling back to the first available one.
@@ -101,10 +137,10 @@ export function SettingsModal({
             ×
           </button>
         </header>
-        <div className="settings-modal__body">
+        <div className="settings-modal__body" ref={bodyRef}>
           {/* The nav is always shown — even a single allowed section (homepage → Preferences) keeps
               the same two-pane Settings layout for visual consistency. */}
-          <nav className="settings-nav">
+          <nav className="settings-nav" style={{ width: navWidth }}>
             {nav.map((n) => (
               <div key={n.id} className="settings-nav__entry">
                 <button
@@ -125,6 +161,13 @@ export function SettingsModal({
               </div>
             ))}
           </nav>
+          <div
+            className="settings-split"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label={t('set.resize')}
+            onPointerDown={onNavResize}
+          />
           <div className="settings-content">
             {active === 'general' && <GeneralSettings />}
             {active === 'restrictions' && <RestrictionsSettings client={client} />}
