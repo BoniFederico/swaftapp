@@ -5,7 +5,27 @@ import { InProcessDbBackend } from '../../storage/db-backend';
 import { LocalAdapter } from '../LocalAdapter';
 import { canonicalJson } from './canonical-json';
 import { MemoryDirFs } from './dir-fs';
+import { fromHttpFile, toHttpFile } from '@swaft/shared';
 import { dumpWorkspace, hydrateWorkspace, sourceExtension } from './projection';
+
+/**
+ * Mirror the projection's api round-trip (source → request.http + api-meta → source) so the snapshot
+ * compares api requests at the **domain** level, not by exact JSON bytes: the `.http` form normalizes
+ * (materializes Content-Type from bodyType, drops empty headers), which is equivalent but not
+ * byte-identical.
+ */
+function canonicalApiSource(source: string): string {
+  let model: Record<string, unknown>;
+  try {
+    model = JSON.parse(source) as Record<string, unknown>;
+  } catch {
+    model = { method: 'GET', url: '' };
+  }
+  const out: Record<string, unknown> = { ...fromHttpFile(toHttpFile(model as never)) };
+  if (model.auth) out.auth = model.auth;
+  if (Array.isArray(model.actions) && model.actions.length > 0) out.actions = model.actions;
+  return JSON.stringify(out);
+}
 
 /** A monotonic clock so inserted rows get distinct, deterministic timestamps. */
 let tick = 0;
@@ -141,7 +161,15 @@ async function buildSampleWorkspace(): Promise<LocalAdapter> {
     name: 'Get user',
     type: 'api',
     subtype: 'GET',
-    source: JSON.stringify({ method: 'GET', url: 'https://api.test/u/1', headers: {} }),
+    source: JSON.stringify({
+      method: 'POST',
+      url: 'https://api.test/u/1',
+      headers: { Accept: 'application/json' },
+      body: '{"a":1}',
+      bodyType: 'json',
+      auth: { kind: 'bearer', token: "${ secret('T') }" },
+      actions: [{ ref: 'log', trigger: 'pre' }],
+    }),
     has_draft: 1,
   });
 
@@ -214,8 +242,15 @@ async function snapshot(a: LocalAdapter): Promise<Domain> {
       'SELECT * FROM releases WHERE template_id = ? AND deleted_at IS NULL ORDER BY id',
       [String(t.id)],
     );
+    const picked = pick(
+      t,
+      ['id', 'folder_id', 'project_id', 'name', 'type', 'subtype', 'source'],
+      [],
+      ['has_draft'],
+    );
+    if (picked.type === 'api') picked.source = canonicalApiSource(String(picked.source));
     templates.push({
-      ...pick(t, ['id', 'folder_id', 'project_id', 'name', 'type', 'subtype', 'source'], [], ['has_draft']),
+      ...picked,
       tags: tagRows.map((r) => r.tag_id),
       releases: releaseRows.map((r) =>
         pick(r, ['id', 'template_id', 'version', 'name', 'subtype', 'source']),
@@ -267,6 +302,33 @@ describe('WorkspaceProjection', () => {
     expect(await snapshot(b)).toEqual(await snapshot(a));
   });
 
+  it('hydrates a v1 api template written as source.json by an older Swaft (back-compat)', async () => {
+    const fs = new MemoryDirFs();
+    await fs.writeFile(
+      'workspace.json',
+      JSON.stringify({ formatVersion: 1, schemaVersion: 2, name: 'Old', executionMode: 'sandbox' }),
+    );
+    await fs.writeFile(
+      'projects/p.json',
+      JSON.stringify({ id: 'p', name: 'P', color: null, description: null }),
+    );
+    await fs.writeFile(
+      'templates/old-api/template.json',
+      JSON.stringify({ id: 'old-api', folderId: '', projectId: 'p', name: 'Legacy', type: 'api', subtype: 'json', hasDraft: true, tags: [] }),
+    );
+    await fs.writeFile(
+      'templates/old-api/source.json',
+      JSON.stringify({ method: 'GET', url: 'https://legacy/x' }),
+    );
+
+    const b = await freshAdapter();
+    await b.createSchema();
+    await hydrateWorkspace(b, fs, { deviceId: 'd', now: isoNow(), storageMode: 'git' });
+
+    const row = await b.get<{ source: string }>("SELECT source FROM templates WHERE id = 'old-api'");
+    expect(JSON.parse(row!.source)).toEqual({ method: 'GET', url: 'https://legacy/x' });
+  });
+
   it('lays out readable files: manifest, source sidecars, embedded tags, nested releases', async () => {
     const a = await buildSampleWorkspace();
     const fs = new MemoryDirFs();
@@ -280,8 +342,10 @@ describe('WorkspaceProjection', () => {
     expect(paths).toContain('templates/tpl-doc/template.json');
     // Source is a verbatim sidecar with a type-appropriate extension.
     expect(paths).toContain('templates/tpl-doc/source.md');
-    expect(paths).toContain('templates/tpl-api/source.json');
     expect(paths).toContain('templates/tpl-cap/source.js');
+    // api templates are a readable `request.http`, not a JSON `source.*`.
+    expect(paths).toContain('templates/tpl-api/request.http');
+    expect(paths).not.toContain('templates/tpl-api/source.json');
     expect(paths).toContain('templates/tpl-doc/releases/rel-1.json');
     // Soft-deleted rows never reach the files.
     expect(paths.some((p) => p.startsWith('templates/tpl-dead'))).toBe(false);
@@ -296,6 +360,16 @@ describe('WorkspaceProjection', () => {
     const tpl = JSON.parse(files.get('templates/tpl-doc/template.json')!);
     expect(tpl.tags).toEqual(['tag-a', 'tag-b']);
     expect(tpl).not.toHaveProperty('source');
+
+    // The api request.http is a standard, readable file; structured auth + actions live in the
+    // template.json `api` block (the parts `.http` can't carry).
+    const http = files.get('templates/tpl-api/request.http')!;
+    expect(http).toContain('POST https://api.test/u/1');
+    expect(http).toContain('Accept: application/json');
+    const apiTpl = JSON.parse(files.get('templates/tpl-api/template.json')!);
+    expect(apiTpl).not.toHaveProperty('source');
+    expect(apiTpl.api.auth).toEqual({ kind: 'bearer', token: "${ secret('T') }" });
+    expect(apiTpl.api.actions).toEqual([{ ref: 'log', trigger: 'pre' }]);
 
     // Manifest carries versions + identity, never storage mode / device id.
     const manifest = JSON.parse(files.get('workspace.json')!);

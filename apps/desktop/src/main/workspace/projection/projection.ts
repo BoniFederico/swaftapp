@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { StorageMode } from '@swaft/shared';
+import { fromHttpFile, toHttpFile, type HttpRequestModel, type StorageMode } from '@swaft/shared';
 import { AppError } from '../../errors';
 import type { SqlParam } from '../../storage/sqlite';
 import { SCHEMA_VERSION } from '../../storage/schema';
@@ -26,8 +26,12 @@ import type { DirFs } from './dir-fs';
  * extension so diffs are meaningful.
  */
 
-/** On-disk layout/format version, stamped in `workspace.json`. Bumped when the file shapes change. */
-export const FORMAT_VERSION = 1;
+/** On-disk layout/format version, stamped in `workspace.json`. Bumped when the file shapes change.
+ *  v2: `api` templates are stored as a readable `request.http` file (open-standards plan §5) plus an
+ *  `api` block in `template.json` for the parts `.http` can't carry (structured auth, pre/post
+ *  actions). v1 workspaces (an `api` source in `source.json`) still open — hydrate reads whichever
+ *  form is present, and the next save rewrites to v2. */
+export const FORMAT_VERSION = 2;
 
 const MANIFEST_FILE = 'workspace.json';
 const SETTINGS_FILE = 'settings.json';
@@ -245,11 +249,26 @@ async function dumpTemplates(adapter: LocalAdapter, fs: DirFs): Promise<void> {
     kept.add(id);
     const dir = `templates/${id}`;
 
-    // Editable source → verbatim sidecar with a type-appropriate extension (meaningful diffs).
-    const ext = sourceExtension(String(t.type), t.subtype == null ? null : String(t.subtype));
-    const sourceFile = `source.${ext}`;
-    await fs.writeFile(`${dir}/${sourceFile}`, String(t.source ?? ''));
-    await removeOtherSources(fs, dir, sourceFile);
+    // Editable source → a readable sidecar. `api` templates use a standard **`request.http`** (open
+    // format) plus an `api` block in `template.json` for the parts `.http` can't carry (structured
+    // auth, pre/post actions); other types write a verbatim `source.<ext>` sidecar with a
+    // type-appropriate extension. Meaningful diffs either way.
+    let bodyFile: string;
+    let apiMeta: { auth?: unknown; actions?: unknown } | undefined;
+    if (String(t.type) === 'api') {
+      const model = parseJsonOr<HttpRequestModel>(String(t.source ?? ''), { method: 'GET', url: '' });
+      bodyFile = 'request.http';
+      await fs.writeFile(`${dir}/${bodyFile}`, toHttpFile(model));
+      const meta: { auth?: unknown; actions?: unknown } = {};
+      if (model.auth) meta.auth = model.auth;
+      if (model.actions && model.actions.length > 0) meta.actions = model.actions;
+      if (Object.keys(meta).length > 0) apiMeta = meta;
+    } else {
+      const ext = sourceExtension(String(t.type), t.subtype == null ? null : String(t.subtype));
+      bodyFile = `source.${ext}`;
+      await fs.writeFile(`${dir}/${bodyFile}`, String(t.source ?? ''));
+    }
+    await removeOtherBodyFiles(fs, dir, bodyFile);
 
     const tagRows = await adapter.all<{ tag_id: string }>(
       'SELECT tag_id FROM template_tags WHERE template_id = ? AND deleted_at IS NULL ORDER BY tag_id',
@@ -266,6 +285,7 @@ async function dumpTemplates(adapter: LocalAdapter, fs: DirFs): Promise<void> {
         subtype: t.subtype ?? null,
         hasDraft: Number(t.has_draft) !== 0,
         tags: tagRows.map((r) => r.tag_id),
+        ...(apiMeta ? { api: apiMeta } : {}),
       }),
     );
 
@@ -310,8 +330,20 @@ async function hydrateTemplates(
     const t = parseJsonOr<Record<string, unknown>>(rawTemplate, {});
 
     const entries = await fs.list(dir);
-    const sourceName = entries.find((e) => e.startsWith('source.'));
-    const source = sourceName ? ((await fs.readFile(`${dir}/${sourceName}`)) ?? '') : '';
+    let source: string;
+    if (String(t.type) === 'api' && entries.includes('request.http')) {
+      // v2 open format: reconstruct the request model from request.http + the template.json `api` block.
+      const core = fromHttpFile((await fs.readFile(`${dir}/request.http`)) ?? '');
+      const model: HttpRequestModel = { ...core };
+      const api = t.api as { auth?: unknown; actions?: unknown } | undefined;
+      if (api?.auth) (model as { auth?: unknown }).auth = api.auth;
+      if (api?.actions) (model as { actions?: unknown }).actions = api.actions;
+      source = JSON.stringify(model);
+    } else {
+      // v1 (or non-api): read the verbatim `source.<ext>` sidecar.
+      const sourceName = entries.find((e) => e.startsWith('source.'));
+      source = sourceName ? ((await fs.readFile(`${dir}/${sourceName}`)) ?? '') : '';
+    }
 
     await insertRow(adapter, 'templates', {
       id: String(t.id ?? id),
@@ -411,10 +443,14 @@ async function removeStaleJson(fs: DirFs, dir: string, kept: Set<string>): Promi
   }
 }
 
-/** Remove any `source.*` sidecar in `dir` other than `keep` (e.g. after a subtype/extension change). */
-async function removeOtherSources(fs: DirFs, dir: string, keep: string): Promise<void> {
+/**
+ * Remove any body sidecar in `dir` other than `keep` — a `source.*` file or the api `request.http`.
+ * Covers a subtype/extension change and a type change (e.g. api ⇄ document swaps the body file kind).
+ */
+async function removeOtherBodyFiles(fs: DirFs, dir: string, keep: string): Promise<void> {
   for (const name of await fs.list(dir)) {
-    if (name.startsWith('source.') && name !== keep) await fs.remove(`${dir}/${name}`);
+    const isBody = name.startsWith('source.') || name === 'request.http';
+    if (isBody && name !== keep) await fs.remove(`${dir}/${name}`);
   }
 }
 
