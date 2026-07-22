@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ApiClient } from '../api-client/client';
 import { useI18n } from '../i18n/I18nProvider';
 import { useFocusTrap } from '../ui';
 import type { TranslationKey } from '../i18n/catalogs';
+import { EnvironmentsNav } from './sections/EnvironmentsNav';
 import { EnvironmentsSettings } from './sections/EnvironmentsSettings';
 import { GeneralSettings } from './sections/GeneralSettings';
 import { PreferencesSettings } from './sections/PreferencesSettings';
@@ -50,6 +51,19 @@ export function SettingsModal({
   // Keep the shown section within the allowed set, falling back to the first available one.
   const active = nav.some((n) => n.id === section) ? section : (nav[0]?.id ?? 'general');
 
+  // Environments is a two-level section: the nav lists the environments (+ "add new") and the content
+  // shows the selected one's detail, so the selection is shared across both columns here.
+  const [envSelectedId, setEnvSelectedId] = useState<string | null>(null);
+  const [envCreating, setEnvCreating] = useState(false);
+  const selectEnv = useCallback((id: string) => {
+    setEnvCreating(false);
+    setEnvSelectedId(id);
+  }, []);
+  const createNewEnv = useCallback(() => {
+    setEnvCreating(true);
+    setEnvSelectedId(null);
+  }, []);
+
   // Jump to the requested section each time the modal is (re)opened.
   useEffect(() => {
     if (open && initialSection) setSection(initialSection);
@@ -92,20 +106,38 @@ export function SettingsModal({
               the same two-pane Settings layout for visual consistency. */}
           <nav className="settings-nav">
             {nav.map((n) => (
-              <button
-                key={n.id}
-                type="button"
-                className={`settings-nav__item${active === n.id ? ' is-active' : ''}`}
-                onClick={() => setSection(n.id)}
-              >
-                {t(n.label)}
-              </button>
+              <div key={n.id} className="settings-nav__entry">
+                <button
+                  type="button"
+                  className={`settings-nav__item${active === n.id ? ' is-active' : ''}`}
+                  onClick={() => setSection(n.id)}
+                >
+                  {t(n.label)}
+                </button>
+                {n.id === 'environments' && active === 'environments' && (
+                  <EnvironmentsNav
+                    selectedId={envSelectedId}
+                    creating={envCreating}
+                    onSelect={selectEnv}
+                    onCreateNew={createNewEnv}
+                  />
+                )}
+              </div>
             ))}
           </nav>
           <div className="settings-content">
             {active === 'general' && <GeneralSettings />}
             {active === 'restrictions' && <RestrictionsSettings client={client} />}
-            {active === 'environments' && <EnvironmentsSettings client={client} />}
+            {active === 'environments' && (
+              <EnvironmentsSettings
+                client={client}
+                selectedId={envSelectedId}
+                creating={envCreating}
+                onSelect={selectEnv}
+                onCancelCreate={() => setEnvCreating(false)}
+                onDeleted={() => setEnvSelectedId(null)}
+              />
+            )}
             {active === 'preferences' && <PreferencesSettings client={client} />}
           </div>
         </div>

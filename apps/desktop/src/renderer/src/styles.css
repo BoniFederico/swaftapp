@@ -2962,6 +2962,68 @@ body {
   color: var(--primary);
   font-weight: 600;
 }
+/* A nav entry may expand a nested sub-list (e.g. Environments → its environments + "add new"). */
+.settings-nav__entry {
+  display: flex;
+  flex-direction: column;
+}
+.settings-subnav {
+  list-style: none;
+  margin: var(--space-1) 0 var(--space-1) var(--space-3);
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.settings-subnav__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.settings-subnav__item:hover {
+  background: var(--surface-2);
+}
+.settings-subnav__item.is-active {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--primary);
+  font-weight: 600;
+}
+.settings-subnav__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Green dot marks the active environment; an invisible one keeps names aligned for the rest. */
+.settings-subnav__dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--success);
+}
+.settings-subnav__dot--off {
+  background: transparent;
+}
+.settings-subnav__add {
+  color: var(--text-muted);
+}
+.settings-subnav__add svg {
+  width: 14px;
+  height: 14px;
+}
 .settings-content {
   flex: 1;
   overflow: auto;
@@ -4265,102 +4327,16 @@ body {
 }
 
 /* ---------- Environments: settings section (master/detail) ---------- */
-.env-settings {
-  display: flex;
-  gap: var(--space-5);
-  align-items: stretch;
-  min-height: 100%;
-}
-.env-settings__list {
-  width: 240px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding-right: var(--space-5);
-  border-right: 1px solid var(--border);
-}
-.env-settings__listhead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 28px;
-}
-.env-settings__listtitle {
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-}
-.env-settings__emptylist {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: var(--fs-sm);
-}
-.env-settings__items {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-.env-settings__item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  min-height: 30px;
-  text-align: left;
-  padding: var(--space-1) var(--space-2);
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  font: inherit;
-  font-size: var(--fs-sm);
-  cursor: pointer;
-}
-.env-settings__item:hover {
-  background: var(--surface-2);
-}
-.env-settings__item.is-active {
-  background: color-mix(in srgb, var(--primary) 14%, transparent);
-}
-.env-settings__name {
+/* The environments detail pane (the list lives in the Settings sub-nav now). */
+.env-detail {
   flex: 1;
   min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.env-settings__dot {
-  flex: 0 0 auto;
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: var(--success);
-}
-.env-settings__meta {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
+  max-width: 560px;
 }
 .env-settings__count {
   font-size: var(--fs-xs);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
-}
-.env-settings__detail {
-  flex: 1;
-  min-width: 0;
-  max-width: 560px;
 }
 .env-settings__editor {
   gap: var(--space-4);
