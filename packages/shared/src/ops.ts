@@ -336,6 +336,9 @@ export const apiAnalyzeRequestSchema = z
 export const secretSetRequestSchema = z
   .object({ ref: z.string().trim().min(1).max(64), value: z.string().max(4096) })
   .strict();
+export const secretDeleteRequestSchema = z
+  .object({ ref: z.string().trim().min(1).max(64) })
+  .strict();
 
 // --- Open standards: collection import (materialize a neutral collection) ----
 // The renderer parses foreign formats (OpenAPI/Postman/…) with the shared codecs and sends a neutral
@@ -597,6 +600,7 @@ export const OP_NAMES = [
   'api.history.delete',
   'secret.set',
   'secret.list',
+  'secret.delete',
   'batch.analyze',
   'batch.render',
   'action.execute',
@@ -706,6 +710,7 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'api.history.delete': idRequestSchema,
   'secret.set': secretSetRequestSchema,
   'secret.list': emptyRequestSchema,
+  'secret.delete': secretDeleteRequestSchema,
   'batch.analyze': batchAnalyzeRequestSchema,
   'batch.render': batchRenderRequestSchema,
   'action.execute': actionExecuteRequestSchema,
@@ -1347,6 +1352,7 @@ export type UserCodeRefRequest = z.infer<typeof userCodeRefRequestSchema>;
 export type ApiActionsClearRequest = z.infer<typeof apiActionsClearRequestSchema>;
 export type UserCodeRunRequest = z.infer<typeof userCodeRunRequestSchema>;
 export type SecretSetRequest = z.infer<typeof secretSetRequestSchema>;
+export type SecretDeleteRequest = z.infer<typeof secretDeleteRequestSchema>;
 
 export interface HttpSendResponse {
   response: HttpResponseDto;
@@ -1573,6 +1579,7 @@ export interface OpContracts {
   'api.history.delete': { request: IdRequest; response: OkResponse };
   'secret.set': { request: SecretSetRequest; response: SecretsResponse };
   'secret.list': { request: EmptyRequest; response: SecretsResponse };
+  'secret.delete': { request: SecretDeleteRequest; response: SecretsResponse };
   'batch.analyze': { request: BatchAnalyzeRequest; response: RequirementsResponse };
   'batch.render': { request: BatchRenderRequest; response: RenderResponse };
   'action.execute': { request: ActionExecuteRequest; response: ReceiptsResponse };

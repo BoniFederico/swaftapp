@@ -20,6 +20,7 @@ import {
   type InputStateSetRequest,
   type NameColorRequest,
   type SecretSetRequest,
+  type SecretDeleteRequest,
   type OpName,
   type PingRequest,
   type PingResponse,
@@ -408,6 +409,11 @@ export const handlers: Record<OpName, Handler> = {
       return { refs: getSecretService().list() };
     }),
   'secret.list': () => ({ refs: getSecretService().list() }),
+  'secret.delete': (p) =>
+    svc(() => {
+      getSecretService().delete((p as SecretDeleteRequest).ref);
+      return { refs: getSecretService().list() };
+    }),
 
   // Batcher + actions (M10)
   'batch.analyze': (p) =>
