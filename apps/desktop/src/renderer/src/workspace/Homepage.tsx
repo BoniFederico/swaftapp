@@ -141,19 +141,25 @@ export function Homepage() {
         ) : (
           <ul className="recent-list">
             {filtered.map((w) => (
-              <li key={w.path} className="recent-row">
-                <button type="button" className="recent-item" onClick={() => void tryOpen(w.path)}>
+              <li key={w.path} className="recent-item">
+                <button
+                  type="button"
+                  className="recent-item__open"
+                  onClick={() => void tryOpen(w.path)}
+                >
                   <span className="recent-item__name">{w.name}</span>
                   {w.encrypted && <span className="ui-badge">{t('home.encryptedBadge')}</span>}
                   <span className="recent-item__path muted">{w.path}</span>
                 </button>
-                <IconButton
-                  label={t('home.recent.forget')}
-                  className="recent-row__remove"
+                <button
+                  type="button"
+                  className="recent-item__remove"
+                  aria-label={t('home.recent.forget')}
+                  title={t('home.recent.forget')}
                   onClick={() => void forgetRecent(w.path)}
                 >
                   <CloseIcon />
-                </IconButton>
+                </button>
               </li>
             ))}
           </ul>

@@ -19,6 +19,7 @@
   --space-4: 16px;
   --space-5: 24px;
   --space-6: 32px;
+  --space-7: 46px;
 
   /* radii / elevation / typography — compact, flat, IDE-like */
   --radius-sm: 4px;
@@ -2989,22 +2990,32 @@ body {
   flex-direction: column;
   gap: var(--space-2);
 }
+/* A recent entry: one grey card holding the clickable open area (grows) and, inline at its end,
+   a borderless "×" that forgets the entry. */
 .recent-item {
-  width: 100%;
+  display: flex;
+  align-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.recent-item:hover {
+  border-color: var(--primary);
+}
+.recent-item__open {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: var(--space-3);
   text-align: left;
   font: inherit;
   color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  background: transparent;
+  border: none;
   border-radius: var(--radius-sm);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-3) var(--space-2) var(--space-3) var(--space-4);
   cursor: pointer;
-}
-.recent-item:hover {
-  border-color: var(--primary);
 }
 .recent-item__name {
   font-weight: 600;
@@ -3017,22 +3028,27 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* A recent entry: the clickable open area (grows) + a remove-from-recent affordance. */
-.recent-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-.recent-row .recent-item {
-  flex: 1;
-  min-width: 0;
-}
-.recent-row__remove {
+.recent-item__remove {
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-right: var(--space-2);
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
   color: var(--text-muted);
+  cursor: pointer;
 }
-.recent-row__remove:hover {
+.recent-item__remove:hover {
   color: var(--danger);
+}
+.recent-item__remove svg {
+  width: 16px;
+  height: 16px;
 }
 
 /* ---------- Homepage hero + entry points ---------- */
@@ -3050,7 +3066,7 @@ body {
   align-items: center;
   text-align: center;
   gap: var(--space-2);
-  padding: var(--space-6) 0 var(--space-3);
+  padding: var(--space-7) 0 var(--space-3);
 }
 .brand--hero {
   font-size: calc(var(--fs-2xl) * 1.8);
