@@ -39,6 +39,9 @@ import {
   type ScenarioRunBatchRequest,
   type ScenarioBatchRefRequest,
   type CollectionImportRequest,
+  type CollectionExportRequest,
+  type FileSaveTextRequest,
+  type FileSaveFilesRequest,
   type TemplateCreateRequest,
   type TemplateRefRequest,
   type TemplateSearchRequest,
@@ -59,7 +62,10 @@ import {
   type GitPublishRequest,
   type GitFileDiffRequest,
 } from '@swaft/shared';
+import { mkdir } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { toErrorEnvelope } from '../errors';
+import { writeFileAtomic } from '../storage/atomic-file';
 import {
   getActionService,
   getApiHistoryService,
@@ -71,6 +77,7 @@ import {
   getChangelogService,
   getEnvironmentService,
   getImportService,
+  getExportService,
   getGitOpsService,
   getOrganizationService,
   getPlatformDialogs,
@@ -501,5 +508,34 @@ export const handlers: Record<OpName, Handler> = {
       const r = p as CollectionImportRequest;
       const result = await getImportService().importCollection(r.collection, r.target);
       return { tree: await getOrganizationService().getTree(), result };
+    }),
+  'collection.export': (p) =>
+    svc(async () => {
+      const r = p as CollectionExportRequest;
+      return getExportService().export(r.scope, r.format, r.conversion);
+    }),
+  // Save exported content to disk via the native dialogs (main-process only).
+  'file.saveText': (p) =>
+    svc(async () => {
+      const r = p as FileSaveTextRequest;
+      const path = await getPlatformDialogs().pickSaveTarget(r.suggestedName);
+      if (path) await writeFileAtomic(path, r.content);
+      return { path };
+    }),
+  'file.saveFiles': (p) =>
+    svc(async () => {
+      const r = p as FileSaveFilesRequest;
+      const dir = await getPlatformDialogs().pickDirectory();
+      if (!dir) return { dir: null, count: 0 };
+      let count = 0;
+      for (const f of r.files) {
+        // Reject path traversal; write only within the chosen directory.
+        if (f.path.split(/[\\/]/).includes('..')) continue;
+        const dest = join(dir, f.path);
+        await mkdir(dirname(dest), { recursive: true });
+        await writeFileAtomic(dest, f.content);
+        count++;
+      }
+      return { dir, count };
     }),
 };

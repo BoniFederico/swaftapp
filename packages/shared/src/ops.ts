@@ -370,6 +370,30 @@ export const collectionImportRequestSchema = z
   .object({ collection: importedCollectionDtoSchema, target: importTargetSchema })
   .strict();
 
+// --- Open standards: export (gather api templates → an interchange format) ---
+export const exportScopeSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('template'), templateId: z.string().min(1) }).strict(),
+  z.object({ kind: z.literal('folder'), folderId: z.string().min(1) }).strict(),
+  z.object({ kind: z.literal('project'), projectId: z.string().min(1) }).strict(),
+  z.object({ kind: z.literal('workspace') }).strict(),
+]);
+export const collectionExportRequestSchema = z
+  .object({
+    scope: exportScopeSchema,
+    format: z.enum(['postman', 'http', 'bruno']),
+    conversion: z.enum(['verbatim', 'variabilize']),
+  })
+  .strict();
+const exportFileSchema = z
+  .object({ path: z.string().min(1).max(1024), content: z.string().max(20_000_000) })
+  .strict();
+export const fileSaveTextRequestSchema = z
+  .object({ suggestedName: z.string().min(1).max(255), content: z.string().max(20_000_000) })
+  .strict();
+export const fileSaveFilesRequestSchema = z
+  .object({ suggestedDirName: z.string().min(1).max(255), files: z.array(exportFileSchema).max(4000) })
+  .strict();
+
 // --- User code: capabilities authored in JavaScript -------------------------
 
 /** Inspect a `capability` template: the name it registers under and whether it is usable. */
@@ -590,6 +614,9 @@ export const OP_NAMES = [
   'scenario.batchStatus',
   'scenario.stopBatch',
   'collection.import',
+  'collection.export',
+  'file.saveText',
+  'file.saveFiles',
 ] as const;
 export type OpName = (typeof OP_NAMES)[number];
 
@@ -695,6 +722,9 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'scenario.batchStatus': scenarioBatchRefRequestSchema,
   'scenario.stopBatch': scenarioBatchRefRequestSchema,
   'collection.import': collectionImportRequestSchema,
+  'collection.export': collectionExportRequestSchema,
+  'file.saveText': fileSaveTextRequestSchema,
+  'file.saveFiles': fileSaveFilesRequestSchema,
 };
 
 /**
@@ -1425,6 +1455,26 @@ export interface CollectionImportResponse {
 export type CollectionImportRequest = z.infer<typeof collectionImportRequestSchema>;
 export type ImportedCollectionDto = z.infer<typeof importedCollectionDtoSchema>;
 export type ImportTargetDto = z.infer<typeof importTargetSchema>;
+
+export interface ExportFileDto {
+  path: string;
+  content: string;
+}
+export interface CollectionExportResponse {
+  files: ExportFileDto[];
+  report: string[];
+}
+export interface FileSavedResponse {
+  path: string | null;
+}
+export interface FilesSavedResponse {
+  dir: string | null;
+  count: number;
+}
+export type CollectionExportRequest = z.infer<typeof collectionExportRequestSchema>;
+export type ExportScopeDto = z.infer<typeof exportScopeSchema>;
+export type FileSaveTextRequest = z.infer<typeof fileSaveTextRequestSchema>;
+export type FileSaveFilesRequest = z.infer<typeof fileSaveFilesRequestSchema>;
 export interface SettingsResponse {
   settings: WorkspaceSettingsDto;
 }
@@ -1533,6 +1583,9 @@ export interface OpContracts {
   'scenario.batchStatus': { request: ScenarioBatchRefRequest; response: ScenarioBatchStatusResponse };
   'scenario.stopBatch': { request: ScenarioBatchRefRequest; response: OkResponse };
   'collection.import': { request: CollectionImportRequest; response: CollectionImportResponse };
+  'collection.export': { request: CollectionExportRequest; response: CollectionExportResponse };
+  'file.saveText': { request: FileSaveTextRequest; response: FileSavedResponse };
+  'file.saveFiles': { request: FileSaveFilesRequest; response: FilesSavedResponse };
 }
 
 export type OpRequest<N extends OpName> = OpContracts[N]['request'];
