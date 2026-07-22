@@ -452,9 +452,6 @@ export function FolderView({
                   {t('editor.preview')}
                 </button>
               </div>
-              <Button variant="primary" disabled={!notesDirty} onClick={() => void saveNotes()}>
-                {t('name.save')}
-              </Button>
             </div>
             {notesPreview ? (
               <RenderPreview subtype="markdown" output={notes} />
@@ -470,6 +467,11 @@ export function FolderView({
                 }}
               />
             )}
+            <div className="settings-form__actions">
+              <Button variant="primary" disabled={!notesDirty} onClick={() => void saveNotes()}>
+                {t('name.save')}
+              </Button>
+            </div>
           </div>
         )}
       </div>

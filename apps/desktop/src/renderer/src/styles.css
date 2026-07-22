@@ -4612,7 +4612,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  max-width: 560px;
+  max-width: 720px;
 }
 .folder-form > .field-hint {
   margin: 0;
@@ -4635,6 +4635,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  max-width: 720px;
+  width: 100%;
 }
 .folder-notes__bar {
   display: flex;
