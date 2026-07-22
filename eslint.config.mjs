@@ -23,6 +23,14 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
+  // Node build scripts (e.g. icon generation) run on Node, not in the renderer — give them the Node
+  // globals they use so no-undef doesn't flag `console`/`process`.
+  {
+    files: ['**/scripts/**/*.mjs'],
+    languageOptions: {
+      globals: { console: 'readonly', process: 'readonly', Buffer: 'readonly', URL: 'readonly' },
+    },
+  },
   // Rules-of-hooks (hard error) + exhaustive-deps (warning) over the renderer's React code.
   // The plugin's full recommended set (react-hooks/refs, set-state-in-effect, …) is deliberately
   // not enabled: it forbids the ref-mirror and seed-on-open patterns this codebase uses on purpose.
