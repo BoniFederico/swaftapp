@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://swaft.app/schemas/environment.schema.json",
+  "title": "Swaft environment (environments/<slug>.<shortId>.json)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "name", "description", "ownerKind", "ownerId", "vars"],
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "description": { "type": ["string", "null"] },
+    "ownerKind": { "type": "string" },
+    "ownerId": { "type": ["string", "null"] },
+    "vars": { "type": ["object", "null"] }
+  }
+}

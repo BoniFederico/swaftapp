@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://swaft.app/schemas/workspace.schema.json",
+  "title": "Swaft workspace manifest (workspace.json)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["formatVersion", "schemaVersion", "name", "executionMode"],
+  "properties": {
+    "formatVersion": { "type": "integer", "minimum": 1 },
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "name": { "type": "string" },
+    "icon": { "type": ["string", "null"] },
+    "executionMode": { "enum": ["sandbox", "dev"] }
+  }
+}
