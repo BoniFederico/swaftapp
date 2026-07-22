@@ -12,3 +12,4 @@ export * from './arazzo';
 export * from './seebo-convert';
 export * from './bruno';
 export * from './har';
+export * from './zip';
