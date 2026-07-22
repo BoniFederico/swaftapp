@@ -337,6 +337,39 @@ export const secretSetRequestSchema = z
   .object({ ref: z.string().trim().min(1).max(64), value: z.string().max(4096) })
   .strict();
 
+// --- Open standards: collection import (materialize a neutral collection) ----
+// The renderer parses foreign formats (OpenAPI/Postman/…) with the shared codecs and sends a neutral
+// ImportedCollection here; only the materialization into projects/folders/api templates needs main.
+
+export const importedRequestDtoSchema = z
+  .object({
+    name: z.string().max(200),
+    folderPath: z.array(z.string().max(200)).max(32),
+    request: httpRequestSchema,
+    description: z.string().max(100_000).optional(),
+  })
+  .strict();
+export const importedEnvironmentDtoSchema = z
+  .object({ name: z.string().max(200), vars: z.record(z.string().max(8192)) })
+  .strict();
+export const importedCollectionDtoSchema = z
+  .object({
+    name: z.string().max(200),
+    requests: z.array(importedRequestDtoSchema).max(2000),
+    environments: z.array(importedEnvironmentDtoSchema).max(64),
+  })
+  .strict();
+export const importTargetSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('new-project'), name: z.string().max(120).optional() }).strict(),
+  z.object({ kind: z.literal('project'), projectId: z.string().min(1) }).strict(),
+  z
+    .object({ kind: z.literal('folder'), projectId: z.string().min(1), folderId: z.string().min(1) })
+    .strict(),
+]);
+export const collectionImportRequestSchema = z
+  .object({ collection: importedCollectionDtoSchema, target: importTargetSchema })
+  .strict();
+
 // --- User code: capabilities authored in JavaScript -------------------------
 
 /** Inspect a `capability` template: the name it registers under and whether it is usable. */
@@ -556,6 +589,7 @@ export const OP_NAMES = [
   'scenario.runBatch',
   'scenario.batchStatus',
   'scenario.stopBatch',
+  'collection.import',
 ] as const;
 export type OpName = (typeof OP_NAMES)[number];
 
@@ -660,6 +694,7 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'scenario.runBatch': scenarioRunBatchRequestSchema,
   'scenario.batchStatus': scenarioBatchRefRequestSchema,
   'scenario.stopBatch': scenarioBatchRefRequestSchema,
+  'collection.import': collectionImportRequestSchema,
 };
 
 /**
@@ -1377,6 +1412,19 @@ export interface ReceiptsResponse {
 export interface TreeResponse {
   tree: WorkspaceTree;
 }
+export interface ImportResultDto {
+  projectId: string;
+  folders: number;
+  requests: number;
+  environments: number;
+}
+export interface CollectionImportResponse {
+  tree: WorkspaceTree;
+  result: ImportResultDto;
+}
+export type CollectionImportRequest = z.infer<typeof collectionImportRequestSchema>;
+export type ImportedCollectionDto = z.infer<typeof importedCollectionDtoSchema>;
+export type ImportTargetDto = z.infer<typeof importTargetSchema>;
 export interface SettingsResponse {
   settings: WorkspaceSettingsDto;
 }
@@ -1484,6 +1532,7 @@ export interface OpContracts {
   'scenario.runBatch': { request: ScenarioRunBatchRequest; response: ScenarioBatchStartedResponse };
   'scenario.batchStatus': { request: ScenarioBatchRefRequest; response: ScenarioBatchStatusResponse };
   'scenario.stopBatch': { request: ScenarioBatchRefRequest; response: OkResponse };
+  'collection.import': { request: CollectionImportRequest; response: CollectionImportResponse };
 }
 
 export type OpRequest<N extends OpName> = OpContracts[N]['request'];

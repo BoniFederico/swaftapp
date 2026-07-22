@@ -119,7 +119,7 @@ export class TemplateService extends RepoBase {
 
   // `async` so a rejected validation is a rejected promise: throwing synchronously from a method
   // that advertises a Promise escapes `await`-based error handling at the call site.
-  async createTemplate(req: TemplateCreateRequest): Promise<WorkspaceTree> {
+  async createTemplate(req: TemplateCreateRequest & { id?: string }): Promise<WorkspaceTree> {
     // A template lives either in a folder (`folderId`) or at the project root (`projectId`).
     if (!req.folderId && !req.projectId) {
       throw new AppError(
@@ -132,7 +132,7 @@ export class TemplateService extends RepoBase {
     assertUsableCodeName(type, req.name);
     return this.commitTree(() =>
       this.insertEntity('templates', {
-        id: randomUUID(),
+        id: req.id ?? randomUUID(),
         folder_id: req.folderId ?? '',
         project_id: req.folderId ? null : (req.projectId ?? null),
         name: req.name.trim(),

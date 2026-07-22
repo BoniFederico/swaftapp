@@ -25,6 +25,7 @@ import {
   setBatcherService,
   setChangelogService,
   setEnvironmentService,
+  setImportService,
   setGitOpsService,
   setHttpService,
   setOrganizationService,
@@ -46,6 +47,7 @@ import { ApiRunService } from './workspace/ApiRunService';
 import { BatcherService } from './workspace/BatcherService';
 import { ChangelogService } from './workspace/ChangelogService';
 import { EnvironmentService } from './workspace/EnvironmentService';
+import { ImportService } from './workspace/ImportService';
 import { OrganizationService } from './workspace/OrganizationService';
 import { ReleaseService } from './workspace/ReleaseService';
 import { RenderService } from './workspace/RenderService';
@@ -249,6 +251,7 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
   setActionService(actionService);
   setScenarioService(scenarioService);
   setEnvironmentService(environments);
+  setImportService(new ImportService({ organization, templates, environments }));
   setGitOpsService(new GitOpsService(workspaceService, git));
   setPlatformDialogs(dialogs);
 }

@@ -11,6 +11,7 @@ import type { ApiRunService } from './workspace/ApiRunService';
 import type { BatcherService } from './workspace/BatcherService';
 import type { ChangelogService } from './workspace/ChangelogService';
 import type { EnvironmentService } from './workspace/EnvironmentService';
+import type { ImportService } from './workspace/ImportService';
 import type { OrganizationService } from './workspace/OrganizationService';
 import type { ReleaseService } from './workspace/ReleaseService';
 import type { RenderService } from './workspace/RenderService';
@@ -86,3 +87,5 @@ export const { get: getEnvironmentService, set: setEnvironmentService } =
   serviceSlot<EnvironmentService>('EnvironmentService');
 export const { get: getGitOpsService, set: setGitOpsService } =
   serviceSlot<GitOpsService>('GitOpsService');
+export const { get: getImportService, set: setImportService } =
+  serviceSlot<ImportService>('ImportService');

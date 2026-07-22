@@ -38,6 +38,7 @@ import {
   type ScenarioRunListRequest,
   type ScenarioRunBatchRequest,
   type ScenarioBatchRefRequest,
+  type CollectionImportRequest,
   type TemplateCreateRequest,
   type TemplateRefRequest,
   type TemplateSearchRequest,
@@ -69,6 +70,7 @@ import {
   getBatcherService,
   getChangelogService,
   getEnvironmentService,
+  getImportService,
   getGitOpsService,
   getOrganizationService,
   getPlatformDialogs,
@@ -491,5 +493,13 @@ export const handlers: Record<OpName, Handler> = {
     svc(async () => {
       await getScenarioService().stopBatch((p as ScenarioBatchRefRequest).batchId);
       return { ok: true as const };
+    }),
+
+  // Open standards: materialize a neutral collection (parsed by the renderer's shared codecs).
+  'collection.import': (p) =>
+    svc(async () => {
+      const r = p as CollectionImportRequest;
+      const result = await getImportService().importCollection(r.collection, r.target);
+      return { tree: await getOrganizationService().getTree(), result };
     }),
 };

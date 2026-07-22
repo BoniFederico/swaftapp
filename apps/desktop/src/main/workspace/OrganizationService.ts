@@ -198,13 +198,15 @@ export class OrganizationService extends RepoBase {
   }
 
   createProject(input: {
+    /** Caller-supplied id (e.g. an importer building a tree); defaults to a fresh UUID. */
+    id?: string;
     name: string;
     color?: string;
     description?: string;
   }): Promise<WorkspaceTree> {
     const description = input.description?.trim();
     return this.insertAndCommit('projects', {
-      id: randomUUID(),
+      id: input.id ?? randomUUID(),
       name: input.name.trim(),
       color: input.color ?? null,
       description: description ? description : null,
@@ -230,12 +232,14 @@ export class OrganizationService extends RepoBase {
   }
 
   createFolder(input: {
+    /** Caller-supplied id (e.g. an importer building a tree); defaults to a fresh UUID. */
+    id?: string;
     name: string;
     projectId: string;
     parentFolderId?: string | null;
   }): Promise<WorkspaceTree> {
     return this.insertAndCommit('folders', {
-      id: randomUUID(),
+      id: input.id ?? randomUUID(),
       name: input.name.trim(),
       project_id: input.projectId,
       parent_folder_id: input.parentFolderId ?? null,
