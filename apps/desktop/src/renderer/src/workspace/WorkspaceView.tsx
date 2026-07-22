@@ -240,6 +240,7 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
         <div className="ws-actions">
           {current?.storageMode === 'git' && <GitStatusButton client={client} />}
           <EnvironmentPicker onManage={() => openSettings('environments')} />
+          <span className="ws-sep" aria-hidden="true" />
           <IconButton label={t('ws.settings')} onClick={() => openSettings('general')}>
             <SettingsIcon />
           </IconButton>

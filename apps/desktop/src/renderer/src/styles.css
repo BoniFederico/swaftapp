@@ -162,8 +162,8 @@ body {
   justify-content: space-between;
   gap: var(--space-4);
   flex-wrap: wrap;
-  padding: var(--space-1) var(--space-4);
-  min-height: 40px;
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  min-height: 48px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
@@ -200,6 +200,14 @@ body {
   width: 1px;
   height: 18px;
   background: var(--border);
+}
+/* Signed-in identity text left of the action trio (homepage top bar). */
+.ws-user {
+  min-width: 0;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .ws-title {
   font-size: var(--fs-md);

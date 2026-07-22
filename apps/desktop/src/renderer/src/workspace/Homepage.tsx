@@ -1,10 +1,19 @@
 import { useMemo, useState } from 'react';
 import type { StorageMode } from '@swaft/shared';
 import { ApiError } from '../api-client/client';
-import { AccountControls } from '../auth/AccountControls';
+import { useAuth } from '../auth/AuthProvider';
 import { useI18n } from '../i18n/I18nProvider';
 import { PreferencesDialog } from '../settings/PreferencesDialog';
-import { CloseIcon, EmptyState, IconButton, SearchIcon, SettingsIcon, SplitButton } from '../ui';
+import {
+  CloseIcon,
+  EmptyState,
+  IconButton,
+  LockIcon,
+  LogoutIcon,
+  SearchIcon,
+  SettingsIcon,
+  SplitButton,
+} from '../ui';
 import { CloneDialog } from '../git/CloneDialog';
 import { CreateWorkspaceWizard } from './CreateWorkspaceWizard';
 import { OpenPasswordDialog } from './OpenPasswordDialog';
@@ -20,6 +29,7 @@ import { useWorkspace } from './WorkspaceProvider';
 export function Homepage() {
   const { t } = useI18n();
   const { recent, open, pickOpenTarget, pickDirectory, gitAvailable, forgetRecent } = useWorkspace();
+  const { profile, lock, signOut } = useAuth();
 
   const [query, setQuery] = useState('');
   const [wizardMode, setWizardMode] = useState<StorageMode | null>(null);
@@ -92,9 +102,18 @@ export function Homepage() {
           </span>
         </div>
         <div className="ws-actions">
-          <AccountControls />
+          <span className="muted ws-user">
+            {t('home.signedInAs', { name: profile?.displayName ?? '' })}
+          </span>
+          <span className="ws-sep" aria-hidden="true" />
           <IconButton label={t('prefs.open')} onClick={() => setPrefsOpen(true)}>
             <SettingsIcon />
+          </IconButton>
+          <IconButton label={t('account.lock')} onClick={() => void lock()}>
+            <LockIcon />
+          </IconButton>
+          <IconButton label={t('account.signOut')} onClick={() => void signOut()}>
+            <LogoutIcon />
           </IconButton>
         </div>
       </header>
