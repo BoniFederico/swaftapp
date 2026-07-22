@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import type { StorageMode } from '@swaft/shared';
 import { api, ApiError, type ApiClient } from '../api-client/client';
 import { useI18n } from '../i18n/I18nProvider';
 import { SettingsModal } from '../settings/SettingsModal';
@@ -13,23 +12,23 @@ import {
   SwaftMark,
 } from '../ui';
 import { CloneDialog } from '../git/CloneDialog';
-import { CreateWorkspaceWizard } from './CreateWorkspaceWizard';
+import { CreateWorkspaceWizard, type CreateVariant } from './CreateWorkspaceWizard';
 import { OpenPasswordDialog } from './OpenPasswordDialog';
 import { useWorkspace } from './WorkspaceProvider';
 
 /**
  * The signed-in landing page when no workspace is open: a centered brand hero,
  * a search box that filters the recent list, and two "listbox of buttons" entry points — Create
- * (Local / Git) and Open (from .swaft / from folder / clone from URL). The storage mode / open source
- * is chosen here so the create wizard and open flow start already scoped. Encrypted workspaces prompt
- * for their password on open.
+ * (Local file / Local folder / Git) and Open (from .swaft / from folder / clone from URL). The
+ * create variant / open source is chosen here so the wizard and open flow start already scoped.
+ * Encrypted workspaces prompt for their password on open.
  */
 export function Homepage({ client = api }: { client?: ApiClient }) {
   const { t } = useI18n();
   const { recent, open, pickOpenTarget, pickDirectory, gitAvailable, forgetRecent } = useWorkspace();
 
   const [query, setQuery] = useState('');
-  const [wizardMode, setWizardMode] = useState<StorageMode | null>(null);
+  const [wizardMode, setWizardMode] = useState<CreateVariant | null>(null);
   const [cloneOpen, setCloneOpen] = useState(false);
   const [pwDialogOpen, setPwDialogOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -62,7 +61,8 @@ export function Homepage({ client = api }: { client?: ApiClient }) {
   const gitHidden = gitAvailable === false;
 
   const createItems = [
-    { id: 'local', label: t('home.create.local') },
+    { id: 'local-file', label: t('home.create.local') },
+    { id: 'local-folder', label: t('home.create.localFolder') },
     ...(gitHidden ? [] : [{ id: 'git', label: t('home.create.git') }]),
   ];
   const openItems = [
@@ -72,7 +72,7 @@ export function Homepage({ client = api }: { client?: ApiClient }) {
   ];
 
   function onCreate(id: string) {
-    setWizardMode(id as StorageMode);
+    setWizardMode(id as CreateVariant);
   }
 
   function onOpen(id: string) {
@@ -186,7 +186,7 @@ export function Homepage({ client = api }: { client?: ApiClient }) {
 
       <CreateWorkspaceWizard
         open={wizardMode !== null}
-        storageMode={wizardMode ?? 'local'}
+        variant={wizardMode ?? 'local-file'}
         onClose={() => setWizardMode(null)}
       />
       <CloneDialog open={cloneOpen} onClose={() => setCloneOpen(false)} />
