@@ -112,6 +112,36 @@ describe('SeeboHost — env-fallback sugar for bare names', () => {
   });
 });
 
+/** A fake `secret(...)` provider (returns '' for a missing name, like the real keychain-backed one). */
+function fakeSecretData(secrets: Record<string, string>) {
+  return { resolve: (name: string) => secrets[name] ?? '' };
+}
+
+describe('SeeboHost — secret(...) data capability', () => {
+  it('is a data capability (pruned from inputs)', async () => {
+    expect((await new SeeboHost().dataCapabilityNames()).has('secret')).toBe(true);
+  });
+
+  it('resolves a secret value at render time', async () => {
+    const host = new SeeboHost({}, { secretData: fakeSecretData({ API_TOKEN: 't0ken' }) });
+    const state = await host.render("Authorization: Bearer ${ secret('API_TOKEN') }", {});
+    expect(state.status).toBe('completed');
+    expect(state.output).toBe('Authorization: Bearer t0ken');
+  });
+
+  it('resolves an absent secret to empty (never crashes a preview)', async () => {
+    const host = new SeeboHost({}, { secretData: fakeSecretData({}) });
+    const state = await host.render("x=${ secret('MISSING') }", {});
+    expect(state.status).toBe('completed');
+    expect(state.output).toBe('x=');
+  });
+
+  it('is inert without a secret provider (unknown capability fails)', async () => {
+    const state = await new SeeboHost().render("${ secret('X') }", {});
+    expect(state.status).toBe('failed');
+  });
+});
+
 describe('SeeboHost — previous(...) scenario data capability', () => {
   const ctx = (outputs: Record<string, unknown>, previousAlias?: string) => ({
     projectId: null,

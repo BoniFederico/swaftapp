@@ -176,7 +176,17 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
     // for the code it carries.
     trust: appStore,
   });
-  const host = new SeeboHost({}, { templateData, envData: environments, userCapabilities });
+  // Secrets live in the OS keychain (never in `.swaft`/files). The `secret(...)` data capability
+  // reveals a value at render/send time in the main process only; the renderer holds refs, never values.
+  const secretService = new SecretService(
+    join(app.getPath('userData'), 'secrets.json'),
+    new SafeStorageCipher(),
+  );
+  const secretData = { resolve: (name: string) => secretService.get(name) ?? '' };
+  const host = new SeeboHost(
+    {},
+    { templateData, envData: environments, secretData, userCapabilities },
+  );
   const render = new RenderService(workspaceService, templates, host, releases);
   const apiRequest = new ApiRequestService(templates, host, organization);
   const batcher = new BatcherService(templates, releases, host);
@@ -188,10 +198,6 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
     currentUsername,
   });
 
-  const secretService = new SecretService(
-    join(app.getPath('userData'), 'secrets.json'),
-    new SafeStorageCipher(),
-  );
   // Folder-propagated proxies route through a dedicated Electron session per proxy target, so the
   // Chromium network stack handles both http and https (CONNECT tunneling) transparently.
   const proxyFetchFn = (proxy: FolderProxyDto): typeof fetch => {

@@ -909,7 +909,7 @@ export interface RequirementDto {
  * which surface as requirements for the user). They are never shown in the Input panel. Single source
  * of truth for both the main host (`SeeboHost`) and the renderer (Input panel pruning).
  */
-export const DATA_CAPABILITIES = ['template', 'env', 'previous'] as const;
+export const DATA_CAPABILITIES = ['template', 'env', 'previous', 'secret'] as const;
 export type DataCapability = (typeof DATA_CAPABILITIES)[number];
 
 export interface DiagnosticDto {
