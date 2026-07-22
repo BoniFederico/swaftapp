@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   type FolderDto,
+  type ImportedCollectionDto,
   type OpName,
   type TagDto,
   type TemplateSummary,
@@ -18,6 +19,7 @@ import {
   ChevronLeftIcon,
   ConfirmDialog,
   DocumentIcon,
+  DownloadIcon,
   EmptyIcon,
   FilterIcon,
   FolderIcon,
@@ -33,6 +35,7 @@ import {
 import { usePopover } from '../ui/usePopover';
 import { CreateProjectDialog } from './CreateProjectDialog';
 import { CreateTemplateDialog } from './CreateTemplateDialog';
+import { ImportDialog } from './ImportDialog';
 import { NameDialog } from './NameDialog';
 import { ProjectSelector } from './ProjectSelector';
 import { badgeColor, rowBadge } from './badges';
@@ -178,6 +181,7 @@ export function WorkingTree({
   const [matchIds, setMatchIds] = useState<Set<string> | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [projectOpen, setProjectOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [createTpl, setCreateTpl] = useState<{ folderId: string | null } | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
@@ -282,6 +286,30 @@ export function WorkingTree({
       await fn();
     } catch (e) {
       toast.show(e instanceof ApiError ? e.swaft.message : String(e), 'error');
+    }
+  }
+
+  async function importCollection(collection: ImportedCollectionDto, projectName: string) {
+    setImportOpen(false);
+    const before = new Set(tree.projects.map((p) => p.id));
+    setBusy(true);
+    try {
+      const res = await client.call('collection.import', {
+        collection,
+        target: { kind: 'new-project', name: projectName },
+      });
+      setTree(res.tree);
+      notifyTreeChanged();
+      const created = res.tree.projects.find((p) => !before.has(p.id));
+      if (created) setSelectedProject(created.id);
+      toast.show(
+        t('import.done', { requests: String(res.result.requests), project: projectName }),
+        'success',
+      );
+    } catch (e) {
+      toast.show(e instanceof ApiError ? e.swaft.message : String(e), 'error');
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -597,9 +625,14 @@ export function WorkingTree({
         <div className="tree__field">
           <div className="tree__field-head">
             <span className="ui-field__label">{t('tree.project')}</span>
-            <IconButton label={t('tree.collapse')} className="tree__collapse" onClick={onCollapse}>
-              <ChevronLeftIcon />
-            </IconButton>
+            <span className="row" style={{ gap: 'var(--space-1)' }}>
+              <IconButton label={t('import.trigger')} onClick={() => setImportOpen(true)}>
+                <DownloadIcon />
+              </IconButton>
+              <IconButton label={t('tree.collapse')} className="tree__collapse" onClick={onCollapse}>
+                <ChevronLeftIcon />
+              </IconButton>
+            </span>
           </div>
           <ProjectSelector
             projects={tree.projects}
@@ -706,6 +739,13 @@ export function WorkingTree({
         busy={busy}
         onSubmit={(name, type) => void guarded(() => createTemplate(name, type))}
         onClose={() => setCreateTpl(null)}
+      />
+
+      <ImportDialog
+        open={importOpen}
+        busy={busy}
+        onImport={(collection, projectName) => void importCollection(collection, projectName)}
+        onClose={() => setImportOpen(false)}
       />
 
       <ConfirmDialog
