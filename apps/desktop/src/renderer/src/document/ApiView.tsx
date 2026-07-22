@@ -3,6 +3,7 @@ import {
   DRAFT_RELEASE,
   fromCurl,
   toCurl,
+  toHar,
   type ApiHistoryItem,
   type ReleaseDto,
   type RequestAction,
@@ -498,6 +499,26 @@ export function ApiView({
   async function clearHistory() {
     setHistory((await client.call('api.history.clear', { templateId })).items);
   }
+  /** Export the metadata-only call history as a HAR 1.2 log (open format), saved via the native dialog. */
+  async function exportHar() {
+    try {
+      const har = toHar(
+        history.map((h) => ({
+          method: h.method,
+          url: h.url,
+          status: h.status ?? undefined,
+          startedDateTime: h.createdAt,
+        })),
+      );
+      const saved = await client.call('file.saveText', {
+        suggestedName: 'api-history.har',
+        content: JSON.stringify(har, null, 2),
+      });
+      if (saved.path) toast.show(t('api.harExported'), 'success');
+    } catch (e) {
+      toast.show(e instanceof ApiError ? e.swaft.message : String(e), 'error');
+    }
+  }
   async function clearActions(trigger: 'pre' | 'post') {
     setActionOutcomes((await client.call('api.actions.clear', { templateId, trigger })).outcomes);
   }
@@ -714,7 +735,12 @@ export function ApiView({
             ) : resTab === 'postActions' ? (
               <ActionOutcomes outcomes={postOutcomes} onClear={() => void clearActions('post')} />
             ) : resTab === 'history' ? (
-              <HistoryView history={history} onOpen={setDetail} onClear={() => void clearHistory()} />
+              <HistoryView
+                history={history}
+                onOpen={setDetail}
+                onClear={() => void clearHistory()}
+                onExport={() => void exportHar()}
+              />
             ) : error ? (
               <div className="auth-error" role="alert">
                 {error}
@@ -936,10 +962,12 @@ function HistoryView({
   history,
   onOpen,
   onClear,
+  onExport,
 }: {
   history: ApiHistoryItem[];
   onOpen: (item: ApiHistoryItem) => void;
   onClear: () => void;
+  onExport: () => void;
 }) {
   const { t } = useI18n();
   if (history.length === 0) return <span className="muted">{t('wsset.empty')}</span>;
@@ -960,6 +988,9 @@ function HistoryView({
         ))}
       </ul>
       <div className="api-hist__foot">
+        <Button variant="ghost" onClick={onExport}>
+          {t('api.exportHar')}
+        </Button>
         <Button variant="ghost" onClick={onClear}>
           {t('api.clear')}
         </Button>
