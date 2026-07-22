@@ -1,0 +1,38 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Swaft">
+  <defs>
+    <!-- Primary-blue tile gradient, centered on the app's --primary (#3574f0). -->
+    <linearGradient id="tile" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4a86f7"/>
+      <stop offset="0.55" stop-color="#3574f0"/>
+      <stop offset="1" stop-color="#2b62d6"/>
+    </linearGradient>
+    <!-- Soft top sheen for a little depth. -->
+    <linearGradient id="sheen" x1="512" y1="0" x2="512" y2="560" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- App tile -->
+  <rect x="0" y="0" width="1024" height="1024" rx="232" fill="url(#tile)"/>
+  <rect x="0" y="0" width="1024" height="1024" rx="232" fill="url(#sheen)"/>
+
+  <!-- The "S" drawn as a routed connector (a nod to the scenario node-graph wires),
+       with round caps so the terminals read as connection nodes. -->
+  <path
+    d="M652 392
+       C652 324 588 292 512 292
+       C428 292 366 344 366 418
+       C366 486 424 516 512 528
+       C600 540 658 566 658 634
+       C658 708 596 732 512 732
+       C436 732 372 700 372 632"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="112"
+    stroke-linecap="round"
+    stroke-linejoin="round"/>
+
+  <!-- Accent dot: the signature "." of the `Swaft.` wordmark — detached from the S with a clear gap. -->
+  <circle cx="748" cy="740" r="58" fill="#ffffff"/>
+</svg>

@@ -27,6 +27,7 @@ import {
   LogoutIcon,
   ScenarioIcon,
   SettingsIcon,
+  SwaftMark,
 } from '../ui';
 import { FolderView } from './FolderView';
 import { subscribeTreeChanged } from './treeBus';
@@ -213,7 +214,10 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
             title={t('ws.home')}
             aria-label={t('ws.home')}
           >
-            Swaft<span className="accent">.</span>
+            <SwaftMark className="ws-appname__mark" aria-hidden="true" />
+            <span className="ws-appname__text">
+              Swaft<span className="accent">.</span>
+            </span>
           </button>
           <span className="ws-sep" aria-hidden="true" />
           <div className="ws-title">
