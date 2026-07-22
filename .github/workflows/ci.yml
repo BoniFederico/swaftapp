@@ -1,0 +1,29 @@
+name: CI
+
+# Cheap, frequent checks on every PR and push to main — Linux only (×1 minute multiplier) to stay
+# well inside the free-tier budget. Heavy suites (SWAFT_RUN_HEAVY_TESTS) and Playwright e2e are
+# intentionally NOT run here; they belong to the pre-release gate / on-demand runs (see deploy.md §5).
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Supersede in-flight runs on the same ref so rapid pushes don't pile up minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test

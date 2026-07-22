@@ -1,0 +1,84 @@
+name: Release
+
+# Manually triggered (workflow_dispatch) so the costly multi-OS build never runs on every commit —
+# see deploy.md §5.2. Currently Windows + Linux only; macOS (×10 minutes) is deferred and can be
+# added by dropping `macos-latest` into the build matrix (the mac target already exists in
+# electron-builder.yml). The release is created as a DRAFT for you to review and publish.
+on:
+  workflow_dispatch:
+    inputs:
+      draft:
+        description: Create the GitHub Release as a draft (review before publishing)
+        type: boolean
+        default: true
+
+# action-gh-release needs write access to create the release + upload assets.
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  # Pre-release gate: if the checks fail, the expensive build matrix never starts.
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+
+  build:
+    needs: gate
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # gen:icons → electron-vite build → electron-builder (builds for the current OS: AppImage on
+      # Linux, NSIS on Windows). No --publish here; assets are collected and released in one place
+      # by the publish job below (avoids two runners racing to create the same release).
+      - run: npm run dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.yml
+            apps/desktop/release/*.blockmap
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The release tag/name comes from the app version — bump apps/desktop/package.json before a
+      # release (see deploy.md §4).
+      - id: meta
+        run: echo "version=$(node -p "require('./apps/desktop/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.meta.outputs.version }}
+          name: Swaft v${{ steps.meta.outputs.version }}
+          draft: ${{ inputs.draft }}
+          files: artifacts/*
