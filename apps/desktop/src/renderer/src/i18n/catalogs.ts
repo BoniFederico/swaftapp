@@ -3,9 +3,9 @@
  * fall back to `en` (UI-SPEC §23.4, L10N-6). No hard-coded UI strings live in components.
  */
 export const en = {
-  'app.subtitle': 'Strange Web App for Technician',
+  'app.subtitle': 'Strange Workspace App for Technician',
 
-  'auth.brandTagline': 'Strange Web App for Technician',
+  'auth.brandTagline': 'Strange Workspace App for Technician',
   'auth.signUp.title': 'Create your account',
   'auth.signUp.subtitle': 'Set up the local account that protects this device.',
   'auth.signIn.title': 'Welcome back',
@@ -34,8 +34,17 @@ export const en = {
   'home.signedInAs': 'Signed in as {{name}}',
   'home.recent.title': 'Recent workspaces',
   'home.recent.empty': 'No workspaces yet. Create one to get started.',
-  'home.create': 'Create workspace',
-  'home.open': 'Open workspace…',
+  'home.recent.noMatch': 'No recent workspaces match your search.',
+  'home.search': 'Search recent workspaces',
+  'home.create': 'Create',
+  'home.create.aria': 'Create workspace',
+  'home.create.local': 'Local file (.swaft)',
+  'home.create.git': 'Git folder (.git)',
+  'home.open': 'Open',
+  'home.open.aria': 'Open workspace',
+  'home.open.file': 'From .swaft',
+  'home.open.folder': 'From folder',
+  'home.open.clone': 'Clone from URL',
   'home.encryptedBadge': 'Encrypted',
   'account.menu': 'Account',
   'account.lock': 'Lock',
@@ -593,9 +602,9 @@ export const en = {
 export type TranslationKey = keyof typeof en;
 
 export const it: Partial<Record<TranslationKey, string>> = {
-  'app.subtitle': 'Strange Web App for Technician',
+  'app.subtitle': 'Strange Workspace App for Technician',
 
-  'auth.brandTagline': 'Strange Web App for Technician',
+  'auth.brandTagline': 'Strange Workspace App for Technician',
   'auth.signUp.title': 'Crea il tuo account',
   'auth.signUp.subtitle': 'Configura l’account locale che protegge questo dispositivo.',
   'auth.signIn.title': 'Bentornato',
@@ -624,8 +633,17 @@ export const it: Partial<Record<TranslationKey, string>> = {
   'home.signedInAs': 'Accesso eseguito come {{name}}',
   'home.recent.title': 'Workspace recenti',
   'home.recent.empty': 'Nessun workspace. Creane uno per iniziare.',
-  'home.create': 'Crea workspace',
-  'home.open': 'Apri workspace…',
+  'home.recent.noMatch': 'Nessun workspace recente corrisponde alla ricerca.',
+  'home.search': 'Cerca nei workspace recenti',
+  'home.create': 'Crea',
+  'home.create.aria': 'Crea workspace',
+  'home.create.local': 'File locale (.swaft)',
+  'home.create.git': 'Cartella Git (.git)',
+  'home.open': 'Apri',
+  'home.open.aria': 'Apri workspace',
+  'home.open.file': 'Da .swaft',
+  'home.open.folder': 'Da cartella',
+  'home.open.clone': 'Clona da URL',
   'home.encryptedBadge': 'Cifrato',
   'account.menu': 'Account',
   'account.lock': 'Blocca',
