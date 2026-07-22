@@ -18,7 +18,7 @@ import { api as defaultClient, ApiClient, ApiError } from '../api-client/client'
 /**
  * Renderer-side workspace state: the open workspace + the recent list, with create/open/close
  * commands routed through the API client to the main-process WorkspaceService. The renderer is not
- * the authority — it reflects what main reports. See SWAFT_UI_SPEC.md §2–§3.
+ * the authority — it reflects what main reports.
  */
 interface WorkspaceContextValue {
   current: WorkspaceSummary | null;

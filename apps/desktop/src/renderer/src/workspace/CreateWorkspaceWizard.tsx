@@ -7,10 +7,10 @@ import { useWorkspace } from './WorkspaceProvider';
 import { workspaceErrorKey } from './workspace-errors';
 
 /**
- * Create Workspace wizard (SWAFT_UI_SPEC.md §3). The storage mode is chosen up front on the homepage
+ * Create Workspace wizard. The storage mode is chosen up front on the homepage
  * (the Create split-button) and passed in here — it is immutable for the life of the workspace:
  * `local` is a single (optionally encrypted) `.swaft` file; `git` is a directory of versioned files in
- * a Git repository (never encrypted — see git.md). Execution mode defaults to `sandbox`.
+ * a Git repository (never encrypted). Execution mode defaults to `sandbox`.
  */
 export function CreateWorkspaceWizard({
   open,

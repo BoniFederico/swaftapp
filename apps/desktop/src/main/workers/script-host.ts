@@ -9,7 +9,7 @@ import { findForbiddenSyntax, findNonJsonPath } from '../usercode/guard';
 
 /**
  * The isolated script host: a dedicated Electron `utilityProcess` that imports and runs
- * user-authored capability modules (analisi_codice_utente.md §5.4). It is the process the main side
+ * user-authored capability modules. It is the process the main side
  * kills when a call outruns its budget, which is the only real defence against a non-terminating
  * capability — Seebo's own limits bound template evaluation, not the JavaScript we hand to it.
  *

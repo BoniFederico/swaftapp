@@ -63,7 +63,7 @@ export interface UserCodeRegistryDeps {
  * validate / render, so there is no long-lived engine to register into on save. Instead this
  * registry keeps a snapshot of the `capability` templates keyed by the workspace revision, which
  * makes the per-engine cost a map lookup while still making a save visible immediately
- * (analisi_codice_utente.md §5.3).
+ *
  *
  * Nothing here executes user code. The declared `type` is read statically from the source, so
  * `validate` — which runs on every keystroke in the editor — never has a reason to run a script.

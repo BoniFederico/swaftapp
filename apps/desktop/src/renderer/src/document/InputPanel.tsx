@@ -8,7 +8,7 @@ import { validateInput } from './inputValidation';
  * The Input Panel: one widget per requirement, chosen by the requirement's `capability` (the Seebo
  * input-widget catalog). The widget also reflects the underlying **type** and its limits — integers
  * reject decimals, durations enforce HH:mm:ss, JSON must parse — surfacing inline errors. The engine
- * never validates values, so this is the only guard. See SWAFT_UI_SPEC §9–§9.1.1.
+ * never validates values, so this is the only guard.
  */
 export function InputPanel({
   requirements,

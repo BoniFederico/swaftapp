@@ -18,7 +18,7 @@ interface SettingsRow {
 /**
  * Workspace settings (🟢 synchronized): the execution mode plus the outgoing-HTTP restrictions —
  * blocked domains, enforced proxy and enforced headers (all applied by HttpService). Switching to
- * the `dev` execution mode is **gated** by an explicit confirmation (SWAFT_SECURITY_MODEL.md §8).
+ * the `dev` execution mode is **gated** by an explicit confirmation.
  * The settings row is created lazily with safe defaults.
  */
 export class SettingsService extends RepoBase {

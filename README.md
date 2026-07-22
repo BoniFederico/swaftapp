@@ -1,20 +1,21 @@
 # Swaft
 
-**Swaft** ("Strange Web App for Technician") — a desktop-first technical app built on the
-[Seebo](docs/seebo/) engine. Electron (main process = Node backend) + React/Vite renderer, hardened
-IPC, transport-agnostic API client.
+**Swaft** ("Strange Web App For Technician") is a desktop-first technical workspace built on the
+[Seebo](https://github.com/BoniFederico/swaftapp/tree/main/docs/seebo) template engine. It is an
+Electron app (main process = Node backend, hardened IPC, React/Vite renderer) for authoring
+versioned **templates**, firing structured **HTTP requests**, running sandboxed **code** and
+**actions**, and wiring them together in visual **scenarios** — all inside a local `.swaft` file or
+a Git-backed workspace.
 
-> **Documentation:** see [`docs/swaft/`](docs/swaft/) — start with
-> [`README`](docs/swaft/README.md), [`SWAFT_MVP_SCOPE.md`](docs/swaft/SWAFT_MVP_SCOPE.md), and the
-> step-by-step build guide [`MVP_STEPS.md`](docs/swaft/MVP_STEPS.md). The user-authored code
-> feature (capability/action templates) is designed in
-> [`analisi_codice_utente.md`](analisi_codice_utente.md).
+> **📖 Documentation:** the full user guide is published at
+> **<https://bonifederico.github.io/swaftapp/>** (source in [`docs/`](docs/)). Start with
+> [Getting started](docs/getting-started.md) and [Core concepts](docs/concepts.md).
 
 ## Requirements
 
-- **Node.js 20 LTS or newer** (the repo is developed on Node 20–24).
-- npm ≥ 10
-- Windows or macOS (MVP targets)
+- **Node.js 20 LTS or newer** (developed on Node 20–24) and **npm ≥ 10**.
+- **Windows or macOS** (current targets; Linux builds are produced by CI).
+- **Git** on your `PATH` — optional, only for Git-backed workspaces.
 
 ## Install
 
@@ -22,25 +23,27 @@ IPC, transport-agnostic API client.
 npm install
 ```
 
-The first install downloads the Electron binary (needs network access). If `npm run dev` ever fails
-with `Error: Electron uninstall`, the binary did not unpack — reinstall with
+The first install downloads the Electron binary (needs network access). If `npm run dev` later fails
+with `Error: Electron uninstall`, the binary didn't unpack — reinstall with
 `rm -rf node_modules package-lock.json && npm install`.
 
-## Run the app (see it)
+## Run the app
 
 ```bash
-npm run dev      # launch the Electron app with HMR
-# or:
-npm run see      # alias of dev
+npm run dev      # launch the Electron app with HMR (alias: npm run see)
 ```
 
-First run: the **sign-up gate** asks you to create the local account that protects the device
-(Argon2id verifier kept in OS secure storage). After signing in you land on the **homepage** —
-create or open a `.swaft` workspace, then work in the shell: **Working Tree** (projects, folders,
-tags, templates), **Document / API / Code views**, template editor with releases, environments,
-actions with confirmation + receipts, and per-workspace restrictions.
+There is **no account and no sign-in** — Swaft is local-first. You land on the **homepage**, where
+you create or open a workspace:
 
-## Verify (conformance checks)
+- a **local** `.swaft` file (a single portable SQLite database, optionally encrypted), or
+- a **Git** workspace (a folder of plain files you can commit, branch and diff).
+
+Then you work in the shell: the **Working Tree** (projects, folders, tags, templates), the
+type-specific views (**Document / API / Code / Scenario**), the template editor with **releases**,
+**environments**, **actions** with confirmation + receipts, and per-workspace **restrictions**.
+
+## Verify
 
 ```bash
 npm run verify   # typecheck + lint + unit/component tests
@@ -57,27 +60,20 @@ npm run e2e             # Playwright-for-Electron smoke (run `npm run build` fir
 ```
 
 Two heavy renderer suites (`workspace.test.tsx`, `api.test.tsx`) are excluded from the default run
-because they can hang the jsdom worker on some machines; opt in with:
-
-```bash
-SWAFT_RUN_HEAVY_TESTS=1 npm run test
-```
-
-The e2e smoke launches the **built** app against a throwaway profile (`SWAFT_USER_DATA_DIR`), signs
-up through the real IPC path and asserts the homepage — it never touches your real account.
+because they can hang the jsdom worker on some machines; opt in with
+`SWAFT_RUN_HEAVY_TESTS=1 npm run test`.
 
 ## Project layout
 
 ```
-packages/shared     # transport-agnostic op contracts + error envelope (used by main + renderer)
+packages/shared     # transport-agnostic op contract (types + Zod schemas) shared by main + renderer
 apps/desktop        # Electron app
-  src/main          #   main process (backend authority): bootstrap, ipc router, transport, workers
+  src/main          #   main process (backend authority): ipc router, services, storage, http, git, seebo
   src/preload       #   contextBridge typed surface (allow-list)
-  src/renderer      #   React + Vite UI (api-client/transport, theme, app)
+  src/renderer      #   React + Vite UI
 e2e                 # Playwright-for-Electron tests
-docs/swaft          # specifications + MVP/NEXT step prompts
-docs/seebo          # the Seebo engine docs
+docs                # documentation site (Jekyll + just-the-docs) → published with GitHub Pages
 ```
 
-> Architecture rationale and rules: [`docs/swaft/SWAFT_ARCHITECTURE.md`](docs/swaft/SWAFT_ARCHITECTURE.md).
-> Security model: [`docs/swaft/SWAFT_SECURITY_MODEL.md`](docs/swaft/SWAFT_SECURITY_MODEL.md).
+See [Building from source](docs/building-from-source.md) for the full contributor guide, and the
+[docs site](https://bonifederico.github.io/swaftapp/) for everything else.

@@ -66,7 +66,7 @@ const SWAFT_FILTER = { name: 'Swaft Workspace', extensions: ['swaft'] };
  */
 /**
  * Change attribution. The app has no user concept, so this is always `null` today. It is kept as a
- * host-agnostic seam: a future hosted backend (SWAFT_ARCHITECTURE.md §12) injects the authenticated
+ * host-agnostic seam: a future hosted backend injects the authenticated
  * user here so changelog/action/environment attribution light up without touching those services.
  */
 function currentUsername(): string | null {
@@ -96,7 +96,7 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
     },
     deviceId: () => appStore.getDeviceId(),
     onOpened: (summary) => appStore.recordRecent(summary),
-    // `git` storage mode: a workspace is a directory of versioned files (see git.md).
+    // `git` storage mode: a workspace is a directory of versioned files.
     git: new GitPersistence({ createBackend, git, deviceId: () => appStore.getDeviceId() }),
     probePath: async (path) => {
       try {

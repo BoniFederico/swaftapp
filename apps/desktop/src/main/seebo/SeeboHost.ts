@@ -17,7 +17,7 @@ import type {
 } from './seebo-module';
 
 /**
- * Host of the Seebo template engine (SWAFT_ARCHITECTURE.md §8). Each **input-widget capability** is
+ * Host of the Seebo template engine. Each **input-widget capability** is
  * registered as an **interactive** capability (resolves to `undefined`), so the engine surfaces it as
  * a requirement for the host UI to fill — the capability NAME selects the front-end widget. Data
  * capabilities (API/DB) arrive in M8/M9.

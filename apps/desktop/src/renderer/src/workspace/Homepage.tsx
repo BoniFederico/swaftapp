@@ -18,7 +18,7 @@ import { OpenPasswordDialog } from './OpenPasswordDialog';
 import { useWorkspace } from './WorkspaceProvider';
 
 /**
- * The signed-in landing page when no workspace is open (SWAFT_UI_SPEC.md §2): a centered brand hero,
+ * The signed-in landing page when no workspace is open: a centered brand hero,
  * a search box that filters the recent list, and two "listbox of buttons" entry points — Create
  * (Local / Git) and Open (from .swaft / from folder / clone from URL). The storage mode / open source
  * is chosen here so the create wizard and open flow start already scoped. Encrypted workspaces prompt

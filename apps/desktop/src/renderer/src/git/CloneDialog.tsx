@@ -6,7 +6,7 @@ import { useWorkspace } from '../workspace/WorkspaceProvider';
 
 /**
  * Clone a Git workspace repository from a URL (GitHub / CodeCommit / GitLab / …) into a chosen parent
- * folder, then open it (git.md Phase 3). Authentication uses the user's system git credentials
+ * folder, then open it. Authentication uses the user's system git credentials
  * (SSH keys / credential helper), inherited by the shelled-out `git`.
  */
 export function CloneDialog({ open, onClose }: { open: boolean; onClose: () => void }) {

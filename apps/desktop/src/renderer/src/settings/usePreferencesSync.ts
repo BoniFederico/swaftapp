@@ -7,7 +7,7 @@ import { useTheme, type ThemeMode } from '../theme/ThemeProvider';
 /**
  * Hydrate the M2 preferences (theme mode, primary color, font, language) from the app-level store
  * once after sign-in. Main is the source of truth post-M4; the localStorage stand-in from M2 remains
- * as an instant pre-paint default. See SWAFT_STORAGE_SYNC_MODEL.md §2.4.
+ * as an instant pre-paint default.
  *
  * Hydration only: changing a control applies live app-wide but is a *preview*. Persistence happens
  * exclusively when the user presses Save (Settings → Preferences, or the homepage dialog), so every

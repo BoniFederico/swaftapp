@@ -141,7 +141,7 @@ interface TemplateRow {
 /**
  * CRUD for the 🟢 synchronized organization entities (projects = filters, folders = collections,
  * tags = labels). Every mutation persists the `.swaft` and returns the fresh tree so the renderer
- * updates in one round-trip. See SWAFT_DATA_MODEL.md §5–§6.
+ * updates in one round-trip.
  */
 export class OrganizationService extends RepoBase {
   async getTree(): Promise<WorkspaceTree> {

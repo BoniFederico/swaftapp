@@ -88,7 +88,7 @@ interface StepRow {
 }
 
 /**
- * Runs a scenario workflow graph (docs `scenarios.md`). One active path: non-decision nodes have a
+ * Runs a scenario workflow graph. One active path: non-decision nodes have a
  * single outgoing edge; a decision evaluates a boolean Seebo formula (with `previous(...)` bound to
  * prior block outputs) and takes the true/false branch. Blocks execute via the existing per-kind
  * services — API through {@link ApiRunService}, capability/action through {@link UserCodeRegistry} —

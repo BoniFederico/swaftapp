@@ -10,8 +10,8 @@ const MAX_REDIRECTS = 5;
  * Structured HTTP client (never cURL). Enforces the workspace **blocked-domains** block-list with an
  * anchored host match (empty list = everything allowed), re-validates the host on every redirect hop
  * (SSRF hardening), force-applies the workspace **enforced headers** over the request's own, and
- * resolves auth secrets from the OS keychain so the renderer only ever holds `secretRef`s. See
- * SWAFT_SECURITY_MODEL §9. A folder-propagated proxy routes the request through `proxyFetchFn`
+ * resolves auth secrets from the OS keychain so the renderer only ever holds `secretRef`s.
+ * A folder-propagated proxy routes the request through `proxyFetchFn`
  * (an Electron proxied session in production).
  */
 export class HttpService {

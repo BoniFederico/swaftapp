@@ -13,8 +13,8 @@ import {
  * mode: 'light' | 'dark' | 'system' (default 'system'); primaryColor: one of the 5 resolved colors.
  * Applies `data-theme` + `--primary` (with derived states via CSS color-mix) to the document root.
  *
- * Persistence is a temporary localStorage stand-in; M4 wires these to the app-level local store
- * (SWAFT_STORAGE_SYNC_MODEL.md §2.4). They are local-only preferences (never synchronized).
+ * Persistence is a temporary localStorage stand-in; M4 wires these to the app-level local store.
+ * They are local-only preferences (never synchronized).
  */
 export type ThemeMode = 'light' | 'dark' | 'system';
 type ResolvedTheme = 'light' | 'dark';

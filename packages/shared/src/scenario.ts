@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { templateTypeSchema } from './ops';
 
 /**
- * Scenario graph model — the JSON stored in a `scenario` template's `source` (see docs `scenarios.md`).
+ * Scenario graph model — the JSON stored in a `scenario` template's `source`.
  * A scenario is a normal template whose source is an editable JSON directed graph: `template` blocks
  * (wrapping an API / action / capability template), `decision` diamonds (branch on a boolean Seebo
  * formula), `delay` waits, and a `start` entry, wired by `edges`. Seebo `${ … }` formulas live inside

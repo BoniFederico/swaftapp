@@ -17,7 +17,7 @@ function shortTime(iso: string): string {
  * history. Pressing Run performs that action (confirming it) server-side via `seebo/actions` — the
  * renderer only sends the id; receipts come back redacted. Clicking a run opens a detail popup with
  * whatever that run recorded (output/logs/env writes for the fresh run; status + message for the
- * redacted audit trail). Shown only when a render produced ≥1 action. See SWAFT_UI_SPEC §17.
+ * redacted audit trail). Shown only when a render produced ≥1 action.
  */
 export function ActionPanel({
   client,

@@ -9,7 +9,7 @@ import { bootstrapWorkspace } from './app-bootstrap';
  *  - strict-ish CSP, deny external navigation / window.open,
  *  - single-instance lock,
  *  - IPC router with a sender-frame check.
- * See SWAFT_ARCHITECTURE.md §2, §5 and SWAFT_SECURITY_MODEL.md §3.
+ *
  */
 
 let mainWindow: BrowserWindow | null = null;

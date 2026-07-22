@@ -98,7 +98,7 @@ function beginResize(
 }
 
 /**
- * Scenario View — the visual workflow editor for `scenario` templates (see docs `scenarios.md`). The
+ * Scenario View — the visual workflow editor for `scenario` templates. The
  * graph rides in the template `source` as JSON (per selected version: Draft or a named release); this
  * view parses it defensively and edits it on a pan/zoom canvas (drag templates in from the Working
  * Tree, add decision/delay/start nodes, wire and select them). Editing is **explicit-save** (a Save

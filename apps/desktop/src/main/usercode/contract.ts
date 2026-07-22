@@ -1,6 +1,6 @@
 /**
  * Wire contract between the main process and the isolated script host that runs user-authored
- * JavaScript (see analisi_codice_utente.md §5.4). Kept free of Electron and of any service import so
+ * JavaScript. Kept free of Electron and of any service import so
  * both sides — and the tests — can depend on it.
  *
  * Every message is plain JSON: the process boundary and Seebo's own sanitization (which accepts only

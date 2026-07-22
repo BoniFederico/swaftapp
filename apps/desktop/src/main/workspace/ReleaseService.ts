@@ -21,7 +21,7 @@ interface ReleaseRow {
  * personal, local-only release selection (🔵). A release is created from the current draft under a
  * user-chosen name and can later be overwritten via {@link updateRelease}. The effective rendered
  * source resolves: explicit selection → that release/draft; else latest release; else the draft.
- * `version` is an internal, stable ordering key only. See SWAFT_DATA_MODEL.md §7–§9.
+ * `version` is an internal, stable ordering key only.
  */
 export class ReleaseService extends RepoBase {
   constructor(

@@ -10,7 +10,7 @@ import { useWorkspace } from '../workspace/WorkspaceProvider';
 import { GitDiffDialog } from './GitDiffDialog';
 
 /**
- * The top-right Git widget for a `git` workspace (git.md §6.2): a compact trigger showing the current
+ * The top-right Git widget for a `git` workspace: a compact trigger showing the current
  * branch + a dirty indicator, opening a popover with the common operations — view changes, commit,
  * pull/push/fetch, switch/create branch, discard. Ops that rewrite the files on disk (pull, checkout,
  * discard) trigger a workspace refresh + tree reload so the rest of the app reflects the new content.

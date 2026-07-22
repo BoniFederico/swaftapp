@@ -3,7 +3,7 @@
  * Electron import so `dispatch` stays portable across hosts.
  *
  * This is a **host-agnostic seam**, not dead code: the desktop app has no login, so the gate is left
- * open (`isSignedIn: () => true`); a future hosted backend (SWAFT_ARCHITECTURE.md §12) injects a gate
+ * open (`isSignedIn: () => true`); a future hosted backend injects a gate
  * backed by real per-request sessions via {@link setSessionGate}. Tests may inject their own gate.
  */
 export interface SessionGate {

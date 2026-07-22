@@ -5,7 +5,7 @@ import { CAPABILITY_TYPES, DEVELOPER_MODULE_ALLOWLIST, type ScriptProfile } from
  * in the main process (before dispatching a run) and inside the script host (before importing), so a
  * rejection is reported the same way whichever side notices first.
  *
- * The isolation boundary is the host *process* (analisi_codice_utente.md §3.3); these checks are the
+ * The isolation boundary is the host *process*; these checks are the
  * layer above it, and their job is to keep an honest author from reaching ambient authority by
  * accident rather than to stop a determined attacker.
  */

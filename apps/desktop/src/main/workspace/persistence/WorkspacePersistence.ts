@@ -8,7 +8,7 @@ import type { LocalAdapter } from '../LocalAdapter';
  * {@link import('@swaft/shared').WorkspaceSummary} — stays in {@link import('../WorkspaceService').WorkspaceService}.
  *
  * This is the seam the storage mode selects on: {@link LocalFilePersistence} implements the current
- * single-`.swaft`-file behavior, and a future `GitPersistence` (see `git.md`) will implement a
+ * single-`.swaft`-file behavior, and a future `GitPersistence` will implement a
  * directory-of-files repo without touching services, repositories, IPC or the UI.
  *
  * Contract for `open`: it MUST have **no side effect on any already-open workspace**. A failure

@@ -15,7 +15,7 @@ interface MatchRow {
  * **same project**, read as a plain JSON object. The referenced template is never rendered by Seebo —
  * its **effective source** (selected release / draft, via {@link ReleaseService.resolveSource}) is
  * parsed as raw JSON. This keeps the capability formula-free (no recursion, no nested inputs) and
- * makes the referenced data reproducible. See docs/seebo ACTIONS/USAGE and the API-view automation spec.
+ * makes the referenced data reproducible.
  */
 export class TemplateDataProvider extends RepoBase implements ITemplateDataProvider {
   constructor(

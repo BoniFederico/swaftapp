@@ -3,7 +3,7 @@ import { makeError, type ErrorCategory, type ErrorEnvelope } from '@swaft/shared
 /**
  * A coded, transport-mappable service error. Services throw it; handlers translate it to the wire
  * error envelope via {@link toErrorEnvelope}. Keeps codes/categories part of the contract and
- * messages free of secrets. See SWAFT_ARCHITECTURE.md §5.2, SWAFT_SECURITY_MODEL.md (IPC-9).
+ * messages free of secrets.
  */
 export class AppError extends Error {
   constructor(
