@@ -1,0 +1,82 @@
+# Jekyll configuration for the Swaft documentation site (GitHub Pages).
+# Built with the "just-the-docs" theme. See docs/README.md for local-preview instructions.
+
+title: Swaft
+description: >-
+  A desktop-first technical workspace for building, versioning and running structured
+  templates, HTTP requests, sandboxed code and visual automations — built on the Seebo engine.
+lang: en
+
+# --- URLs -------------------------------------------------------------------
+# Project site served at https://<owner>.github.io/swaft/ — adjust if the repo is renamed
+# or moved to a user/org page. `baseurl` must match the repository name for a project site.
+url: https://bonifederico.github.io
+baseurl: /swaft
+
+# --- Theme ------------------------------------------------------------------
+theme: just-the-docs
+
+# --- just-the-docs options --------------------------------------------------
+color_scheme: light
+search_enabled: true
+search:
+  heading_level: 2
+  previews: 3
+  preview_words_before: 5
+  preview_words_after: 10
+
+heading_anchors: true
+
+# Show the "Edit this page on GitHub" link and repo button in the header.
+aux_links:
+  Swaft on GitHub:
+    - https://github.com/BoniFederico/swaft
+aux_links_new_tab: true
+
+# Footer
+back_to_top: true
+back_to_top_text: "Back to top"
+last_edit_timestamp: true
+last_edit_time_format: "%b %e %Y"
+gh_edit_link: true
+gh_edit_link_text: "Edit this page on GitHub"
+gh_edit_repository: https://github.com/BoniFederico/swaft
+gh_edit_branch: main
+gh_edit_source: docs
+gh_edit_view_mode: tree
+
+# Code copy button
+enable_copy_code_button: true
+
+# --- Callouts ---------------------------------------------------------------
+callouts:
+  note:
+    title: Note
+    color: blue
+  tip:
+    title: Tip
+    color: green
+  warning:
+    title: Warning
+    color: yellow
+  important:
+    title: Important
+    color: red
+
+# --- Build ------------------------------------------------------------------
+plugins:
+  - jekyll-seo-tag
+  - jekyll-relative-links
+
+# jekyll-relative-links rewrites Markdown links to *.md source files into the built page URLs,
+# so internal links work both on the published site and when browsing the docs on GitHub.
+relative_links:
+  enabled: true
+  collections: false
+
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - vendor
+  - README.md
+  - node_modules

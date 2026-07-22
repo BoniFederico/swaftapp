@@ -2,7 +2,7 @@ name: CI
 
 # Cheap, frequent checks on every PR and push to main — Linux only (×1 minute multiplier) to stay
 # well inside the free-tier budget. Heavy suites (SWAFT_RUN_HEAVY_TESTS) and Playwright e2e are
-# intentionally NOT run here; they belong to the pre-release gate / on-demand runs (see deploy.md §5).
+# intentionally NOT run here; they belong to the pre-release gate / on-demand runs.
 on:
   push:
     branches: [main]
