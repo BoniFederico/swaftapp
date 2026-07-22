@@ -7,3 +7,4 @@ export * from './collection';
 export * from './openapi';
 export * from './postman';
 export * from './secret-scan';
+export * from './front-matter';
