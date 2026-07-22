@@ -24,6 +24,11 @@ export function variabilizeSeebo(s: string): string {
   return s.replace(SECRET_CALL, '{{$1}}').replace(ENV_CALL, '{{$1}}').replace(BARE, '{{$1}}');
 }
 
+/** Inverse, for imports: a foreign `{{var}}` → Seebo `${ var }` (resolved via the env-fallback sugar). */
+export function bracesToSeebo(s: string): string {
+  return s.replace(/\{\{\s*([A-Za-z_][\w.-]*)\s*\}\}/g, '${ $1 }');
+}
+
 /** True when any Seebo formula is present. */
 export function hasSeebo(s: string): boolean {
   return ANY_FORMULA.test(s);
