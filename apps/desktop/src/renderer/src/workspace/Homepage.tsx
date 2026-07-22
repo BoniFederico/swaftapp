@@ -3,7 +3,15 @@ import type { StorageMode } from '@swaft/shared';
 import { api, ApiError, type ApiClient } from '../api-client/client';
 import { useI18n } from '../i18n/I18nProvider';
 import { SettingsModal } from '../settings/SettingsModal';
-import { CloseIcon, EmptyState, IconButton, SearchIcon, SettingsIcon, SplitButton } from '../ui';
+import {
+  CloseIcon,
+  EmptyState,
+  IconButton,
+  SearchIcon,
+  SettingsIcon,
+  SplitButton,
+  SwaftMark,
+} from '../ui';
 import { CloneDialog } from '../git/CloneDialog';
 import { CreateWorkspaceWizard } from './CreateWorkspaceWizard';
 import { OpenPasswordDialog } from './OpenPasswordDialog';
@@ -87,7 +95,10 @@ export function Homepage({ client = api }: { client?: ApiClient }) {
       <header className="ws-topbar">
         <div className="ws-identity">
           <span className="ws-appname ws-appname--static">
-            Swaft<span className="accent">.</span>
+            <SwaftMark className="ws-appname__mark" aria-hidden="true" />
+            <span className="ws-appname__text">
+              Swaft<span className="accent">.</span>
+            </span>
           </span>
         </div>
         <div className="ws-actions">
@@ -99,6 +110,7 @@ export function Homepage({ client = api }: { client?: ApiClient }) {
 
       <div className="home-content">
       <div className="home__hero">
+        <SwaftMark className="home__hero-mark" aria-hidden="true" />
         <div className="brand brand--hero">
           Swaft<span className="accent">.</span>
         </div>

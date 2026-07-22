@@ -2,13 +2,18 @@
   "name": "@swaft/desktop",
   "version": "0.0.0",
   "private": true,
+  "description": "Swaft — Strange Workspace App for Technician",
+  "author": "Federico Boni <federicoboni67@gmail.com>",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "start": "electron-vite preview",
-    "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit"
+    "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
+    "gen:icons": "node scripts/gen-icons.mjs",
+    "package": "npm run gen:icons && electron-vite build && electron-builder",
+    "package:dir": "npm run gen:icons && electron-vite build && electron-builder --dir"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
@@ -43,7 +48,7 @@
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
     "@types/sql.js": "^1.4.11",
-    "electron": "^43.1.1",
+    "electron": "43.1.1",
     "electron-vite": "^2.3.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

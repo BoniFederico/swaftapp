@@ -1,0 +1,54 @@
+# electron-builder — packages the electron-vite build (apps/desktop/out) into distributables.
+# See ../../deploy.md for the release strategy (tag-based release, free-tier minute budget, signing).
+appId: com.swaft.desktop
+productName: Swaft
+copyright: Copyright © 2026 Swaft
+
+directories:
+  # Icons live in buildResources/ because `build/` is gitignored at the repo root.
+  buildResources: buildResources
+  output: release
+
+# App payload. Production node_modules (sql.js, hash-wasm, seebo, mermaid, echarts, codemirror, …)
+# are collected automatically by electron-builder from the hoisted npm-workspaces tree, so they must
+# NOT be listed here — only the built output and the manifest.
+files:
+  - out/**
+  - package.json
+
+# sql.js reads its .wasm from disk at runtime, so keep it unpacked (outside the asar) or the path
+# won't resolve. hash-wasm inlines its wasm as base64, so it needs no unpack.
+asarUnpack:
+  - '**/node_modules/sql.js/dist/*.wasm'
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: ${productName}-${version}-setup.${ext}
+
+mac:
+  # arm64-only by default to keep the (×10-cost) macOS job cheap — add `x64` here when Intel Macs
+  # need a native build (see deploy.md §5.4).
+  target:
+    - target: dmg
+      arch: [arm64]
+  category: public.app-category.developer-tools
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+  category: Development
+  artifactName: ${productName}-${version}.${ext}
+
+# GitHub Releases as the distribution feed (see deploy.md §5/§8). `electron-builder --publish` uploads
+# the artifacts; the release workflow is triggered on a version tag.
+publish:
+  provider: github

@@ -1,5 +1,6 @@
 export { Button, type ButtonVariant } from './Button';
 export { IconButton } from './IconButton';
+export { SwaftMark } from './Logo';
 export {
   LockIcon,
   LogoutIcon,
