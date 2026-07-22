@@ -27,17 +27,28 @@ export function SettingsModal({
   onClose,
   client,
   initialSection,
+  sections,
 }: {
   open: boolean;
   onClose: () => void;
   client: ApiClient;
   /** Section to show when the modal opens (e.g. "Manage environments…" → 'environments'). */
   initialSection?: SettingsSectionId;
+  /**
+   * Restrict which sections are available (in order). Defaults to all. Used by the homepage to show
+   * only 'preferences' — the same Settings modal, minus the workspace-scoped sections. When a single
+   * section remains, the left nav is hidden.
+   */
+  sections?: SettingsSectionId[];
 }) {
   const { t } = useI18n();
   const [section, setSection] = useState<SettingsSectionId>('general');
   const modalRef = useRef<HTMLDivElement>(null);
   useFocusTrap(modalRef, open);
+
+  const nav = sections ? NAV.filter((n) => sections.includes(n.id)) : NAV;
+  // Keep the shown section within the allowed set, falling back to the first available one.
+  const active = nav.some((n) => n.id === section) ? section : (nav[0]?.id ?? 'general');
 
   // Jump to the requested section each time the modal is (re)opened.
   useEffect(() => {
@@ -77,23 +88,25 @@ export function SettingsModal({
           </button>
         </header>
         <div className="settings-modal__body">
-          <nav className="settings-nav">
-            {NAV.map((n) => (
-              <button
-                key={n.id}
-                type="button"
-                className={`settings-nav__item${section === n.id ? ' is-active' : ''}`}
-                onClick={() => setSection(n.id)}
-              >
-                {t(n.label)}
-              </button>
-            ))}
-          </nav>
+          {nav.length > 1 && (
+            <nav className="settings-nav">
+              {nav.map((n) => (
+                <button
+                  key={n.id}
+                  type="button"
+                  className={`settings-nav__item${active === n.id ? ' is-active' : ''}`}
+                  onClick={() => setSection(n.id)}
+                >
+                  {t(n.label)}
+                </button>
+              ))}
+            </nav>
+          )}
           <div className="settings-content">
-            {section === 'general' && <GeneralSettings />}
-            {section === 'restrictions' && <RestrictionsSettings client={client} />}
-            {section === 'environments' && <EnvironmentsSettings client={client} />}
-            {section === 'preferences' && <PreferencesSettings client={client} />}
+            {active === 'general' && <GeneralSettings />}
+            {active === 'restrictions' && <RestrictionsSettings client={client} />}
+            {active === 'environments' && <EnvironmentsSettings client={client} />}
+            {active === 'preferences' && <PreferencesSettings client={client} />}
           </div>
         </div>
       </div>

@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import type { StorageMode } from '@swaft/shared';
-import { ApiError } from '../api-client/client';
+import { api, ApiError, type ApiClient } from '../api-client/client';
 import { useAuth } from '../auth/AuthProvider';
 import { useI18n } from '../i18n/I18nProvider';
-import { PreferencesDialog } from '../settings/PreferencesDialog';
+import { SettingsModal } from '../settings/SettingsModal';
 import {
   CloseIcon,
   EmptyState,
@@ -26,7 +26,7 @@ import { useWorkspace } from './WorkspaceProvider';
  * is chosen here so the create wizard and open flow start already scoped. Encrypted workspaces prompt
  * for their password on open.
  */
-export function Homepage() {
+export function Homepage({ client = api }: { client?: ApiClient }) {
   const { t } = useI18n();
   const { recent, open, pickOpenTarget, pickDirectory, gitAvailable, forgetRecent } = useWorkspace();
   const { profile, lock, signOut } = useAuth();
@@ -35,7 +35,7 @@ export function Homepage() {
   const [wizardMode, setWizardMode] = useState<StorageMode | null>(null);
   const [cloneOpen, setCloneOpen] = useState(false);
   const [pwDialogOpen, setPwDialogOpen] = useState(false);
-  const [prefsOpen, setPrefsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [openPath, setOpenPath] = useState<string | null>(null);
 
   async function tryOpen(path: string) {
@@ -106,7 +106,7 @@ export function Homepage() {
             {t('home.signedInAs', { name: profile?.displayName ?? '' })}
           </span>
           <span className="ws-sep" aria-hidden="true" />
-          <IconButton label={t('prefs.open')} onClick={() => setPrefsOpen(true)}>
+          <IconButton label={t('prefs.open')} onClick={() => setSettingsOpen(true)}>
             <SettingsIcon />
           </IconButton>
           <IconButton label={t('account.lock')} onClick={() => void lock()}>
@@ -204,7 +204,13 @@ export function Homepage() {
         path={openPath}
         onClose={() => setPwDialogOpen(false)}
       />
-      <PreferencesDialog open={prefsOpen} onClose={() => setPrefsOpen(false)} />
+      <SettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        client={client}
+        sections={['preferences']}
+        initialSection="preferences"
+      />
     </div>
   );
 }
