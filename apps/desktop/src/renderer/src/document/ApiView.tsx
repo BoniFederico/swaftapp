@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DRAFT_RELEASE,
+  fromCurl,
+  toCurl,
   type ApiHistoryItem,
   type ReleaseDto,
   type RequestAction,
@@ -23,6 +25,7 @@ import {
   Button,
   CloseIcon,
   CopyIcon,
+  DownloadIcon,
   FormatIcon,
   IconButton,
   SaveIcon,
@@ -291,6 +294,20 @@ export function ApiView({
   function patch(p: Partial<HttpRequestModel>) {
     setReq((r) => ({ ...r, ...p }));
   }
+  // Replace the wire request from a cURL command on the clipboard, keeping Swaft-only bits (actions,
+  // info). Seebo formulas in the cURL are preserved verbatim (the shared codec does not translate).
+  async function pasteCurl() {
+    let text = '';
+    try {
+      text = await navigator.clipboard.readText();
+    } catch {
+      toast.show(t('doc.copyFailed'), 'error');
+      return;
+    }
+    if (text.trim() === '') return;
+    setReq((r) => ({ ...fromCurl(text), actions: r.actions, info: r.info }));
+    toast.show(t('api.curlPasted'), 'success');
+  }
   // URL ↔ Params: the URL is the single source of truth; the Params tab is derived from it (see the
   // `query` prop below), so editing either side reflects in the other. Values stay raw here — encoding
   // is applied invisibly at send time.
@@ -542,6 +559,12 @@ export function ApiView({
         </IconButton>
         <IconButton label={t('api.save')} className="api__save" onClick={() => void saveRequest()}>
           <SaveIcon />
+        </IconButton>
+        <IconButton label={t('api.copyCurl')} onClick={() => copy(toCurl(req))}>
+          <CopyIcon />
+        </IconButton>
+        <IconButton label={t('api.pasteCurl')} onClick={() => void pasteCurl()}>
+          <DownloadIcon />
         </IconButton>
         <Select
           aria-label={t('api.release')}
