@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  type ExportScopeDto,
   type FolderDto,
   type ImportedCollectionDto,
   type OpName,
@@ -35,6 +36,7 @@ import {
 import { usePopover } from '../ui/usePopover';
 import { CreateProjectDialog } from './CreateProjectDialog';
 import { CreateTemplateDialog } from './CreateTemplateDialog';
+import { ExportDialog } from './ExportDialog';
 import { ImportDialog } from './ImportDialog';
 import { NameDialog } from './NameDialog';
 import { ProjectSelector } from './ProjectSelector';
@@ -182,6 +184,7 @@ export function WorkingTree({
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [projectOpen, setProjectOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [exportScope, setExportScope] = useState<{ scope: ExportScopeDto; name: string } | null>(null);
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [createTpl, setCreateTpl] = useState<{ folderId: string | null } | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
@@ -451,6 +454,35 @@ export function WorkingTree({
   const tagById = useMemo(() => new Map(tree.tags.map((t) => [t.id, t])), [tree.tags]);
 
   // --- row renderers ---------------------------------------------------------
+  /** Count api requests vs. skipped non-api templates for an export scope (from the loaded tree). */
+  function scopePreview(scope: ExportScopeDto): { requests: number; skipped: number } {
+    let inScope: TemplateSummary[];
+    if (scope.kind === 'template') {
+      inScope = tree.templates.filter((t) => t.id === scope.templateId);
+    } else if (scope.kind === 'folder') {
+      const set = new Set<string>([scope.folderId]);
+      for (let changed = true; changed; ) {
+        changed = false;
+        for (const f of tree.folders) {
+          if (f.parentFolderId && set.has(f.parentFolderId) && !set.has(f.id)) {
+            set.add(f.id);
+            changed = true;
+          }
+        }
+      }
+      inScope = tree.templates.filter((t) => t.folderId != null && set.has(t.folderId));
+    } else if (scope.kind === 'project') {
+      const folderProject = new Map(tree.folders.map((f) => [f.id, f.projectId]));
+      inScope = tree.templates.filter(
+        (t) => (t.projectId ?? (t.folderId ? folderProject.get(t.folderId) : null)) === scope.projectId,
+      );
+    } else {
+      inScope = tree.templates;
+    }
+    const requests = inScope.filter((t) => t.type === 'api').length;
+    return { requests, skipped: inScope.length - requests };
+  }
+
   function templateMenu(tpl: TemplateSummary): MenuItem[] {
     return [
       { label: t('menu.edit'), onSelect: () => onOpenTemplate(tpl.id, 'edit', tpl.type, tpl.name) },
@@ -458,6 +490,15 @@ export function WorkingTree({
         label: t('menu.rename'),
         onSelect: () => setDialog({ mode: 'renameTemplate', id: tpl.id, value: tpl.name }),
       },
+      ...(tpl.type === 'api'
+        ? [
+            {
+              label: t('export.exportRequest'),
+              onSelect: () =>
+                setExportScope({ scope: { kind: 'template', templateId: tpl.id }, name: tpl.name }),
+            },
+          ]
+        : []),
       {
         label: t('menu.delete'),
         danger: true,
@@ -546,6 +587,11 @@ export function WorkingTree({
         onSelect: () => setDialog({ mode: 'createFolder', parentFolderId: folder.id }),
       },
       { label: t('menu.newTemplate'), onSelect: () => setCreateTpl({ folderId: folder.id }) },
+      {
+        label: t('export.exportFolder'),
+        onSelect: () =>
+          setExportScope({ scope: { kind: 'folder', folderId: folder.id }, name: folder.name }),
+      },
       {
         label: t('menu.rename'),
         onSelect: () => setDialog({ mode: 'renameFolder', id: folder.id, value: folder.name }),
@@ -746,6 +792,15 @@ export function WorkingTree({
         busy={busy}
         onImport={(collection, projectName) => void importCollection(collection, projectName)}
         onClose={() => setImportOpen(false)}
+      />
+
+      <ExportDialog
+        open={exportScope !== null}
+        scope={exportScope?.scope ?? { kind: 'workspace' }}
+        defaultName={exportScope?.name ?? 'export'}
+        preview={exportScope ? scopePreview(exportScope.scope) : null}
+        client={client}
+        onClose={() => setExportScope(null)}
       />
 
       <ConfirmDialog
