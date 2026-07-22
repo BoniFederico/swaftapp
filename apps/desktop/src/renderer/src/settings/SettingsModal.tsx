@@ -36,8 +36,8 @@ export function SettingsModal({
   initialSection?: SettingsSectionId;
   /**
    * Restrict which sections are available (in order). Defaults to all. Used by the homepage to show
-   * only 'preferences' — the same Settings modal, minus the workspace-scoped sections. When a single
-   * section remains, the left nav is hidden.
+   * only 'preferences' — the same Settings modal, minus the workspace-scoped sections. The left nav
+   * is always rendered (even with a single item) so the layout stays identical across shells.
    */
   sections?: SettingsSectionId[];
 }) {
@@ -88,20 +88,20 @@ export function SettingsModal({
           </button>
         </header>
         <div className="settings-modal__body">
-          {nav.length > 1 && (
-            <nav className="settings-nav">
-              {nav.map((n) => (
-                <button
-                  key={n.id}
-                  type="button"
-                  className={`settings-nav__item${active === n.id ? ' is-active' : ''}`}
-                  onClick={() => setSection(n.id)}
-                >
-                  {t(n.label)}
-                </button>
-              ))}
-            </nav>
-          )}
+          {/* The nav is always shown — even a single allowed section (homepage → Preferences) keeps
+              the same two-pane Settings layout for visual consistency. */}
+          <nav className="settings-nav">
+            {nav.map((n) => (
+              <button
+                key={n.id}
+                type="button"
+                className={`settings-nav__item${active === n.id ? ' is-active' : ''}`}
+                onClick={() => setSection(n.id)}
+              >
+                {t(n.label)}
+              </button>
+            ))}
+          </nav>
           <div className="settings-content">
             {active === 'general' && <GeneralSettings />}
             {active === 'restrictions' && <RestrictionsSettings client={client} />}
