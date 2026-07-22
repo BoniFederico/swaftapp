@@ -135,18 +135,6 @@ body {
   color: var(--text-muted);
   margin: 0;
 }
-.app-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  flex-wrap: wrap;
-}
-.account {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
 
 /* ---------- Workspace shell (full-width app surface) ---------- */
 .ws-shell {
