@@ -192,6 +192,10 @@ body {
 .ws-appname .accent {
   color: var(--primary);
 }
+/* On the homepage there is nowhere to navigate to, so the brand is a static mark, not a button. */
+.ws-appname--static {
+  cursor: default;
+}
 .ws-sep {
   width: 1px;
   height: 18px;
@@ -210,10 +214,11 @@ body {
   align-items: center;
   gap: var(--space-2);
 }
-/* Compact square controls so the slimmer bar stays tight. */
+/* Compact, borderless square controls (icon only) so the slimmer bar stays tight and clean. */
 .ws-actions .ui-icon-btn {
   width: 30px;
   height: 30px;
+  border: none;
 }
 .ws-actions .env-picker__trigger {
   height: 30px;
@@ -3053,13 +3058,21 @@ body {
 }
 
 /* ---------- Homepage hero + entry points ---------- */
-.home {
-  gap: var(--space-4);
+/* Full-height column so the top bar is full-bleed (matching the open-workspace shell) and the
+   content sits in a centered, max-width column below it. */
+.home-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
-/* The account/settings controls sit top-right; the brand moves into the centered hero. */
-.home__topbar {
-  justify-content: flex-end;
-  min-height: 32px;
+.home-content {
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
 }
 .home__hero {
   display: flex;

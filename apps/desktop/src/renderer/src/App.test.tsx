@@ -52,7 +52,8 @@ describe('App (M4 — signed-in homepage)', () => {
 
   it('shows the brand, product tagline and an empty recent list after signing in', async () => {
     await renderHomepage();
-    expect(screen.getByText('Swaft')).toBeInTheDocument();
+    // The brand now appears both in the top bar and in the centered hero.
+    expect(screen.getAllByText('Swaft').length).toBeGreaterThan(0);
     expect(screen.getByText('Strange Workspace App for Technician')).toBeInTheDocument();
     expect(screen.getByText('No workspaces yet. Create one to get started.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Create workspace' })).toBeInTheDocument();

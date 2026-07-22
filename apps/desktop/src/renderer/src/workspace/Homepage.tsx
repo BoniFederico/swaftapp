@@ -83,16 +83,23 @@ export function Homepage() {
   }, [recent, query]);
 
   return (
-    <div className="app home">
-      <div className="app-header home__topbar">
-        <div className="row" style={{ gap: 'var(--space-2)', marginLeft: 'auto' }}>
+    <div className="home-shell">
+      {/* Same top bar as the open-workspace shell: brand on the left, actions aligned right. */}
+      <header className="ws-topbar">
+        <div className="ws-identity">
+          <span className="ws-appname ws-appname--static">
+            Swaft<span className="accent">.</span>
+          </span>
+        </div>
+        <div className="ws-actions">
           <AccountControls />
           <IconButton label={t('prefs.open')} onClick={() => setPrefsOpen(true)}>
             <SettingsIcon />
           </IconButton>
         </div>
-      </div>
+      </header>
 
+      <div className="home-content">
       <div className="home__hero">
         <div className="brand brand--hero">
           Swaft<span className="accent">.</span>
@@ -165,6 +172,7 @@ export function Homepage() {
           </ul>
         )}
       </section>
+      </div>
 
       <CreateWorkspaceWizard
         open={wizardMode !== null}
