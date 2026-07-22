@@ -174,7 +174,8 @@ describe.skipIf(!gitAvailable)('GitPersistence (real git)', () => {
     expect((await git.status(dir)).clean).toBe(true);
     const tracked = execFileSync('git', ['ls-files'], { cwd: dir, encoding: 'utf8' });
     expect(tracked).toMatch(/workspace\.json/);
-    expect(tracked).toMatch(/projects\/p1\.json/);
+    // Hybrid naming (D2): `<slug>.<shortId>.json` — id `p1`, name "Infra" → `infra.p1.json`.
+    expect(tracked).toMatch(/projects\/infra\.p1\.json/);
 
     const reopened = await persistence.open({ location: dir });
     expect((await reopened.adapter.getMeta())?.name).toBe('On Disk');
