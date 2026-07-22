@@ -1,6 +1,6 @@
 /**
  * Transport-agnostic coded error envelope shared by IPC (desktop) and the future HTTP transport.
- * See SWAFT_ARCHITECTURE.md §5.2 and SWAFT_SECURITY_MODEL.md (IPC-9).
+ *
  */
 
 export type ErrorCategory =

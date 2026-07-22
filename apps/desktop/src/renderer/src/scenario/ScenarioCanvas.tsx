@@ -69,7 +69,7 @@ function TypeGlyph({ type }: { type: TemplateType | undefined }) {
 
 /**
  * The scenario canvas: a pan/zoom world of nodes wired by edges, on native SVG + pointer events (no
- * graph library — see docs `scenarios.md`). Interactions are isolated: pan the background, drag a node
+ * graph library). Interactions are isolated: pan the background, drag a node
  * (with optional snap-to-grid), draw an edge from an output port to a target node, or click an edge to
  * select it. A node drag is applied locally and emitted as ONE committed change on release, so undo
  * treats a whole drag as a single step. All geometry + edge rules live in the pure `graph-model`.

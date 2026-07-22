@@ -8,7 +8,7 @@ export type BatchItem = { id: string; name: string };
  * Batcher (M10, redesign): the user drags **document** templates from the Working Tree into the drop
  * zone to build an ordered batch. "Load inputs" then opens the batch in the main area to the right of
  * the Working Tree — exactly like opening one template, but with every template's inputs merged. The
- * batch list is owned by the parent (BatcherPanel). See SWAFT_UI_SPEC §16.
+ * batch list is owned by the parent (BatcherPanel).
  */
 export function BatcherView({
   items,

@@ -12,7 +12,7 @@ import { IpcTransport } from './transport/ipc';
 /**
  * The transport-agnostic API client. Feature code calls `client.call('op.name', payload)` and
  * receives the typed response or throws a typed SwaftError. The transport (IPC today, HTTP later)
- * is injected; feature code never references it. See SWAFT_ARCHITECTURE.md §3.4.
+ * is injected; feature code never references it.
  */
 export class ApiError extends Error {
   constructor(public readonly swaft: SwaftError) {

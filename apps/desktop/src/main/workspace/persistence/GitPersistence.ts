@@ -34,8 +34,8 @@ export interface GitPersistenceDeps {
 }
 
 /**
- * The `git` storage mode: a workspace is a **directory of plain, versioned files inside a Git repo**
- * (git.md §3–§5). It composes the {@link import('../projection/projection').dumpWorkspace projection}
+ * The `git` storage mode: a workspace is a **directory of plain, versioned files inside a Git repo**.
+ * It composes the {@link import('../projection/projection').dumpWorkspace projection}
  * (DB ⇄ files) with a {@link GitService} for repository operations, and never uses encryption.
  *
  * The in-memory SQLite store stays the runtime engine; this class only materializes it from the

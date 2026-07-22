@@ -3,8 +3,8 @@ import type { WorkspaceService } from './WorkspaceService';
 
 /**
  * Shared CRUD helpers for 🟢 synchronized entities living in the open `.swaft`. Stamps sync metadata
- * on insert/update and uses soft-delete tombstones so a future sync engine can reconcile changes
- * (SWAFT_STORAGE_SYNC_MODEL.md §3). Table names are internal literals, never user input.
+ * on insert/update and uses soft-delete tombstones so a future sync engine can reconcile changes.
+ * Table names are internal literals, never user input.
  */
 export abstract class RepoBase {
   constructor(protected readonly ws: WorkspaceService) {}

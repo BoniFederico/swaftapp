@@ -29,7 +29,7 @@ export interface GitStatus {
 
 /**
  * Git operations for the `git` storage mode, implemented by **shelling out to the user's installed
- * `git` binary** from the trusted main process (git.md §3.4). This deliberately reuses the user's
+ * `git` binary** from the trusted main process. This deliberately reuses the user's
  * SSH keys, credential helpers and git config, needs nothing installed via npm (offline-friendly),
  * and — being in main, not sandboxed user code — is consistent with the security model. Commands run
  * through `execFile` (no shell), so arguments are never word-split or interpolated.

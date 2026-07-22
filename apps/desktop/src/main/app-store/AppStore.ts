@@ -18,8 +18,7 @@ function recentKey(path: string): string {
 /**
  * App-level local store (🔵 local-only): a small JSON document in the user-data dir holding the
  * per-install device id, UI preferences (theme/color/language) and the recent-workspaces list.
- * Distinct from any `.swaft`. M4 wires the M2 preferences to persist here. See
- * SWAFT_DATA_MODEL.md §20, SWAFT_STORAGE_SYNC_MODEL.md §2.4.
+ * Distinct from any `.swaft`. M4 wires the M2 preferences to persist here.
  */
 interface AppStoreData {
   deviceId: string;

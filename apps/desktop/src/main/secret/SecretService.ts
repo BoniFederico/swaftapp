@@ -9,7 +9,7 @@ interface SecretFile {
 /**
  * 🟠 secure-local secrets store (API keys, tokens). Values are wrapped with the OS-backed cipher
  * (`safeStorage`) and kept in the user-data dir — **never** in `.swaft`, never synchronized, never
- * returned to the renderer (the renderer holds opaque `secretRef`s only). See SWAFT_SECURITY_MODEL §9.
+ * returned to the renderer (the renderer holds opaque `secretRef`s only).
  */
 export class SecretService {
   private data: SecretFile;

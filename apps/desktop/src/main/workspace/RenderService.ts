@@ -10,7 +10,7 @@ import type { WorkspaceService } from './WorkspaceService';
 /**
  * Drives the Seebo engine for a template: surfaces input requirements (widgets) and renders output
  * with the host-provided values. The render policy (allowed capabilities/types) comes from workspace
- * settings. Last input values are persisted **local-only** (🔵) per template. See SWAFT_ARCHITECTURE
+ * settings. Last input values are persisted **local-only** (🔵) per template.
  * §8–§8.2.1.
  */
 export class RenderService extends RepoBase {

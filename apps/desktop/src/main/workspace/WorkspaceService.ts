@@ -44,9 +44,9 @@ interface OpenState {
 /**
  * Owns the lifecycle of the single open workspace: create / open / close / save. The byte ⇄ disk
  * work is delegated to a {@link WorkspacePersistence} strategy selected by the (immutable) storage
- * mode; today only {@link LocalFilePersistence} (`local`) exists, with a `git` strategy planned
- * (see `git.md`). This class keeps the serializing lock, the surfaced summary, the forward-only
- * schema gate and revision bookkeeping. See SWAFT_STORAGE_SYNC_MODEL.md §2–§3, §13.
+ * mode; today only {@link LocalFilePersistence} (`local`) exists, with a `git` strategy planned.
+ * This class keeps the serializing lock, the surfaced summary, the forward-only
+ * schema gate and revision bookkeeping.
  */
 export class WorkspaceService {
   private state: OpenState | null = null;

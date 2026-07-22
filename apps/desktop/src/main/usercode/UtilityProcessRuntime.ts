@@ -27,7 +27,7 @@ interface Pending {
 /**
  * Runs user capabilities in a dedicated `utilityProcess`, spawned lazily on first use and kept warm
  * for the session — spawning costs tens of milliseconds, and renders are frequent enough that a
- * process per call would be felt while typing (analisi_codice_utente.md §5.4, §6).
+ * process per call would be felt while typing.
  *
  * A call that outruns its budget cannot be interrupted from inside (the host's event loop is blocked
  * by the very code we want to stop), so the timeout **kills the process**. Everything in flight is

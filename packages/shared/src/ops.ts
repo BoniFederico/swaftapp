@@ -4,7 +4,7 @@ import { z } from 'zod';
  * Op (operation) contract registry shared by renderer (API client) and main (IPC router + dispatch).
  * Each op has a stable name, a **request schema** (validated in the main process before any handler
  * runs — IPC-5) and a response DTO. The transport is irrelevant to this contract (IPC now, HTTP
- * later) — see SWAFT_ARCHITECTURE.md §3.4, §5; SWAFT_SECURITY_MODEL.md §3.
+ * later).
  *
  * M3 adds the **auth/session** ops. `auth.*` sign-in/sign-up/unlock + `system.ping` are PUBLIC
  * (callable without a session); every other op requires an active session (enforced in main).
@@ -182,7 +182,7 @@ export const folderProxySchema = z
  * An action attached to a request (or a folder, propagated to the calls beneath it), run around the
  * HTTP call. `pre` may return a patch merged into the request (signing it, refreshing a token);
  * `post` sees the response (extracting values, asserting). Declaring `action(...)` inside a *field*
- * stays forbidden — effects live here, not in the formulas (analisi_codice_utente.md §5.6).
+ * stays forbidden — effects live here, not in the formulas.
  */
 export const requestActionSchema = z
   .object({
@@ -231,7 +231,7 @@ export const settingsUpdateSchema = z
 
 // Template kinds. `render` was folded into `document` (its subtypes — mermaid/swagger/echarts — are
 // now document subtypes that render in the output). `capability` and `action` are user-authored
-// JavaScript: the first resolves data for a formula, the second is an effect (analisi_codice_utente.md).
+// JavaScript: the first resolves data for a formula, the second is an effect.
 export const templateTypeSchema = z.enum(['document', 'api', 'capability', 'action', 'scenario']);
 
 export const templateCreateRequestSchema = z
@@ -665,7 +665,7 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
 /**
  * Ops callable WITHOUT an active session. Everything else passes through the main-process session
  * guard (`dispatch`), which is a **host-agnostic seam**: on desktop the gate is open (no login),
- * while a future hosted backend injects real per-request sessions (SWAFT_ARCHITECTURE.md §12).
+ * while a future hosted backend injects real per-request sessions.
  * This list is the contract; enforcement lives in main (never the renderer).
  */
 export const PUBLIC_OP_NAMES = ['system.ping'] as const satisfies readonly OpName[];
@@ -697,10 +697,9 @@ export type EmptyRequest = z.infer<typeof emptyRequestSchema>;
 /**
  * Workspace persistence backend, immutable per workspace.
  * - `local`: a single (optionally encrypted) `.swaft` SQLite file (default).
- * - `git`: a directory of plain, versioned files inside a Git repository (see `git.md`).
+ * - `git`: a directory of plain, versioned files inside a Git repository.
  *
- * The former `p2p`/`server` modes were never implemented and are removed; their reserved
- * design lives on only as history in `docs/swaft/`.
+ * The former `p2p`/`server` modes were never implemented and are removed.
  */
 export type StorageMode = 'local' | 'git';
 export type ExecutionMode = z.infer<typeof executionModeSchema>;
@@ -1332,7 +1331,7 @@ export type UserCapabilityStatus =
   /** Written on another install and not approved here yet — the code will not run. */
   | 'untrusted';
 export interface UserCapabilityDto {
-  /** The name formulas call it by: the template name (see analisi_codice_utente.md §5.1). */
+  /** The name formulas call it by: the template name. */
   name: string;
   /** Seebo base type the resolved value is validated against (`export const type`). */
   type: string;

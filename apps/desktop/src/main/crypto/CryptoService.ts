@@ -3,7 +3,7 @@ import { argon2id } from 'hash-wasm';
 import { AppError } from '../errors';
 
 /**
- * Optional whole-file encryption for `.swaft` workspaces (SWAFT_SECURITY_MODEL.md §6). The serialized
+ * Optional whole-file encryption for `.swaft` workspaces. The serialized
  * SQLite image is wrapped with **AES-256-GCM** under a key derived from the user's workspace password
  * via **Argon2id** (per-file random salt). Encryption is workspace-scoped and SEPARATE from account
  * sign-in (resolved OD-S7).

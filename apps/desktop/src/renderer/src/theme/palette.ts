@@ -1,5 +1,5 @@
 /**
- * The 5 resolved primary colors (default Blue) — see SWAFT_UI_SPEC.md §23.3 (OD-UI-7 resolved).
+ * The 5 resolved primary colors (default Blue).
  */
 export interface PrimaryColor {
   key: string;

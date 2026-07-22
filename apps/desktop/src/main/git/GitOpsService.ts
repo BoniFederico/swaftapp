@@ -35,7 +35,7 @@ export function entityNameForPath(path: string, names: NameMaps): string | undef
 /**
  * Orchestrates the `git.*` ops against the open Git workspace: it bridges the {@link GitService}
  * (raw git commands on the repo directory) and the {@link WorkspaceService} lifecycle, applying the
- * two rules that keep the in-memory store and the on-disk files coherent (git.md §7):
+ * two rules that keep the in-memory store and the on-disk files coherent:
  *  - **save before commit** — flush pending in-memory edits to files so the commit captures them;
  *  - **reload after a tree-changing op** — pull / checkout / discard rewrite the files under the app,
  *    so the SQLite working store is rebuilt from disk afterwards.

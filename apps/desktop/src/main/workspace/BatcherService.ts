@@ -9,7 +9,7 @@ import type { TemplateService } from './TemplateService';
  * Batcher (M10): compose **document templates only**, in order, into one rendered output via Seebo's
  * ABSORB merge macro. Shared input ids are resolved **once** (the engine dedupes requirements by id),
  * so the same value flows into every sub-template that needs it. Each sub-template uses its own
- * **effective** source (selected release / draft). See SWAFT_ARCHITECTURE §8.3.
+ * **effective** source (selected release / draft).
  */
 export class BatcherService {
   constructor(

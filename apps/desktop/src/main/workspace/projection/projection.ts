@@ -10,7 +10,7 @@ import type { DirFs } from './dir-fs';
 
 /**
  * Projects the 🟢 synchronized tables of the in-memory SQLite working store to and from a directory
- * of plain, readable files — the on-disk form of a `git` workspace (git.md §3.3–§5). This is the
+ * of plain, readable files — the on-disk form of a `git` workspace. This is the
  * correctness core of the Git mode: `dumpWorkspace` writes the DB out, `hydrateWorkspace` rebuilds a
  * fresh DB from the files, and the two are exact inverses at the domain level.
  *

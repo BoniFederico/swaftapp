@@ -4,7 +4,7 @@ import type { Transport } from './types';
 /**
  * Future web transport (stub). Reserved for the limited web app: same op/DTO/error contract over
  * an authenticated HTTP backend hosting the same service layer. Not used on desktop.
- * See SWAFT_ARCHITECTURE.md §12 (NEXT_STEPS N11).
+ *
  */
 export class HttpTransport implements Transport {
   constructor(private readonly baseUrl: string) {}

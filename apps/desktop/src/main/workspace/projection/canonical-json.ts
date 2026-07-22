@@ -1,7 +1,7 @@
 /**
  * Deterministic JSON for versioned workspace files: object keys are sorted recursively, arrays keep
  * their order, and the document is pretty-printed with a trailing newline. Stable output is what
- * makes the files diff cleanly and merge with minimal conflicts (git.md §4.1) — the same logical
+ * makes the files diff cleanly and merge with minimal conflicts — the same logical
  * content always serializes to the same bytes, regardless of insertion order.
  */
 export function canonicalJson(value: unknown): string {

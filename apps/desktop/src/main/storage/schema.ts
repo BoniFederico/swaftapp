@@ -1,5 +1,5 @@
 /**
- * `.swaft` schema (v2). Encodes the data classification from SWAFT_DATA_MODEL.md:
+ * `.swaft` schema (v2). Encodes the data classification:
  *  - 🟢 **synchronized** entities carry the full sync-metadata column set so a future sync engine can
  *    reconcile them (createdAt/updatedAt/updatedByDeviceId/revision/deletedAt; soft-delete tombstones).
  *  - 🔵 **local-only** tables (e.g. per-template input state) carry NO sync metadata.
@@ -7,7 +7,7 @@
  *    the OS keychain. The absence of any such table here is part of the contract.
  *
  * The version is stored in SQLite's `user_version` pragma; migrations are forward-only and a newer
- * file version is rejected (SWAFT_STORAGE_SYNC_MODEL.md §13). v1→v2 (M5) adds organization (folders
+ * file version is rejected. v1→v2 (M5) adds organization (folders
  * reshaped to flat collections) + workspace settings + restrictions.
  */
 

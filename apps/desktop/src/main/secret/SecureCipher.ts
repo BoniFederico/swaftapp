@@ -15,7 +15,7 @@ export interface SecureCipher {
 /**
  * OS-backed protection using Electron `safeStorage` (DPAPI on Windows, Keychain on macOS). Secrets
  * are wrapped with this before being written to disk, so they are never at rest in clear
- * (🟠 secure-local, SWAFT_SECURITY_MODEL.md §4). Electron-only — imported solely by the main
+ * (🟠 secure-local). Electron-only — imported solely by the main
  * bootstrap, never by the transport/handlers (which must stay test-portable).
  */
 export class SafeStorageCipher implements SecureCipher {

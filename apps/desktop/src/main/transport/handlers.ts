@@ -139,7 +139,7 @@ export const handlers: Record<OpName, Handler> = {
   'dialog.pickDirectory': () =>
     svc(async () => ({ path: await getPlatformDialogs().pickDirectory() })),
 
-  // Git storage mode (git.md)
+  // Git storage mode
   'git.status': () => svc(async () => ({ status: await getGitOpsService().status() })),
   'git.commit': (p) =>
     svc(async () => ({ status: await getGitOpsService().commit((p as GitCommitRequest).message) })),

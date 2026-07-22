@@ -13,7 +13,7 @@ import { isSignedIn } from './session';
 /**
  * Transport-agnostic op dispatch. The IPC router (and a future HTTP server) both call this.
  * It (1) checks the op is known, (2) enforces the **session guard** (non-public ops require an
- * active session — SWAFT_SECURITY_MODEL.md §3a), (3) **validates the payload against the op's
+ * active session), (3) **validates the payload against the op's
  * request schema before any handler runs** (IPC-5), (4) runs the handler, and (5) maps failures to
  * the error envelope. No business logic lives here — handlers hold it.
  */

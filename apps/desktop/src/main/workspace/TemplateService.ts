@@ -72,7 +72,7 @@ export default async function ({ input, api, swaft }) {
 
 /**
  * Starter graph for a fresh `scenario` template: a single Start node on an otherwise empty canvas.
- * The scenario's source is this JSON (see docs `scenarios.md`); the visual editor mutates it.
+ * The scenario's source is this JSON; the visual editor mutates it.
  */
 const STARTER_SCENARIO_GRAPH: ScenarioGraph = {
   version: 1,

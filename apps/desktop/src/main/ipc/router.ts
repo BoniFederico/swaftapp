@@ -9,7 +9,7 @@ import { dispatch } from '../transport/dispatch';
  *  - a sender-frame check (only the app's own window may call),
  *  - delegation to the transport-agnostic dispatcher (no business logic here).
  * DTO schema validation and the session guard are layered in M1/M3.
- * See SWAFT_ARCHITECTURE.md §5, SWAFT_SECURITY_MODEL.md §3 (IPC-1..IPC-9).
+ *
  */
 
 type SenderCheck = (sender: WebContents) => boolean;

@@ -24,8 +24,8 @@ export interface LocalFilePersistenceDeps {
 
 /**
  * The default `local` storage mode: a workspace is a **single `.swaft` file** holding a serialized
- * SQLite image, optionally wrapped in whole-file AES-256-GCM encryption (SWAFT_STORAGE_SYNC_MODEL.md
- * §2–§3, §6). This class owns the byte ⇄ file round trip; {@link import('../WorkspaceService').WorkspaceService}
+ * SQLite image, optionally wrapped in whole-file AES-256-GCM encryption. This class owns the byte ⇄
+ * file round trip; {@link import('../WorkspaceService').WorkspaceService}
  * owns lifecycle state and the surfaced summary.
  */
 export class LocalFilePersistence implements WorkspacePersistence {

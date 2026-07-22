@@ -1,7 +1,7 @@
 /**
  * Typed surface for the `seebo` package (published JS/ESM without type declarations). Mapped to the
  * `seebo` specifier via tsconfig `paths` so the main process gets types; at runtime the real package
- * is loaded (vite/vitest do not honor tsconfig paths). Covers only what Swaft uses (docs/seebo).
+ * is loaded (vite/vitest do not honor tsconfig paths). Covers only what Swaft uses.
  */
 export interface SeeboRequirement {
   id: string;

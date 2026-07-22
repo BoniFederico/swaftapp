@@ -28,7 +28,7 @@ export interface ActionServiceDeps {
 
 /**
  * Executes a template's prepared action plan by bridging to Seebo's `seebo/actions` layer (the pure
- * core only prepares plans; this host layer executes — see docs/seebo/ACTIONS.md). It re-renders the
+ * core only prepares plans; this host layer executes). It re-renders the
  * template server-side to obtain the authoritative plan (never trusting a renderer-supplied one),
  * then `executeActionPlan` enforces confirmation/permissions/policy fail-closed. The sandbox (active
  * unless developer mode) forbids `prod`. Receipts are **redacted** and persisted **local-only** (🔵).
