@@ -1,26 +1,41 @@
-import { useState } from 'react';
-import { ApiError } from '../api-client/client';
-import { AccountControls } from '../auth/AccountControls';
+import { useMemo, useState } from 'react';
+import type { StorageMode } from '@swaft/shared';
+import { api, ApiError, type ApiClient } from '../api-client/client';
+import { useAuth } from '../auth/AuthProvider';
 import { useI18n } from '../i18n/I18nProvider';
-import { PreferencesDialog } from '../settings/PreferencesDialog';
-import { Button, Card, EmptyState, IconButton, SettingsIcon } from '../ui';
+import { SettingsModal } from '../settings/SettingsModal';
+import {
+  CloseIcon,
+  EmptyState,
+  IconButton,
+  LockIcon,
+  LogoutIcon,
+  SearchIcon,
+  SettingsIcon,
+  SplitButton,
+} from '../ui';
 import { CloneDialog } from '../git/CloneDialog';
 import { CreateWorkspaceWizard } from './CreateWorkspaceWizard';
 import { OpenPasswordDialog } from './OpenPasswordDialog';
 import { useWorkspace } from './WorkspaceProvider';
 
 /**
- * The signed-in landing page when no workspace is open: recent list + create/open entry points
- * (SWAFT_UI_SPEC.md §2). Encrypted workspaces prompt for their password on open.
+ * The signed-in landing page when no workspace is open (SWAFT_UI_SPEC.md §2): a centered brand hero,
+ * a search box that filters the recent list, and two "listbox of buttons" entry points — Create
+ * (Local / Git) and Open (from .swaft / from folder / clone from URL). The storage mode / open source
+ * is chosen here so the create wizard and open flow start already scoped. Encrypted workspaces prompt
+ * for their password on open.
  */
-export function Homepage() {
+export function Homepage({ client = api }: { client?: ApiClient }) {
   const { t } = useI18n();
-  const { recent, open, pickOpenTarget, pickDirectory } = useWorkspace();
+  const { recent, open, pickOpenTarget, pickDirectory, gitAvailable, forgetRecent } = useWorkspace();
+  const { profile, lock, signOut } = useAuth();
 
-  const [wizardOpen, setWizardOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [wizardMode, setWizardMode] = useState<StorageMode | null>(null);
   const [cloneOpen, setCloneOpen] = useState(false);
   const [pwDialogOpen, setPwDialogOpen] = useState(false);
-  const [prefsOpen, setPrefsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [openPath, setOpenPath] = useState<string | null>(null);
 
   async function tryOpen(path: string) {
@@ -45,64 +60,157 @@ export function Homepage() {
     if (path) await tryOpen(path);
   }
 
+  // Git entry points are hidden when no git binary is available (gitAvailable === false); while the
+  // probe is still pending (null) we keep them so the UI doesn't flicker.
+  const gitHidden = gitAvailable === false;
+
+  const createItems = [
+    { id: 'local', label: t('home.create.local') },
+    ...(gitHidden ? [] : [{ id: 'git', label: t('home.create.git') }]),
+  ];
+  const openItems = [
+    { id: 'file', label: t('home.open.file') },
+    { id: 'folder', label: t('home.open.folder') },
+    ...(gitHidden ? [] : [{ id: 'clone', label: t('home.open.clone') }]),
+  ];
+
+  function onCreate(id: string) {
+    setWizardMode(id as StorageMode);
+  }
+
+  function onOpen(id: string) {
+    if (id === 'file') void openViaDialog();
+    else if (id === 'folder') void openFolder();
+    else if (id === 'clone') setCloneOpen(true);
+  }
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return recent;
+    return recent.filter(
+      (w) => w.name.toLowerCase().includes(q) || w.path.toLowerCase().includes(q),
+    );
+  }, [recent, query]);
+
   return (
-    <div className="app">
-      <div className="app-header">
-        <div>
-          <div className="brand">
+    <div className="home-shell">
+      {/* Same top bar as the open-workspace shell: brand on the left, actions aligned right. */}
+      <header className="ws-topbar">
+        <div className="ws-identity">
+          <span className="ws-appname ws-appname--static">
             Swaft<span className="accent">.</span>
-          </div>
-          <p className="subtitle">{t('app.subtitle')}</p>
+          </span>
         </div>
-        <div className="row" style={{ gap: 'var(--space-2)' }}>
-          <AccountControls />
-          <IconButton label={t('prefs.open')} onClick={() => setPrefsOpen(true)}>
+        <div className="ws-actions">
+          <span className="muted ws-user">
+            {t('home.signedInAs', { name: profile?.displayName ?? '' })}
+          </span>
+          <span className="ws-sep" aria-hidden="true" />
+          <IconButton label={t('prefs.open')} onClick={() => setSettingsOpen(true)}>
             <SettingsIcon />
           </IconButton>
+          <IconButton label={t('account.lock')} onClick={() => void lock()}>
+            <LockIcon />
+          </IconButton>
+          <IconButton label={t('account.signOut')} onClick={() => void signOut()}>
+            <LogoutIcon />
+          </IconButton>
+        </div>
+      </header>
+
+      <div className="home-content">
+      <div className="home__hero">
+        <div className="brand brand--hero">
+          Swaft<span className="accent">.</span>
+        </div>
+        <p className="subtitle">{t('app.subtitle')}</p>
+      </div>
+
+      <div className="home__controls">
+        <div className="home-search">
+          <SearchIcon className="home-search__icon" />
+          <input
+            type="search"
+            className="home-search__input"
+            placeholder={t('home.search')}
+            aria-label={t('home.search')}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        <div className="row home__actions">
+          <SplitButton
+            label={t('home.create')}
+            ariaLabel={t('home.create.aria')}
+            variant="primary"
+            menuWidth={220}
+            items={createItems}
+            onPick={onCreate}
+          />
+          <SplitButton
+            label={t('home.open')}
+            ariaLabel={t('home.open.aria')}
+            variant="secondary"
+            menuWidth={200}
+            items={openItems}
+            onPick={onOpen}
+          />
         </div>
       </div>
 
-      <Card title={t('home.recent.title')}>
-        <div className="col" style={{ gap: 'var(--space-4)' }}>
-          <div className="row">
-            <Button onClick={() => setWizardOpen(true)}>{t('home.create')}</Button>
-            <Button variant="secondary" onClick={() => void openViaDialog()}>
-              {t('home.open')}
-            </Button>
-            <Button variant="secondary" onClick={() => void openFolder()}>
-              {t('home.openFolder')}
-            </Button>
-            <Button variant="secondary" onClick={() => setCloneOpen(true)}>
-              {t('home.clone')}
-            </Button>
-          </div>
+      <section className="home__recent">
+        <h2 className="home__recentTitle">{t('home.recent.title')}</h2>
+        {recent.length === 0 ? (
+          <EmptyState title={t('home.recent.empty')} />
+        ) : filtered.length === 0 ? (
+          <EmptyState title={t('home.recent.noMatch')} />
+        ) : (
+          <ul className="recent-list">
+            {filtered.map((w) => (
+              <li key={w.path} className="recent-item">
+                <button
+                  type="button"
+                  className="recent-item__open"
+                  onClick={() => void tryOpen(w.path)}
+                >
+                  <span className="recent-item__name">{w.name}</span>
+                  {w.encrypted && <span className="ui-badge">{t('home.encryptedBadge')}</span>}
+                  <span className="recent-item__path muted">{w.path}</span>
+                </button>
+                <button
+                  type="button"
+                  className="recent-item__remove"
+                  aria-label={t('home.recent.forget')}
+                  title={t('home.recent.forget')}
+                  onClick={() => void forgetRecent(w.path)}
+                >
+                  <CloseIcon />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      </div>
 
-          {recent.length === 0 ? (
-            <EmptyState title={t('home.recent.empty')} />
-          ) : (
-            <ul className="recent-list">
-              {recent.map((w) => (
-                <li key={w.path}>
-                  <button type="button" className="recent-item" onClick={() => void tryOpen(w.path)}>
-                    <span className="recent-item__name">{w.name}</span>
-                    {w.encrypted && <span className="ui-badge">{t('home.encryptedBadge')}</span>}
-                    <span className="recent-item__path muted">{w.path}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </Card>
-
-      <CreateWorkspaceWizard open={wizardOpen} onClose={() => setWizardOpen(false)} />
+      <CreateWorkspaceWizard
+        open={wizardMode !== null}
+        storageMode={wizardMode ?? 'local'}
+        onClose={() => setWizardMode(null)}
+      />
       <CloneDialog open={cloneOpen} onClose={() => setCloneOpen(false)} />
       <OpenPasswordDialog
         open={pwDialogOpen}
         path={openPath}
         onClose={() => setPwDialogOpen(false)}
       />
-      <PreferencesDialog open={prefsOpen} onClose={() => setPrefsOpen(false)} />
+      <SettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        client={client}
+        sections={['preferences']}
+        initialSection="preferences"
+      />
     </div>
   );
 }

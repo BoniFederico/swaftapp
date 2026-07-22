@@ -50,6 +50,7 @@ import {
   type UnlockRequest,
   type WorkspaceCreateRequest,
   type WorkspaceOpenRequest,
+  type WorkspaceForgetRecentRequest,
   type WorkspaceSettingsUpdate,
   type WorkspaceUpdateRequest,
   type DialogCreateTargetRequest,
@@ -137,6 +138,10 @@ export const handlers: Record<OpName, Handler> = {
   'workspace.update': (p) =>
     svc(async () => ({ workspace: await getWorkspaceService().update(p as WorkspaceUpdateRequest) })),
   'workspace.recent': () => ({ items: getAppStore().getRecent() }),
+  'workspace.forgetRecent': (p) => {
+    getAppStore().removeRecent((p as WorkspaceForgetRecentRequest).path);
+    return { items: getAppStore().getRecent() };
+  },
 
   // Native dialogs (M4)
   'dialog.createTarget': (p) =>

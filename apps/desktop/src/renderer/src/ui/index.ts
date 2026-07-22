@@ -38,6 +38,7 @@ export {
   GitBranchIcon,
 } from './icons';
 export { Menu, type MenuItem } from './Menu';
+export { SplitButton, type SplitButtonItem } from './SplitButton';
 export { ConfirmDialog } from './ConfirmDialog';
 export { VirtualList } from './VirtualList';
 export { Card } from './Card';

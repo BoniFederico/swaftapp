@@ -19,6 +19,8 @@
   --space-4: 16px;
   --space-5: 24px;
   --space-6: 32px;
+  --space-7: 46px;
+  --space-8: 54px;
 
   /* radii / elevation / typography — compact, flat, IDE-like */
   --radius-sm: 4px;
@@ -133,18 +135,6 @@ body {
   color: var(--text-muted);
   margin: 0;
 }
-.app-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  flex-wrap: wrap;
-}
-.account {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
 
 /* ---------- Workspace shell (full-width app surface) ---------- */
 .ws-shell {
@@ -160,15 +150,15 @@ body {
   justify-content: space-between;
   gap: var(--space-4);
   flex-wrap: wrap;
-  padding: var(--space-1) var(--space-4);
-  min-height: 40px;
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  min-height: 48px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
 .ws-identity {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-4);
   min-width: 0;
 }
 /* Storage / execution / encryption badges, inline right of the workspace name. */
@@ -190,10 +180,22 @@ body {
 .ws-appname .accent {
   color: var(--primary);
 }
+/* On the homepage there is nowhere to navigate to, so the brand is a static mark, not a button. */
+.ws-appname--static {
+  cursor: default;
+}
 .ws-sep {
   width: 1px;
   height: 18px;
   background: var(--border);
+}
+/* Signed-in identity text left of the action trio (homepage top bar). */
+.ws-user {
+  min-width: 0;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .ws-title {
   font-size: var(--fs-md);
@@ -208,10 +210,16 @@ body {
   align-items: center;
   gap: var(--space-2);
 }
-/* Compact square controls so the slimmer bar stays tight. */
+/* Symmetric margin so every separator has the same gap on both sides (tags → sep → git, etc.);
+   combined with the flex gap this yields equal spacing around all the action separators. */
+.ws-actions .ws-sep {
+  margin: 0 var(--space-1);
+}
+/* Compact, borderless square controls (icon only) so the slimmer bar stays tight and clean. */
 .ws-actions .ui-icon-btn {
   width: 30px;
   height: 30px;
+  border: none;
 }
 .ws-actions .env-picker__trigger {
   height: 30px;
@@ -361,14 +369,14 @@ body {
 .ws-side__resizer:hover {
   background: color-mix(in srgb, var(--primary) 40%, transparent);
 }
-/* Collapsed sidebar: a thin rail with a reopen button. Top padding = .tree__head padding + the
-   picker offset, so the 28px expand button sits exactly where the collapse button was. */
+/* Collapsed sidebar: a thin rail with a reopen button. Top padding matches .tree__head's, so the
+   28px expand button sits exactly where the collapse button now is (on the "Project" label row). */
 .ws-rail {
   flex-shrink: 0;
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: calc(var(--space-3) + var(--tree-picker-offset)) var(--space-2) var(--space-2);
+  padding: var(--space-3) var(--space-2) var(--space-2);
   border-right: 1px solid var(--border);
   background: var(--surface);
 }
@@ -454,12 +462,7 @@ body {
   overflow: auto;
   padding: var(--space-4);
 }
-/* Head: the "Project" labelled picker (fills the width) + the collapse chevron, aligned with the
-   picker row (not the label). --tree-picker-offset is the label height + gap above the picker; the
-   collapsed rail (.ws-rail) reuses it so the 28px expand button sits at exactly the same height. */
-:root {
-  --tree-picker-offset: calc(18px + var(--space-1));
-}
+/* Head: the "Project" label row (caption + collapse chevron) above the labelled picker. */
 .tree__head {
   display: flex;
   align-items: flex-end;
@@ -474,6 +477,13 @@ body {
   flex-direction: column;
   gap: var(--space-1);
 }
+/* Label row: "Project" caption on the left, the collapse (minimize) button aligned right. */
+.tree__field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
 .tree__field .ui-field__label {
   line-height: 18px;
 }
@@ -483,7 +493,7 @@ body {
 }
 /* Small caption over the tree body (sits under the create buttons). */
 .tree__label {
-  padding: var(--space-3) var(--space-4) var(--space-1);
+  padding: var(--space-3) var(--space-4) var(--space-2);
   font-size: var(--fs-xs);
   font-weight: 600;
   color: var(--text-muted);
@@ -494,6 +504,7 @@ body {
    they out-specify the base .ui-icon-btn 34px rule defined later in the file). */
 .ui-icon-btn.tree__collapse,
 .ui-icon-btn.tree__badgetoggle,
+.ui-icon-btn.tree__filter,
 .ws-rail .ui-icon-btn,
 .batch-panel__tools .ui-icon-btn {
   width: 28px;
@@ -501,10 +512,18 @@ body {
 }
 .ui-icon-btn.tree__collapse svg,
 .ui-icon-btn.tree__badgetoggle svg,
+.ui-icon-btn.tree__filter svg,
 .ws-rail .ui-icon-btn svg,
 .batch-panel__tools .ui-icon-btn svg {
   width: 16px;
   height: 16px;
+}
+/* Minimize/expand controls read as bare icons (no border): the tree's collapse, the collapsed
+   rail's reopen button, and the batcher's. */
+.ui-icon-btn.tree__collapse,
+.ws-rail .ui-icon-btn,
+.batch-panel__tools .ui-icon-btn {
+  border: none;
 }
 .tree__project-desc {
   padding: var(--space-2) var(--space-4) 0;
@@ -542,13 +561,14 @@ body {
 .tree-search__input {
   width: 100%;
   min-width: 0;
+  height: 28px;
   font-family: inherit;
   font-size: var(--fs-sm);
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: var(--space-1) var(--space-2) var(--space-1) 26px;
+  padding: 0 var(--space-2) 0 26px;
 }
 .tree-search__input:focus {
   border-color: var(--primary);
@@ -669,6 +689,8 @@ body {
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
+  /* Pull the folder icon a touch closer to the expand/collapse chevron. */
+  margin-right: calc(-1 * var(--space-2));
 }
 .tree-item__spacer {
   flex: 0 0 auto;
@@ -1827,7 +1849,7 @@ body {
   padding: var(--space-1) var(--space-2);
 }
 /* The condensed toolbar menu buttons (Add / Run / Run batch): icon + label + optional caret. */
-.scenario__menu-btn .ui-select__chevron {
+.ui-split-btn .ui-select__chevron {
   margin-left: var(--space-1);
   font-size: var(--fs-sm);
 }
@@ -2921,7 +2943,7 @@ body {
   min-height: 0;
 }
 .settings-nav {
-  width: 200px;
+  width: 224px;
   flex-shrink: 0;
   border-right: 1px solid var(--border);
   padding: var(--space-3);
@@ -2947,23 +2969,111 @@ body {
   color: var(--primary);
   font-weight: 600;
 }
+/* A nav entry may expand a nested sub-list (e.g. Environments → its environments + "add new"). */
+.settings-nav__entry {
+  display: flex;
+  flex-direction: column;
+}
+.settings-subnav {
+  list-style: none;
+  margin: var(--space-1) 0 var(--space-1) var(--space-3);
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.settings-subnav__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.settings-subnav__item:hover {
+  background: var(--surface-2);
+}
+.settings-subnav__item.is-active {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--primary);
+  font-weight: 600;
+}
+.settings-subnav__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Green dot marks the active environment; an invisible one keeps names aligned for the rest. */
+.settings-subnav__dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--success);
+}
+.settings-subnav__dot--off {
+  background: transparent;
+}
+.settings-subnav__add {
+  color: var(--text-muted);
+}
+.settings-subnav__add svg {
+  width: 14px;
+  height: 14px;
+}
+/* Drag handle between the nav and the content pane (horizontal resize), same UI as the doc splits. */
+.settings-split {
+  flex: 0 0 auto;
+  width: 8px;
+  margin: 0 calc(-1 * var(--space-1));
+  cursor: ew-resize;
+  z-index: 2;
+}
+.settings-split:hover {
+  background: color-mix(in srgb, var(--primary) 30%, transparent);
+  border-radius: var(--radius-sm);
+}
 .settings-content {
   flex: 1;
+  min-width: 0;
   overflow: auto;
   padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
-/* Simple settings form: full-width fields in a readable column, actions bottom-right. */
+/* Centered, fixed-width column: equal side margins for every section, and full height so each
+   section's action bar can pin to the bottom (same position across sections). */
+.settings-content__inner {
+  width: 100%;
+  max-width: 560px;
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+/* Simple settings form: full-width fields in a readable column; actions pinned to the bottom. */
 .settings-form {
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  max-width: 480px;
 }
 .settings-form__actions {
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
-  padding-top: var(--space-3);
+  margin-top: auto;
+  padding-top: var(--space-4);
   border-top: 1px solid var(--border);
 }
 
@@ -2989,22 +3099,32 @@ body {
   flex-direction: column;
   gap: var(--space-2);
 }
+/* A recent entry: one grey card holding the clickable open area (grows) and, inline at its end,
+   a borderless "×" that forgets the entry. */
 .recent-item {
-  width: 100%;
+  display: flex;
+  align-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.recent-item:hover {
+  border-color: var(--primary);
+}
+.recent-item__open {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: var(--space-3);
   text-align: left;
   font: inherit;
   color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  background: transparent;
+  border: none;
   border-radius: var(--radius-sm);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-3) var(--space-2) var(--space-3) var(--space-4);
   cursor: pointer;
-}
-.recent-item:hover {
-  border-color: var(--primary);
 }
 .recent-item__name {
   font-weight: 600;
@@ -3016,6 +3136,123 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.recent-item__remove {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-right: var(--space-2);
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.recent-item__remove:hover {
+  color: var(--danger);
+}
+.recent-item__remove svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ---------- Homepage hero + entry points ---------- */
+/* Full-height column so the top bar is full-bleed (matching the open-workspace shell) and the
+   content sits in a centered, max-width column below it. */
+.home-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.home-content {
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.home__hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-2);
+  padding: var(--space-8) 0 var(--space-3);
+}
+.brand--hero {
+  font-size: calc(var(--fs-2xl) * 1.8);
+  margin-bottom: 0;
+}
+/* Search box (grows) + the Create/Open split-buttons, on one centered row. */
+.home__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  flex-wrap: wrap;
+}
+.home__actions {
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+.home-search {
+  position: relative;
+  flex: 1;
+  min-width: 180px;
+  display: flex;
+  align-items: center;
+}
+.home-search__icon {
+  position: absolute;
+  left: var(--space-3);
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+.home-search__input {
+  width: 100%;
+  min-width: 0;
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3) var(--space-2) 34px;
+}
+.home-search__input:focus {
+  border-color: var(--primary);
+  outline: none;
+}
+.home__recent {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.home__recentTitle {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 0;
+}
+/* Read-only storage-mode indicator in the create wizard (mode is chosen on the homepage). */
+.wizard__mode {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
 }
 
 /* ---------- Auth screen ---------- */
@@ -3448,6 +3685,10 @@ body {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2);
+}
+/* An odd number of types leaves the last card alone on its row — let it span the full width. */
+.tpl-type-card:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
 }
 .tpl-type-card {
   display: flex;
@@ -4123,104 +4364,21 @@ body {
 }
 
 /* ---------- Environments: settings section (master/detail) ---------- */
-.env-settings {
-  display: flex;
-  gap: var(--space-5);
-  align-items: stretch;
-  min-height: 100%;
-}
-.env-settings__list {
-  width: 240px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding-right: var(--space-5);
-  border-right: 1px solid var(--border);
-}
-.env-settings__listhead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 28px;
-}
-.env-settings__listtitle {
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-}
-.env-settings__emptylist {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: var(--fs-sm);
-}
-.env-settings__items {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-.env-settings__item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  min-height: 30px;
-  text-align: left;
-  padding: var(--space-1) var(--space-2);
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  font: inherit;
-  font-size: var(--fs-sm);
-  cursor: pointer;
-}
-.env-settings__item:hover {
-  background: var(--surface-2);
-}
-.env-settings__item.is-active {
-  background: color-mix(in srgb, var(--primary) 14%, transparent);
-}
-.env-settings__name {
+/* The environments detail pane (the list lives in the Settings sub-nav now). Fills the height so
+   the editor's action bar pins to the bottom like the other sections. */
+.env-detail {
   flex: 1;
   min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.env-settings__dot {
-  flex: 0 0 auto;
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: var(--success);
-}
-.env-settings__meta {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
+  display: flex;
+  flex-direction: column;
 }
 .env-settings__count {
   font-size: var(--fs-xs);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
-.env-settings__detail {
-  flex: 1;
-  min-width: 0;
-  max-width: 560px;
-}
 .env-settings__editor {
+  flex: 1;
   gap: var(--space-4);
 }
 .env-settings__title {
@@ -4245,14 +4403,6 @@ body {
   resize: vertical;
   min-height: 52px;
   font-family: inherit;
-}
-.env-settings__actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
 }
 
 /* Variables: a bordered key/value grid with column headers, IDE table style. */
@@ -4359,7 +4509,7 @@ body {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-4) 0;
+  padding: var(--space-3) var(--space-4) var(--space-2);
 }
 .folder-view__glyph {
   width: 16px;
@@ -4452,7 +4602,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  max-width: 560px;
+  max-width: 720px;
 }
 .folder-form > .field-hint {
   margin: 0;
@@ -4475,6 +4625,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  max-width: 720px;
+  width: 100%;
 }
 .folder-notes__bar {
   display: flex;

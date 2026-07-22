@@ -36,8 +36,14 @@ async function signUpToHomepage() {
   await screen.findByText('Recent workspaces');
 }
 
-async function createWorkspace(name = 'Field Service') {
+/** Open the create wizard for a local `.swaft` workspace via the homepage Create split-button. */
+async function openLocalCreateWizard() {
   fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Local file (.swaft)' }));
+}
+
+async function createWorkspace(name = 'Field Service') {
+  await openLocalCreateWizard();
   fireEvent.change(await screen.findByLabelText('Workspace name'), { target: { value: name } });
   fireEvent.click(screen.getByRole('button', { name: 'Choose…' }));
   await waitFor(() =>
@@ -196,7 +202,7 @@ describe('Workspace shell (M5)', () => {
     renderApp();
     await signUpToHomepage();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }));
+    await openLocalCreateWizard();
     fireEvent.change(await screen.findByLabelText('Workspace name'), { target: { value: 'Enc WS' } });
     fireEvent.click(screen.getByRole('button', { name: 'Choose…' }));
     await waitFor(() =>

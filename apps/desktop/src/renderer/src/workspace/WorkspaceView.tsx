@@ -223,6 +223,9 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
             {current?.icon ? `${current.icon} ` : ''}
             {current?.name}
           </div>
+        </div>
+        <div className="ws-actions">
+          {/* Workspace tags sit right-aligned, beside the Git/environment controls (separator between). */}
           <div className="ws-meta">
             <span className="ui-badge">
               {t(current?.storageMode === 'git' ? 'ws.storageGit' : 'ws.storageLocal')}
@@ -236,10 +239,10 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
               </span>
             )}
           </div>
-        </div>
-        <div className="ws-actions">
+          <span className="ws-sep" aria-hidden="true" />
           {current?.storageMode === 'git' && <GitStatusButton client={client} />}
           <EnvironmentPicker onManage={() => openSettings('environments')} />
+          <span className="ws-sep" aria-hidden="true" />
           <IconButton label={t('ws.settings')} onClick={() => openSettings('general')}>
             <SettingsIcon />
           </IconButton>

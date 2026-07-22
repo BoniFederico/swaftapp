@@ -54,5 +54,5 @@ function WorkspaceRouter({ client }: { client: ApiClient }) {
       </div>
     );
   }
-  return current ? <WorkspaceView client={client} /> : <Homepage />;
+  return current ? <WorkspaceView client={client} /> : <Homepage client={client} />;
 }

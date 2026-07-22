@@ -595,7 +595,12 @@ export function WorkingTree({
     <aside className="tree" aria-label={t('tree.title')}>
       <div className="tree__head">
         <div className="tree__field">
-          <span className="ui-field__label">{t('tree.project')}</span>
+          <div className="tree__field-head">
+            <span className="ui-field__label">{t('tree.project')}</span>
+            <IconButton label={t('tree.collapse')} className="tree__collapse" onClick={onCollapse}>
+              <ChevronLeftIcon />
+            </IconButton>
+          </div>
           <ProjectSelector
             projects={tree.projects}
             selectedId={selectedProject}
@@ -604,9 +609,6 @@ export function WorkingTree({
             onDelete={(p) => setConfirm({ kind: 'project', id: p.id, name: p.name })}
           />
         </div>
-        <IconButton label={t('tree.collapse')} className="tree__collapse" onClick={onCollapse}>
-          <ChevronLeftIcon />
-        </IconButton>
       </div>
 
       {selected?.description && <div className="tree__project-desc">{selected.description}</div>}

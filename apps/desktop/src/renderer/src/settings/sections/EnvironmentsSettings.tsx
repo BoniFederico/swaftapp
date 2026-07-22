@@ -5,95 +5,64 @@ import { useEnvironments } from '../../environment/EnvironmentProvider';
 import { OWNER_KIND_LABEL } from '../../environment/ownerKind';
 import { useI18n } from '../../i18n/I18nProvider';
 import { KeyValueEditor } from '../../document/KeyValueEditor';
-import { Button, ConfirmDialog, IconButton, PlusIcon, Switch, TextField, useToast } from '../../ui';
+import { Button, ConfirmDialog, IconButton, Switch, TextField, TrashIcon, useToast } from '../../ui';
 
-/** ENVIRONMENTS: create / rename / describe / edit variables of the workspace's environments, and pick
- * which one is active. The active environment feeds the `env(...)` Seebo capability. */
-export function EnvironmentsSettings({ client }: { client: ApiClient }) {
+/**
+ * ENVIRONMENTS detail pane. The environment list + "add new" live in the Settings nav
+ * ({@link ../EnvironmentsNav}); this pane shows the create form or the selected environment's editor
+ * (name / description / variables / active toggle / delete). The active environment feeds the
+ * `env(...)` Seebo capability.
+ */
+export function EnvironmentsSettings({
+  client,
+  selectedId,
+  creating,
+  onSelect,
+  onCancelCreate,
+  onDeleted,
+}: {
+  client: ApiClient;
+  /** The environment whose editor to show (ignored while `creating`). */
+  selectedId: string | null;
+  /** Whether the create form is shown instead of an editor. */
+  creating: boolean;
+  /** Select an environment (also used to focus a freshly-created one). */
+  onSelect: (id: string) => void;
+  /** Leave the create form without creating. */
+  onCancelCreate: () => void;
+  /** A deletion happened; clear the selection so the nav can re-default. */
+  onDeleted: () => void;
+}) {
   const { t } = useI18n();
-  const { environments, activeId, setActive, refresh } = useEnvironments();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
-
-  // Default the selection to the first environment (or none) once the list is known.
-  useEffect(() => {
-    setSelectedId((prev) => prev ?? environments[0]?.id ?? null);
-  }, [environments]);
+  const { activeId, setActive, refresh } = useEnvironments();
 
   return (
-    <div className="env-settings">
-      <div className="env-settings__list">
-        <div className="env-settings__listhead">
-          <span className="env-settings__listtitle">{t('env.settings.list')}</span>
-          <IconButton
-            label={t('env.settings.new')}
-            onClick={() => {
-              setCreating(true);
-              setSelectedId(null);
-            }}
-          >
-            <PlusIcon />
-          </IconButton>
-        </div>
-        {environments.length === 0 ? (
-          <p className="env-settings__emptylist">{t('env.settings.empty')}</p>
-        ) : (
-          <ul className="env-settings__items">
-            {environments.map((env) => (
-              <li key={env.id}>
-                <button
-                  type="button"
-                  className={`env-settings__item${env.id === selectedId && !creating ? ' is-active' : ''}`}
-                  onClick={() => {
-                    setCreating(false);
-                    setSelectedId(env.id);
-                  }}
-                >
-                  <span className="env-settings__name">
-                    {env.id === activeId && <span className="env-settings__dot" title={t('env.settings.activeHint')} />}
-                    {env.name}
-                  </span>
-                  <span className="env-settings__meta">
-                    <span className="env-settings__count">{env.varCount}</span>
-                    <span className={`ui-badge env-badge env-badge--${env.ownerKind}`}>
-                      {t(OWNER_KIND_LABEL[env.ownerKind])}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      <div className="env-settings__detail">
-        {creating ? (
-          <CreateEnvForm
-            client={client}
-            onCancel={() => setCreating(false)}
-            onCreated={async (env) => {
-              setCreating(false);
-              await refresh();
-              setSelectedId(env.id);
-            }}
-          />
-        ) : selectedId ? (
-          <EnvironmentEditor
-            key={selectedId}
-            client={client}
-            environmentId={selectedId}
-            isActive={selectedId === activeId}
-            onToggleActive={(on) => void setActive(on ? selectedId : null)}
-            onChanged={() => void refresh()}
-            onDeleted={async () => {
-              await refresh();
-              setSelectedId(null);
-            }}
-          />
-        ) : (
-          <p className="muted">{t('env.settings.selectHint')}</p>
-        )}
-      </div>
+    <div className="env-detail">
+      {creating ? (
+        <CreateEnvForm
+          client={client}
+          onCancel={onCancelCreate}
+          onCreated={async (env) => {
+            await refresh();
+            onSelect(env.id);
+          }}
+        />
+      ) : selectedId ? (
+        <EnvironmentEditor
+          key={selectedId}
+          client={client}
+          environmentId={selectedId}
+          isActive={selectedId === activeId}
+          onToggleActive={(on) => void setActive(on ? selectedId : null)}
+          onChanged={() => void refresh()}
+          onDeleted={async () => {
+            await refresh();
+            onDeleted();
+          }}
+        />
+      ) : (
+        <p className="muted">{t('env.settings.selectHint')}</p>
+      )}
     </div>
   );
 }
@@ -221,6 +190,14 @@ function EnvironmentEditor({
     setDirty(true);
   }
 
+  function cancel() {
+    if (!env) return;
+    setName(env.name);
+    setDescription(env.description ?? '');
+    setVars(env.vars);
+    setDirty(false);
+  }
+
   async function save() {
     try {
       await client.call('env.update', {
@@ -256,6 +233,9 @@ function EnvironmentEditor({
         <span className={`ui-badge env-badge env-badge--${env.ownerKind}`}>{t(OWNER_KIND_LABEL[env.ownerKind])}</span>
         <span className="env-settings__spacer" />
         <Switch label={t('env.settings.active')} checked={isActive} onChange={onToggleActive} />
+        <IconButton label={t('env.settings.delete')} onClick={() => setConfirmDelete(true)}>
+          <TrashIcon />
+        </IconButton>
       </div>
 
       <TextField
@@ -287,9 +267,9 @@ function EnvironmentEditor({
         />
       </div>
 
-      <div className="env-settings__actions">
-        <Button variant="danger" onClick={() => setConfirmDelete(true)}>
-          {t('env.settings.delete')}
+      <div className="settings-form__actions">
+        <Button variant="ghost" disabled={!dirty} onClick={cancel}>
+          {t('name.cancel')}
         </Button>
         <Button variant="primary" disabled={!dirty || !name.trim()} onClick={() => void save()}>
           {t('env.settings.save')}

@@ -21,10 +21,10 @@ import {
   PlayIcon,
   SaveIcon,
   Select,
+  SplitButton,
   TrashIcon,
   useToast,
 } from '../ui';
-import { usePopover } from '../ui/usePopover';
 import { notifyTreeChanged, subscribeTreeChanged } from '../workspace/treeBus';
 import { newId, removeEdge, removeNode } from './graph-model';
 import { NodeInspector } from './NodeInspector';
@@ -501,9 +501,10 @@ export function ScenarioView({
     <div className="scenario">
       <div className="scenario__toolbar">
         {/* Zone: add nodes (one condensed menu) */}
-        <ActionMenuButton
+        <SplitButton
           label={t('scenario.add')}
           variant="secondary"
+          className="scenario__menu-btn"
           items={[
             { id: 'start', label: t('scenario.addStart') },
             { id: 'decision', label: t('scenario.addDecision') },
@@ -536,9 +537,10 @@ export function ScenarioView({
             {t('scenario.stop')}
           </Button>
         ) : (
-          <ActionMenuButton
+          <SplitButton
             label={t('scenario.run')}
             variant="primary"
+            className="scenario__menu-btn"
             icon={<PlayIcon />}
             disabled={runActive}
             directWhenSingle
@@ -581,9 +583,10 @@ export function ScenarioView({
               onChange={(e) => setIntervalSec(Math.max(0, Number(e.target.value) || 0))}
             />
             <span className="muted">{t('scenario.batchSeconds')}</span>
-            <ActionMenuButton
+            <SplitButton
               label={t('scenario.runBatch')}
               variant="secondary"
+              className="scenario__menu-btn"
               icon={<PlayIcon />}
               disabled={runActive}
               directWhenSingle
@@ -733,87 +736,6 @@ export function ScenarioView({
 
       {!loaded && <span className="muted scenario__loading">{t('doc.loading')}</span>}
     </div>
-  );
-}
-
-/**
- * A toolbar button that either acts directly or opens a menu of choices — the shared shape for Add,
- * Run and Run batch. With `directWhenSingle` and exactly one item it is a plain button (no caret) that
- * picks that item; otherwise it opens a portalled menu. Disabled (and caret-less) when there are none.
- */
-function ActionMenuButton({
-  label,
-  variant,
-  icon,
-  items,
-  disabled,
-  directWhenSingle,
-  onPick,
-}: {
-  label: string;
-  variant: 'primary' | 'secondary' | 'ghost' | 'danger';
-  icon?: React.ReactNode;
-  items: { id: string; label: string }[];
-  disabled?: boolean;
-  directWhenSingle?: boolean;
-  onPick: (id: string) => void;
-}) {
-  const { open, setOpen, pos, triggerRef, popRef, toggle } = usePopover<HTMLUListElement>(220);
-  const direct = !!directWhenSingle && items.length === 1;
-  const empty = items.length === 0;
-
-  function onClick() {
-    if (direct) onPick(items[0]!.id);
-    else toggle();
-  }
-
-  return (
-    <>
-      <button
-        ref={triggerRef}
-        type="button"
-        className={`ui-btn ui-btn--${variant} scenario__menu-btn`}
-        disabled={disabled || empty}
-        aria-haspopup={direct ? undefined : 'menu'}
-        aria-expanded={direct ? undefined : open}
-        onClick={onClick}
-      >
-        {icon}
-        <span>{label}</span>
-        {!direct && (
-          <span className="ui-select__chevron" aria-hidden="true">
-            ▾
-          </span>
-        )}
-      </button>
-      {open &&
-        !direct &&
-        createPortal(
-          <ul
-            ref={popRef}
-            role="menu"
-            className="ui-menu"
-            style={{ position: 'fixed', top: pos.top, left: pos.left }}
-          >
-            {items.map((it) => (
-              <li key={it.id} role="none">
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="ui-menu__item"
-                  onClick={() => {
-                    setOpen(false);
-                    onPick(it.id);
-                  }}
-                >
-                  {it.label}
-                </button>
-              </li>
-            ))}
-          </ul>,
-          document.body,
-        )}
-    </>
   );
 }
 

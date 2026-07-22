@@ -81,6 +81,10 @@ export const workspaceOpenRequestSchema = z
   })
   .strict();
 
+export const workspaceForgetRecentRequestSchema = z
+  .object({ path: z.string().min(1) })
+  .strict();
+
 export const dialogCreateTargetRequestSchema = z
   .object({ defaultName: z.string().max(120).optional() })
   .strict();
@@ -490,6 +494,7 @@ export const OP_NAMES = [
   'workspace.current',
   'workspace.update',
   'workspace.recent',
+  'workspace.forgetRecent',
   'dialog.createTarget',
   'dialog.openTarget',
   'dialog.pickDirectory',
@@ -600,6 +605,7 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'workspace.current': emptyRequestSchema,
   'workspace.update': workspaceUpdateRequestSchema,
   'workspace.recent': emptyRequestSchema,
+  'workspace.forgetRecent': workspaceForgetRecentRequestSchema,
   'dialog.createTarget': dialogCreateTargetRequestSchema,
   'dialog.openTarget': emptyRequestSchema,
   'dialog.pickDirectory': emptyRequestSchema,
@@ -774,6 +780,7 @@ export interface PrefsResponse {
 
 export type WorkspaceCreateRequest = z.infer<typeof workspaceCreateRequestSchema>;
 export type WorkspaceOpenRequest = z.infer<typeof workspaceOpenRequestSchema>;
+export type WorkspaceForgetRecentRequest = z.infer<typeof workspaceForgetRecentRequestSchema>;
 export type DialogCreateTargetRequest = z.infer<typeof dialogCreateTargetRequestSchema>;
 
 export type GitCommitRequest = z.infer<typeof gitCommitRequestSchema>;
@@ -1457,6 +1464,10 @@ export interface OpContracts {
   'workspace.current': { request: EmptyRequest; response: WorkspaceResponse };
   'workspace.update': { request: WorkspaceUpdateRequest; response: WorkspaceResponse };
   'workspace.recent': { request: EmptyRequest; response: RecentWorkspacesResponse };
+  'workspace.forgetRecent': {
+    request: WorkspaceForgetRecentRequest;
+    response: RecentWorkspacesResponse;
+  };
   'dialog.createTarget': { request: DialogCreateTargetRequest; response: DialogPathResponse };
   'dialog.openTarget': { request: EmptyRequest; response: DialogPathResponse };
   'dialog.pickDirectory': { request: EmptyRequest; response: DialogPathResponse };
