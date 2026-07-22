@@ -530,8 +530,10 @@ body {
   width: 16px;
   height: 16px;
 }
-/* Minimize/collapse controls read as bare icons (no border): the tree's collapse and the batcher's. */
+/* Minimize/expand controls read as bare icons (no border): the tree's collapse, the collapsed
+   rail's reopen button, and the batcher's. */
 .ui-icon-btn.tree__collapse,
+.ws-rail .ui-icon-btn,
 .batch-panel__tools .ui-icon-btn {
   border: none;
 }
@@ -571,13 +573,14 @@ body {
 .tree-search__input {
   width: 100%;
   min-width: 0;
+  height: 28px;
   font-family: inherit;
   font-size: var(--fs-sm);
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: var(--space-1) var(--space-2) var(--space-1) 26px;
+  padding: 0 var(--space-2) 0 26px;
 }
 .tree-search__input:focus {
   border-color: var(--primary);
