@@ -222,10 +222,10 @@ body {
   align-items: center;
   gap: var(--space-2);
 }
-/* A touch more room before each separator so the gap left of it (e.g. environment listbox → sep)
-   visually matches the borderless icon's gap on the right. */
+/* Symmetric margin so every separator has the same gap on both sides (tags → sep → git, etc.);
+   combined with the flex gap this yields equal spacing around all the action separators. */
 .ws-actions .ws-sep {
-  margin-left: var(--space-1);
+  margin: 0 var(--space-1);
 }
 /* Compact, borderless square controls (icon only) so the slimmer bar stays tight and clean. */
 .ws-actions .ui-icon-btn {
