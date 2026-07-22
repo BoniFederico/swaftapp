@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { TemplateType, UntrustedCapabilityDto } from '@swaft/shared';
 import type { ApiClient } from '../api-client/client';
-import { useAuth } from '../auth/AuthProvider';
 import { BatchDocumentView } from '../batcher/BatchDocumentView';
 import { BatcherPanel } from '../batcher/BatcherPanel';
 import { ApiView } from '../document/ApiView';
@@ -25,7 +24,6 @@ import {
   EmptyState,
   FolderIcon,
   IconButton,
-  LockIcon,
   LogoutIcon,
   ScenarioIcon,
   SettingsIcon,
@@ -63,7 +61,6 @@ function TabIcon({ type }: { type: TabKind }) {
 export function WorkspaceView({ client }: { client: ApiClient }) {
   const { t } = useI18n();
   const { current, close } = useWorkspace();
-  const { lock } = useAuth();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSectionId>('general');
   const [tabs, setTabs] = useState<Tab[]>([]);
@@ -245,9 +242,6 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
           <span className="ws-sep" aria-hidden="true" />
           <IconButton label={t('ws.settings')} onClick={() => openSettings('general')}>
             <SettingsIcon />
-          </IconButton>
-          <IconButton label={t('account.lock')} onClick={() => void lock()}>
-            <LockIcon />
           </IconButton>
           <IconButton label={t('ws.close')} onClick={() => void close()}>
             <LogoutIcon />

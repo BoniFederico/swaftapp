@@ -189,14 +189,6 @@ body {
   height: 18px;
   background: var(--border);
 }
-/* Signed-in identity text left of the action trio (homepage top bar). */
-.ws-user {
-  min-width: 0;
-  max-width: 240px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .ws-title {
   font-size: var(--fs-md);
   font-weight: 600;

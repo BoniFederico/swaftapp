@@ -1,7 +1,6 @@
 import { join } from 'node:path';
 import { app, BrowserWindow, dialog, Menu, session, type WebContents } from 'electron';
 import { registerIpcRouter } from './ipc/router';
-import { bootstrapAuth } from './auth/bootstrap';
 import { bootstrapWorkspace } from './app-bootstrap';
 
 /**
@@ -102,9 +101,6 @@ if (!app.requestSingleInstanceLock()) {
       });
     });
 
-    // Auth/session authority (Argon2id verifier in OS safeStorage) + the session gate the
-    // dispatcher consults. Must be wired before the router accepts any op.
-    bootstrapAuth();
     // App-level store + workspace service (worker-backed `.swaft`) + native dialogs.
     bootstrapWorkspace(() => mainWindow);
     registerIpcRouter(isTrustedSender);

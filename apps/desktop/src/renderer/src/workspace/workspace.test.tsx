@@ -6,9 +6,6 @@ import { AppProviders } from '../AppProviders';
 import { ApiClient } from '../api-client/client';
 import type { Transport } from '../api-client/transport/types';
 import { dispatch } from '../../../main/transport/dispatch';
-import { setSessionGate } from '../../../main/transport/session';
-import { setAuthService } from '../../../main/auth/registry';
-import { makeTestAuthService } from '../../../main/auth/testing';
 import {
   installTestWorkspaceBackend,
   resetTestWorkspaceBackend,
@@ -28,11 +25,8 @@ function renderApp() {
   );
 }
 
-async function signUpToHomepage() {
-  fireEvent.change(await screen.findByLabelText('Username'), { target: { value: 'tech' } });
-  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'correct-horse' } });
-  fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'correct-horse' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
+/** The app launches straight to the homepage (no auth gate). */
+async function awaitHomepage() {
   await screen.findByText('Recent workspaces');
 }
 
@@ -56,21 +50,16 @@ async function createWorkspace(name = 'Field Service') {
 describe('Workspace shell (M5)', () => {
   beforeEach(() => {
     localStorage.clear();
-    const { service } = makeTestAuthService();
-    setAuthService(service);
-    setSessionGate({ isSignedIn: () => service.isSignedIn() });
     installTestWorkspaceBackend({ createPath: 'mem://demo.swaft' });
   });
 
   afterEach(() => {
-    setSessionGate({ isSignedIn: () => false });
-    setAuthService(null);
     resetTestWorkspaceBackend();
   });
 
   it('opens the shell with the Working Tree and a welcome panel', async () => {
     renderApp();
-    await signUpToHomepage();
+    await awaitHomepage();
     await createWorkspace();
 
     expect(screen.getByText('Field Service')).toBeInTheDocument();
@@ -80,7 +69,7 @@ describe('Workspace shell (M5)', () => {
 
   it('returns to the homepage when the app logo is clicked', async () => {
     renderApp();
-    await signUpToHomepage();
+    await awaitHomepage();
     await createWorkspace();
 
     fireEvent.click(screen.getByRole('button', { name: 'Back to home' }));
@@ -89,7 +78,7 @@ describe('Workspace shell (M5)', () => {
 
   it('creates a project, then manages its folders (with delete confirmation)', async () => {
     renderApp();
-    await signUpToHomepage();
+    await awaitHomepage();
     await createWorkspace();
 
     // Create a project via the picker (its last item) → it becomes the selected project.
@@ -123,7 +112,7 @@ describe('Workspace shell (M5)', () => {
 
   it('gates the developer execution mode behind confirmation in Settings', async () => {
     renderApp();
-    await signUpToHomepage();
+    await awaitHomepage();
     await createWorkspace();
 
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
@@ -142,7 +131,7 @@ describe('Workspace shell (M5)', () => {
 
   it('creates and opens a document template, fills inputs and renders via Seebo', async () => {
     renderApp();
-    await signUpToHomepage();
+    await awaitHomepage();
     await createWorkspace();
 
     // Project
@@ -186,7 +175,7 @@ describe('Workspace shell (M5)', () => {
 
   it('renames the workspace from the Settings modal (General section)', async () => {
     renderApp();
-    await signUpToHomepage();
+    await awaitHomepage();
     await createWorkspace('Field Service');
 
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
@@ -200,7 +189,7 @@ describe('Workspace shell (M5)', () => {
 
   it('shows the unrecoverability warning and blocks mismatched encryption passwords', async () => {
     renderApp();
-    await signUpToHomepage();
+    await awaitHomepage();
 
     await openLocalCreateWizard();
     fireEvent.change(await screen.findByLabelText('Workspace name'), { target: { value: 'Enc WS' } });

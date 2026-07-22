@@ -7,9 +7,6 @@ import { AppProviders } from '../AppProviders';
 import { ApiClient } from '../api-client/client';
 import type { Transport } from '../api-client/transport/types';
 import { dispatch } from '../../../main/transport/dispatch';
-import { setSessionGate } from '../../../main/transport/session';
-import { setAuthService } from '../../../main/auth/registry';
-import { makeTestAuthService } from '../../../main/auth/testing';
 import {
   installTestWorkspaceBackend,
   resetTestWorkspaceBackend,
@@ -36,14 +33,11 @@ function setUrl(text: string) {
   act(() => view!.dispatch({ changes: { from: 0, to: view!.state.doc.length, insert: text } }));
 }
 
-async function signUpToWorkspaceApiTemplate() {
-  fireEvent.change(await screen.findByLabelText('Username'), { target: { value: 'tech' } });
-  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'correct-horse' } });
-  fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'correct-horse' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
+async function gotoWorkspaceApiTemplate() {
   await screen.findByText('Recent workspaces');
 
   fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Local file (.swaft)' }));
   fireEvent.change(await screen.findByLabelText('Workspace name'), { target: { value: 'WS' } });
   fireEvent.click(screen.getByRole('button', { name: 'Choose…' }));
   await waitFor(() =>
@@ -74,20 +68,15 @@ async function signUpToWorkspaceApiTemplate() {
 describe('API View (M8)', () => {
   beforeEach(() => {
     localStorage.clear();
-    const { service } = makeTestAuthService();
-    setAuthService(service);
-    setSessionGate({ isSignedIn: () => service.isSignedIn() });
   });
   afterEach(() => {
-    setSessionGate({ isSignedIn: () => false });
-    setAuthService(null);
     resetTestWorkspaceBackend();
   });
 
   it('blocks a request to a domain on the workspace block-list', async () => {
     installTestWorkspaceBackend({ createPath: 'mem://demo.swaft' });
     renderApp();
-    await signUpToWorkspaceApiTemplate();
+    await gotoWorkspaceApiTemplate();
 
     // Block example.com from Settings → Restrictions, then save.
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
@@ -111,7 +100,7 @@ describe('API View (M8)', () => {
         Promise.resolve(new Response('{"pong":true}', { status: 200, statusText: 'OK' }))) as typeof fetch,
     });
     renderApp();
-    await signUpToWorkspaceApiTemplate();
+    await gotoWorkspaceApiTemplate();
 
     setUrl('https://example.com/x');
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));

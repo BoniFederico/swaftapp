@@ -18,27 +18,6 @@ export const pingRequestSchema = z.object({ echo: z.string().optional() }).stric
 /** Empty, strict payload for ops that take no arguments. */
 export const emptyRequestSchema = z.object({}).strict();
 
-export const signUpRequestSchema = z
-  .object({
-    username: z.string().trim().min(3).max(64),
-    displayName: z.string().trim().min(1).max(120).optional(),
-    password: z.string().min(8).max(256),
-  })
-  .strict();
-
-export const signInRequestSchema = z
-  .object({
-    username: z.string().min(1).max(64),
-    password: z.string().min(1).max(256),
-  })
-  .strict();
-
-export const unlockRequestSchema = z
-  .object({
-    password: z.string().min(1).max(256),
-  })
-  .strict();
-
 // --- M4: preferences + workspace + native dialogs ---------------------------
 
 export const preferencesSchema = z
@@ -479,13 +458,6 @@ export const scenarioBatchRefRequestSchema = z.object({ batchId: z.string().min(
 /** The canonical list of op names. The IPC router allow-list is derived from this. */
 export const OP_NAMES = [
   'system.ping',
-  'auth.status',
-  'auth.signUp',
-  'auth.signIn',
-  'auth.unlock',
-  'auth.signOut',
-  'auth.lock',
-  'session.whoami',
   'prefs.get',
   'prefs.set',
   'workspace.create',
@@ -590,13 +562,6 @@ export type OpName = (typeof OP_NAMES)[number];
 /** op name → request schema. Dispatch validates the incoming payload against this. */
 export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'system.ping': pingRequestSchema,
-  'auth.status': emptyRequestSchema,
-  'auth.signUp': signUpRequestSchema,
-  'auth.signIn': signInRequestSchema,
-  'auth.unlock': unlockRequestSchema,
-  'auth.signOut': emptyRequestSchema,
-  'auth.lock': emptyRequestSchema,
-  'session.whoami': emptyRequestSchema,
   'prefs.get': emptyRequestSchema,
   'prefs.set': preferencesSchema,
   'workspace.create': workspaceCreateRequestSchema,
@@ -698,23 +663,18 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
 };
 
 /**
- * Ops callable WITHOUT an authenticated session (auth + minimal bootstrap). Everything else is
- * session-guarded in the main process (SWAFT_SECURITY_MODEL.md §3a). This list is the contract;
- * enforcement lives in main (never the renderer).
+ * Ops callable WITHOUT an active session. Everything else passes through the main-process session
+ * guard (`dispatch`), which is a **host-agnostic seam**: on desktop the gate is open (no login),
+ * while a future hosted backend injects real per-request sessions (SWAFT_ARCHITECTURE.md §12).
+ * This list is the contract; enforcement lives in main (never the renderer).
  */
-export const PUBLIC_OP_NAMES = [
-  'system.ping',
-  'auth.status',
-  'auth.signUp',
-  'auth.signIn',
-  'auth.unlock',
-] as const satisfies readonly OpName[];
+export const PUBLIC_OP_NAMES = ['system.ping'] as const satisfies readonly OpName[];
 
 export function isPublicOp(name: string): boolean {
   return (PUBLIC_OP_NAMES as readonly string[]).includes(name);
 }
 
-/** True when an op may only run with an active session. */
+/** True when an op may only run with an active session (always satisfied while the gate is open). */
 export function requiresSession(name: OpName): boolean {
   return !isPublicOp(name);
 }
@@ -730,32 +690,7 @@ export interface PingResponse {
   ts: string;
 }
 
-export type SignUpRequest = z.infer<typeof signUpRequestSchema>;
-export type SignInRequest = z.infer<typeof signInRequestSchema>;
-export type UnlockRequest = z.infer<typeof unlockRequestSchema>;
 export type EmptyRequest = z.infer<typeof emptyRequestSchema>;
-
-/** Authentication / session lifecycle state surfaced to the renderer. */
-export type AuthState = 'needs-setup' | 'signed-out' | 'locked' | 'signed-in';
-
-/** Non-secret account profile. NEVER carries the password/verifier. */
-export interface AuthProfile {
-  username: string;
-  displayName: string;
-}
-
-/** The shape returned by every auth op + `auth.status`: the current state and (if any) profile. */
-export interface AuthStatusResponse {
-  state: AuthState;
-  /** Present once an account exists (signed-out/locked/signed-in); null on `needs-setup`. */
-  profile: AuthProfile | null;
-}
-
-export interface WhoamiResponse {
-  profile: AuthProfile;
-  /** When the active session began, ISO-8601. */
-  sessionSince: string;
-}
 
 // --- M4 DTOs ----------------------------------------------------------------
 
@@ -1449,13 +1384,6 @@ export interface SettingsResponse {
 
 export interface OpContracts {
   'system.ping': { request: PingRequest; response: PingResponse };
-  'auth.status': { request: EmptyRequest; response: AuthStatusResponse };
-  'auth.signUp': { request: SignUpRequest; response: AuthStatusResponse };
-  'auth.signIn': { request: SignInRequest; response: AuthStatusResponse };
-  'auth.unlock': { request: UnlockRequest; response: AuthStatusResponse };
-  'auth.signOut': { request: EmptyRequest; response: AuthStatusResponse };
-  'auth.lock': { request: EmptyRequest; response: AuthStatusResponse };
-  'session.whoami': { request: EmptyRequest; response: WhoamiResponse };
   'prefs.get': { request: EmptyRequest; response: PrefsResponse };
   'prefs.set': { request: PrefsSetRequest; response: PrefsResponse };
   'workspace.create': { request: WorkspaceCreateRequest; response: WorkspaceResponse };
