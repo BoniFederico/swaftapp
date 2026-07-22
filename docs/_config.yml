@@ -8,10 +8,10 @@ description: >-
 lang: en
 
 # --- URLs -------------------------------------------------------------------
-# Project site served at https://<owner>.github.io/swaft/ — adjust if the repo is renamed
+# Project site served at https://<owner>.github.io/swaftapp/ — adjust if the repo is renamed
 # or moved to a user/org page. `baseurl` must match the repository name for a project site.
 url: https://bonifederico.github.io
-baseurl: /swaft
+baseurl: /swaftapp
 
 # --- Theme ------------------------------------------------------------------
 theme: just-the-docs
@@ -30,7 +30,7 @@ heading_anchors: true
 # Show the "Edit this page on GitHub" link and repo button in the header.
 aux_links:
   Swaft on GitHub:
-    - https://github.com/BoniFederico/swaft
+    - https://github.com/BoniFederico/swaftapp
 aux_links_new_tab: true
 
 # Footer
@@ -40,7 +40,7 @@ last_edit_timestamp: true
 last_edit_time_format: "%b %e %Y"
 gh_edit_link: true
 gh_edit_link_text: "Edit this page on GitHub"
-gh_edit_repository: https://github.com/BoniFederico/swaft
+gh_edit_repository: https://github.com/BoniFederico/swaftapp
 gh_edit_branch: main
 gh_edit_source: docs
 gh_edit_view_mode: tree

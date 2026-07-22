@@ -39,7 +39,7 @@ This page takes you from an empty machine to a first rendered template.
 Swaft is currently run from source. Clone the repository and install dependencies:
 
 ```bash
-git clone https://github.com/BoniFederico/swaft.git
+git clone https://github.com/BoniFederico/swaftapp.git
 cd swaft
 npm install
 ```

@@ -45,7 +45,7 @@ workspaces to a SQLite database run in a worker.
 ## Install & run
 
 ```bash
-git clone https://github.com/BoniFederico/swaft.git
+git clone https://github.com/BoniFederico/swaftapp.git
 cd swaft
 npm install
 npm run dev        # launch the app with hot-reload (alias: npm run see)
@@ -104,19 +104,19 @@ npm run dist:dir    # unpacked directory only
 ```
 
 Continuous integration runs typecheck + lint + tests on Linux
-([`.github/workflows/ci.yml`](https://github.com/BoniFederico/swaft/blob/main/.github/workflows/ci.yml));
+([`.github/workflows/ci.yml`](https://github.com/BoniFederico/swaftapp/blob/main/.github/workflows/ci.yml));
 multi-OS release artifacts are produced by the release workflow.
 
 ## Contributing to these docs
 
-This site lives in [`docs/`](https://github.com/BoniFederico/swaft/tree/main/docs) and is built with
+This site lives in [`docs/`](https://github.com/BoniFederico/swaftapp/tree/main/docs) and is built with
 Jekyll + [just-the-docs](https://just-the-docs.com/). Preview it locally:
 
 ```bash
 cd docs
 bundle install
-bundle exec jekyll serve      # http://localhost:4000/swaft/
+bundle exec jekyll serve      # http://localhost:4000/swaftapp/
 ```
 
 Every push to `docs/` on the default branch redeploys the site via
-[`.github/workflows/pages.yml`](https://github.com/BoniFederico/swaft/blob/main/.github/workflows/pages.yml).
+[`.github/workflows/pages.yml`](https://github.com/BoniFederico/swaftapp/blob/main/.github/workflows/pages.yml).

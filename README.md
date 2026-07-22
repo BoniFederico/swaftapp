@@ -1,14 +1,14 @@
 # Swaft
 
 **Swaft** ("Strange Web App For Technician") is a desktop-first technical workspace built on the
-[Seebo](https://github.com/BoniFederico/swaft/tree/main/docs/seebo) template engine. It is an
+[Seebo](https://github.com/BoniFederico/swaftapp/tree/main/docs/seebo) template engine. It is an
 Electron app (main process = Node backend, hardened IPC, React/Vite renderer) for authoring
 versioned **templates**, firing structured **HTTP requests**, running sandboxed **code** and
 **actions**, and wiring them together in visual **scenarios** — all inside a local `.swaft` file or
 a Git-backed workspace.
 
 > **📖 Documentation:** the full user guide is published at
-> **<https://bonifederico.github.io/swaft/>** (source in [`docs/`](docs/)). Start with
+> **<https://bonifederico.github.io/swaftapp/>** (source in [`docs/`](docs/)). Start with
 > [Getting started](docs/getting-started.md) and [Core concepts](docs/concepts.md).
 
 ## Requirements
@@ -76,4 +76,4 @@ docs                # documentation site (Jekyll + just-the-docs) → published 
 ```
 
 See [Building from source](docs/building-from-source.md) for the full contributor guide, and the
-[docs site](https://bonifederico.github.io/swaft/) for everything else.
+[docs site](https://bonifederico.github.io/swaftapp/) for everything else.

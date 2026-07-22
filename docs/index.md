@@ -15,7 +15,7 @@ wire it all together in visual **scenarios** — locally, or backed by a Git rep
 {: .fs-6 .fw-300 }
 
 [Get started](getting-started.md){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
-[View on GitHub](https://github.com/BoniFederico/swaft){: .btn .fs-5 .mb-4 .mb-md-0 }
+[View on GitHub](https://github.com/BoniFederico/swaftapp){: .btn .fs-5 .mb-4 .mb-md-0 }
 
 ---
 

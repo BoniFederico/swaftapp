@@ -11,7 +11,7 @@ this directory and its subfolders.
 cd docs
 bundle install
 bundle exec jekyll serve
-# open http://localhost:4000/swaft/
+# open http://localhost:4000/swaftapp/
 ```
 
 ## How it is published
