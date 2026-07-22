@@ -381,14 +381,14 @@ body {
 .ws-side__resizer:hover {
   background: color-mix(in srgb, var(--primary) 40%, transparent);
 }
-/* Collapsed sidebar: a thin rail with a reopen button. Top padding = .tree__head padding + the
-   picker offset, so the 28px expand button sits exactly where the collapse button was. */
+/* Collapsed sidebar: a thin rail with a reopen button. Top padding matches .tree__head's, so the
+   28px expand button sits exactly where the collapse button now is (on the "Project" label row). */
 .ws-rail {
   flex-shrink: 0;
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: calc(var(--space-3) + var(--tree-picker-offset)) var(--space-2) var(--space-2);
+  padding: var(--space-3) var(--space-2) var(--space-2);
   border-right: 1px solid var(--border);
   background: var(--surface);
 }
@@ -474,12 +474,7 @@ body {
   overflow: auto;
   padding: var(--space-4);
 }
-/* Head: the "Project" labelled picker (fills the width) + the collapse chevron, aligned with the
-   picker row (not the label). --tree-picker-offset is the label height + gap above the picker; the
-   collapsed rail (.ws-rail) reuses it so the 28px expand button sits at exactly the same height. */
-:root {
-  --tree-picker-offset: calc(18px + var(--space-1));
-}
+/* Head: the "Project" label row (caption + collapse chevron) above the labelled picker. */
 .tree__head {
   display: flex;
   align-items: flex-end;
@@ -494,6 +489,13 @@ body {
   flex-direction: column;
   gap: var(--space-1);
 }
+/* Label row: "Project" caption on the left, the collapse (minimize) button aligned right. */
+.tree__field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
 .tree__field .ui-field__label {
   line-height: 18px;
 }
@@ -503,7 +505,7 @@ body {
 }
 /* Small caption over the tree body (sits under the create buttons). */
 .tree__label {
-  padding: var(--space-3) var(--space-4) var(--space-1);
+  padding: var(--space-3) var(--space-4) var(--space-2);
   font-size: var(--fs-xs);
   font-weight: 600;
   color: var(--text-muted);
@@ -514,6 +516,7 @@ body {
    they out-specify the base .ui-icon-btn 34px rule defined later in the file). */
 .ui-icon-btn.tree__collapse,
 .ui-icon-btn.tree__badgetoggle,
+.ui-icon-btn.tree__filter,
 .ws-rail .ui-icon-btn,
 .batch-panel__tools .ui-icon-btn {
   width: 28px;
@@ -521,10 +524,16 @@ body {
 }
 .ui-icon-btn.tree__collapse svg,
 .ui-icon-btn.tree__badgetoggle svg,
+.ui-icon-btn.tree__filter svg,
 .ws-rail .ui-icon-btn svg,
 .batch-panel__tools .ui-icon-btn svg {
   width: 16px;
   height: 16px;
+}
+/* Minimize/collapse controls read as bare icons (no border): the tree's collapse and the batcher's. */
+.ui-icon-btn.tree__collapse,
+.batch-panel__tools .ui-icon-btn {
+  border: none;
 }
 .tree__project-desc {
   padding: var(--space-2) var(--space-4) 0;
@@ -3683,6 +3692,10 @@ body {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2);
+}
+/* An odd number of types leaves the last card alone on its row — let it span the full width. */
+.tpl-type-card:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
 }
 .tpl-type-card {
   display: flex;
