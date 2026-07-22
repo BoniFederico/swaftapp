@@ -99,7 +99,7 @@ describe('toPostman', () => {
     },
   ];
 
-  it('builds a v2.1 collection with nested folders and variabilized urls', () => {
+  it('builds a v2.1 collection with nested folders, serializing Seebo verbatim', () => {
     const pm = toPostman({ name: 'Shop', requests });
     // Navigate the plain-object result without `any`.
     const get = (o: unknown, k: string): unknown => (o as Record<string, unknown>)[k];
@@ -111,7 +111,7 @@ describe('toPostman', () => {
     expect(item.name).toBe('Create order');
     const req = item.request as Record<string, unknown>;
     expect(req.method).toBe('POST');
-    expect(req.url).toBe('https://{{base}}/orders');
+    expect(req.url).toBe("https://${ env('base') }/orders"); // verbatim (conversion is applied upstream)
     expect((req.body as Record<string, unknown>).mode).toBe('raw');
     expect((req.auth as Record<string, unknown>).type).toBe('bearer');
   });
@@ -121,7 +121,7 @@ describe('toPostman', () => {
     const r = back.requests[0];
     expect(r.folderPath).toEqual(['Orders']);
     expect(r.request.method).toBe('POST');
-    expect(r.request.url).toBe('https://${ base }/orders'); // env('base') -> {{base}} -> ${ base }
+    expect(r.request.url).toBe("https://${ env('base') }/orders"); // verbatim round-trip (no {{ }})
     expect(r.request.bodyType).toBe('json');
     expect(r.request.auth?.kind).toBe('bearer');
   });

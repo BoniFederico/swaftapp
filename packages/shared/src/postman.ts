@@ -1,5 +1,6 @@
 import type { ImportedCollection, ImportedRequest } from './collection';
 import type { HttpAuth, HttpMethod, HttpRequestModel } from './ops';
+import { variabilizeSeebo } from './seebo-convert';
 
 /**
  * Import/export a Postman Collection v2.1 to/from the neutral {@link ImportedCollection}
@@ -28,12 +29,11 @@ export function postmanToSeebo(s: string): string {
   return s.replace(/\{\{\s*([A-Za-z_][\w.-]*)\s*\}\}/g, '${ $1 }');
 }
 
-/** Seebo `${ env('X') }` / bare `${ X }` → Postman `{{X}}` (leaves richer formulas untouched). */
-export function seeboToPostman(s: string): string {
-  return s
-    .replace(/\$\{\s*env\(\s*'([^']+)'\s*\)\s*\}/g, '{{$1}}')
-    .replace(/\$\{\s*([A-Za-z_]\w*)\s*\}/g, '{{$1}}');
-}
+/**
+ * Seebo `${ env('X') }` / bare `${ X }` → Postman `{{X}}`. Kept for callers/tests; the export flow
+ * applies this via the shared {@link variabilizeSeebo} conversion, so `toPostman` itself is verbatim.
+ */
+export const seeboToPostman = variabilizeSeebo;
 
 // --- import ----------------------------------------------------------------
 
@@ -146,7 +146,8 @@ interface PostmanFolder {
 }
 
 function exportAuth(auth: HttpAuth): Obj | undefined {
-  const v = (s: string | undefined) => seeboToPostman(s ?? '');
+  // Verbatim: any Seebo → foreign conversion is applied to the collection before serialization.
+  const v = (s: string | undefined) => s ?? '';
   if (auth.kind === 'bearer') return { type: 'bearer', bearer: [{ key: 'token', value: v(auth.token) }] };
   if (auth.kind === 'basic')
     return {
@@ -170,7 +171,7 @@ function exportAuth(auth: HttpAuth): Obj | undefined {
 
 function exportBody(req: HttpRequestModel): Obj | undefined {
   if (req.body == null || req.body === '') return undefined;
-  const raw = seeboToPostman(req.body);
+  const raw = req.body;
   if (req.bodyType === 'form') {
     const urlencoded = raw.split('&').map((pair) => {
       const eq = pair.indexOf('=');
@@ -184,16 +185,13 @@ function exportBody(req: HttpRequestModel): Obj | undefined {
 
 function toPostmanItem(r: ImportedRequest): Obj {
   const req = r.request;
-  const header = Object.entries(req.headers ?? {}).map(([key, value]) => ({
-    key,
-    value: seeboToPostman(value),
-  }));
+  const header = Object.entries(req.headers ?? {}).map(([key, value]) => ({ key, value }));
   const item: Obj = {
     name: r.name,
     request: {
       method: req.method,
       header,
-      url: seeboToPostman(req.url),
+      url: req.url,
       ...(req.info ? { description: req.info } : {}),
       ...(req.auth ? { auth: exportAuth(req.auth) } : {}),
       ...(exportBody(req) ? { body: exportBody(req) } : {}),
