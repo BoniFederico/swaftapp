@@ -58,6 +58,7 @@ import { TemplateDataProvider } from './workspace/TemplateDataProvider';
 import { TemplateService } from './workspace/TemplateService';
 import { WorkspaceService } from './workspace/WorkspaceService';
 import { GitPersistence } from './workspace/persistence/GitPersistence';
+import { FolderPersistence } from './workspace/persistence/FolderPersistence';
 import { SystemGitService } from './git/GitService';
 import { GitOpsService } from './git/GitOpsService';
 
@@ -102,9 +103,18 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
     onOpened: (summary) => appStore.recordRecent(summary),
     // `git` storage mode: a workspace is a directory of versioned files.
     git: new GitPersistence({ createBackend, git, deviceId: () => appStore.getDeviceId() }),
+    // Folder-backed `local` mode (D1): a workspace is a plain directory of files, no git.
+    folder: new FolderPersistence({ createBackend, deviceId: () => appStore.getDeviceId() }),
     probePath: async (path) => {
       try {
-        return (await stat(path)).isDirectory() ? 'dir' : 'file';
+        if (!(await stat(path)).isDirectory()) return 'file';
+        // A directory with a `.git` entry is a git workspace; otherwise a plain Swaft folder.
+        try {
+          await stat(join(path, '.git'));
+          return 'git';
+        } catch {
+          return 'folder';
+        }
       } catch {
         return 'missing';
       }

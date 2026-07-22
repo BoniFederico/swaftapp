@@ -14,6 +14,11 @@ import type { OpenedWorkspace, WorkspacePersistence } from './persistence/Worksp
 
 export type { WorkspaceFs };
 
+/** Whether a location is a single-file `.swaft` workspace (vs a folder-backed one). */
+function isSwaftFile(location: string): boolean {
+  return /\.swaft$/i.test(location.trim());
+}
+
 export interface WorkspaceServiceDeps {
   /** Build a DB backend, optionally from existing bytes (worker in prod, in-process in tests). */
   createBackend: (bytes?: Uint8Array) => Promise<DbBackend>;
@@ -27,10 +32,17 @@ export interface WorkspaceServiceDeps {
   /** Optional `git` persistence; when provided, the `git` storage mode becomes available. */
   git?: WorkspacePersistence;
   /**
-   * Probe a target's kind so `open` can pick local (a `.swaft` file) vs git (a repo directory).
-   * Defaults to treating every target as a file (git mode disabled) when omitted.
+   * Optional folder-backed `local` persistence (open-standards plan D1). When provided, a local
+   * workspace whose location is a directory (not a `.swaft` file) is stored as a folder of files.
    */
-  probePath?: (path: string) => Promise<'file' | 'dir' | 'missing'>;
+  folder?: WorkspacePersistence;
+  /**
+   * Probe a target's on-disk kind so `open` can pick the persistence strategy:
+   * `file` (a `.swaft` container/legacy file), `git` (a repo directory, has `.git`),
+   * `folder` (a plain Swaft directory), or `missing`. Defaults to treating every target as a
+   * `.swaft` file (git/folder disabled) when omitted.
+   */
+  probePath?: (path: string) => Promise<'file' | 'git' | 'folder' | 'missing'>;
 }
 
 interface OpenState {
@@ -75,6 +87,23 @@ export class WorkspaceService {
     return this.deps.git;
   }
 
+  /** The folder-backed `local` persistence, or a clear error when it is not wired in this host. */
+  private requireFolder(): WorkspacePersistence {
+    if (!this.deps.folder) {
+      throw new AppError('FOLDER_MODE_UNAVAILABLE', 'policy', 'Folder workspaces are not available.');
+    }
+    return this.deps.folder;
+  }
+
+  /**
+   * The `local` persistence for a location: a folder-backed strategy for a directory (D1), or the
+   * single-file `.swaft` strategy for a `.swaft` path (and as the legacy/container form). Folder mode
+   * falls back to the single-file form when no folder persistence is wired (older hosts/tests).
+   */
+  private localFor(location: string): WorkspacePersistence {
+    return isSwaftFile(location) ? this.local : (this.deps.folder ?? this.local);
+  }
+
   /**
    * Lifecycle transitions and saves run one at a time. IPC handlers are not serialized by Electron,
    * so without this two concurrent saves could write serialized images out of order (older image
@@ -100,19 +129,24 @@ export class WorkspaceService {
       );
     }
 
-    // Presence of a secret is what turns encryption on downstream.
+    // Presence of a secret is what turns encryption on downstream. Only a single-file `.swaft`
+    // workspace can be encrypted; git repos and folder-backed local workspaces are plain files.
     const mode: StorageMode = req.storageMode ?? 'local';
-    if (mode === 'git' && req.encrypt) {
+    // Storage mode is immutable and drives the persistence strategy; within `local`, the location
+    // shape picks the single-file (`.swaft`) vs the folder-backed (D1) form.
+    const persistence = mode === 'git' ? this.requireGit() : this.localFor(req.location);
+    const canEncrypt = mode === 'local' && persistence.kind === 'local' && isSwaftFile(req.location);
+    if (req.encrypt && !canEncrypt) {
       throw new AppError(
         'ENCRYPTION_NOT_SUPPORTED',
         'validation',
-        'Git workspaces are stored as plain files and cannot be encrypted.',
+        mode === 'git'
+          ? 'Git workspaces are stored as plain files and cannot be encrypted.'
+          : 'Folder workspaces are stored as plain files and cannot be encrypted. Use a single-file .swaft workspace to encrypt.',
       );
     }
-    const secret = mode === 'local' && req.encrypt ? password : undefined;
+    const secret = canEncrypt && req.encrypt ? password : undefined;
     const executionMode: ExecutionMode = req.executionMode ?? 'sandbox';
-    // Storage mode is immutable and drives the persistence strategy.
-    const persistence = mode === 'git' ? this.requireGit() : this.local;
     const deviceId = this.deps.deviceId();
 
     await this.closeCurrent();
@@ -165,13 +199,15 @@ export class WorkspaceService {
   }
 
   private async doOpen(req: WorkspaceOpenRequest): Promise<WorkspaceSummary> {
-    // A `.swaft` file opens as `local`; a directory opens as a `git` repo. Without a probe (tests)
-    // every target is treated as a local file.
+    // The on-disk kind selects the strategy: a `git` repo directory → git; a plain Swaft `folder` →
+    // folder-backed local (D1); a `.swaft` `file` → single-file/container local. Without a probe
+    // (tests) every target is treated as a `.swaft` file.
     const kind = (await this.deps.probePath?.(req.path)) ?? 'file';
     if (kind === 'missing') {
       throw new AppError('WORKSPACE_NOT_FOUND', 'not_found', 'Workspace not found.');
     }
-    const persistence = kind === 'dir' ? this.requireGit() : this.local;
+    const persistence =
+      kind === 'git' ? this.requireGit() : kind === 'folder' ? this.requireFolder() : this.local;
 
     // Open is atomic: materialize the new workspace first (this throws WORKSPACE_NOT_FOUND /
     // PASSWORD_REQUIRED / WRONG_WORKSPACE_PASSWORD / SCHEMA_TOO_NEW / INVALID_WORKSPACE without

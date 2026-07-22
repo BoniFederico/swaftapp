@@ -241,7 +241,8 @@ describe.skipIf(!gitAvailable)('GitOpsService.clone (real git)', () => {
       git: new GitPersistence({ createBackend: backend, git, deviceId: () => 'dev-1' }),
       probePath: async (p) => {
         try {
-          return (await stat(p)).isDirectory() ? 'dir' : 'file';
+          if (!(await stat(p)).isDirectory()) return 'file';
+          return existsSync(join(p, '.git')) ? 'git' : 'folder';
         } catch {
           return 'missing';
         }
