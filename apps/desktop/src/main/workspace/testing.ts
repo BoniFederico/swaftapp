@@ -4,14 +4,13 @@ import { join } from 'node:path';
 import { DATA_CAPABILITIES } from '@swaft/shared';
 import { ActionService } from '../actions/ActionService';
 import { AppStore } from '../app-store/AppStore';
-import { getAuthService } from '../auth/registry';
-import { IdentityCipher } from '../auth/testing';
 import { CryptoService } from '../crypto/CryptoService';
 import { GitOpsService } from '../git/GitOpsService';
 import { SystemGitService } from '../git/GitService';
 import { HttpService } from '../http/HttpService';
 import { BUILTIN_ACTION_TYPES } from '../seebo/action-handlers';
 import { SecretService } from '../secret/SecretService';
+import { IdentityCipher } from '../secret/testing';
 import { SeeboHost, WIDGET_CAPABILITIES } from '../seebo/SeeboHost';
 import {
   setActionService,
@@ -85,13 +84,8 @@ export function installTestWorkspaceBackend(
 
   const organization = new OrganizationService(workspace);
   const settings = new SettingsService(workspace);
-  const currentUsername = () => {
-    try {
-      return getAuthService().currentUsername();
-    } catch {
-      return null;
-    }
-  };
+  // No user concept — attribution is null (the injection seam is kept for a future hosted backend).
+  const currentUsername = () => null;
   const changelog = new ChangelogService(workspace, currentUsername);
   const templates = new TemplateService(workspace, organization, changelog);
   const releases = new ReleaseService(workspace, templates, changelog);

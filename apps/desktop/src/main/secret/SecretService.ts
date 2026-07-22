@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { writeFileAtomicSync } from '../storage/atomic-file';
-import type { SecureCipher } from '../auth/types';
+import type { SecureCipher } from './SecureCipher';
 
 interface SecretFile {
   secrets: Record<string, string>;

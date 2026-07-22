@@ -8,8 +8,7 @@ import { ActionService } from './actions/ActionService';
 import { ScenarioService } from './actions/ScenarioService';
 import { AppStore } from './app-store/AppStore';
 import { CryptoService } from './crypto/CryptoService';
-import { SafeStorageCipher } from './auth/cipher';
-import { getAuthService } from './auth/registry';
+import { SafeStorageCipher } from './secret/SecureCipher';
 import { HttpService } from './http/HttpService';
 import { SecretService } from './secret/SecretService';
 import { BUILTIN_ACTION_TYPES } from './seebo/action-handlers';
@@ -65,13 +64,13 @@ const SWAFT_FILTER = { name: 'Swaft Workspace', extensions: ['swaft'] };
  * register them for the transport handlers. Electron-only; called once from the main entry. The DB
  * runs on a worker thread (`dbWorker.js`, emitted next to this module) with an in-process fallback.
  */
-/** The signed-in username (for change attribution), or null if auth isn't ready. */
+/**
+ * Change attribution. The app has no user concept, so this is always `null` today. It is kept as a
+ * host-agnostic seam: a future hosted backend (SWAFT_ARCHITECTURE.md §12) injects the authenticated
+ * user here so changelog/action/environment attribution light up without touching those services.
+ */
 function currentUsername(): string | null {
-  try {
-    return getAuthService().currentUsername();
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import type { ResultEnvelope } from '@swaft/shared';
 import { App } from './App';
@@ -6,9 +6,6 @@ import { AppProviders } from './AppProviders';
 import { ApiClient } from './api-client/client';
 import type { Transport } from './api-client/transport/types';
 import { dispatch } from '../../main/transport/dispatch';
-import { setSessionGate } from '../../main/transport/session';
-import { setAuthService } from '../../main/auth/registry';
-import { makeTestAuthService } from '../../main/auth/testing';
 
 /** Test transport delegates to the REAL main-process dispatch (allow-list + DTO + session guard). */
 class DispatchTransport implements Transport {
@@ -25,32 +22,20 @@ function renderApp() {
   );
 }
 
-/** Sign up on first run and land on the homepage (no workspace open yet). */
+/** Render straight to the homepage — there is no auth gate, and no workspace open yet. */
 async function renderHomepage() {
   const utils = renderApp();
-  fireEvent.change(await screen.findByLabelText('Username'), { target: { value: 'tech' } });
-  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'correct-horse' } });
-  fireEvent.change(screen.getByLabelText('Confirm password'), { target: { value: 'correct-horse' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
   await screen.findByText('Recent workspaces');
   return utils;
 }
 
-describe('App (M4 — signed-in homepage)', () => {
+describe('App (homepage)', () => {
   beforeEach(() => {
     localStorage.clear();
     document.documentElement.removeAttribute('data-theme');
-    const { service } = makeTestAuthService();
-    setAuthService(service);
-    setSessionGate({ isSignedIn: () => service.isSignedIn() });
   });
 
-  afterEach(() => {
-    setSessionGate({ isSignedIn: () => false });
-    setAuthService(null);
-  });
-
-  it('shows the brand, product tagline and an empty recent list after signing in', async () => {
+  it('shows the brand, product tagline and an empty recent list on launch', async () => {
     await renderHomepage();
     // The brand now appears both in the top bar and in the centered hero.
     expect(screen.getAllByText('Swaft').length).toBeGreaterThan(0);

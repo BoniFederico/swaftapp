@@ -101,6 +101,14 @@ replaces it with Electron process hardening.
 
 ## 3a. Authentication & Session Security
 
+> **REMOVED (desktop).** Local accounts / sign-up / sign-in / lock were removed from the desktop app —
+> there is no user or login concept; the app opens straight to the workspace. The **session guard**
+> (`transport/session.ts` + `dispatch`) is retained as a host-agnostic seam, left **open** on desktop
+> (`isSignedIn: () => true`), so a future hosted web backend (SWAFT_ARCHITECTURE.md §12) can inject
+> real per-request sessions without changing feature code. At-rest protection is now solely
+> per-workspace encryption (§4) plus the OS user account. See `remove_users.md` for the removal
+> analysis. The rest of this section is retained for historical context / the future web target.
+
 Swaft includes **sign-up / sign-in** (extends `init.md`, which deferred SSO/OIDC/MFA). The MVP uses a
 **local account** that gates app access and owns the local profile.
 

@@ -30,8 +30,6 @@ import {
   type ReleaseDeleteRequest,
   type RenameRequest,
   type ReleaseSelectionSetRequest,
-  type SignInRequest,
-  type SignUpRequest,
   type RenderSourceRequest,
   type SourceRequest,
   type ScenarioRunRequest,
@@ -47,7 +45,6 @@ import {
   type TemplateTagAddRequest,
   type TemplateTagRemoveRequest,
   type TemplateUpdateSourceRequest,
-  type UnlockRequest,
   type WorkspaceCreateRequest,
   type WorkspaceOpenRequest,
   type WorkspaceForgetRecentRequest,
@@ -61,7 +58,6 @@ import {
   type GitPublishRequest,
   type GitFileDiffRequest,
 } from '@swaft/shared';
-import { getAuthService } from '../auth/registry';
 import { toErrorEnvelope } from '../errors';
 import {
   getActionService,
@@ -110,15 +106,6 @@ async function svc<T>(fn: () => Promise<T> | T): Promise<T | ErrorEnvelope> {
 
 export const handlers: Record<OpName, Handler> = {
   'system.ping': ping,
-
-  // Auth / session (M3)
-  'auth.status': () => getAuthService().status(),
-  'auth.signUp': (p) => svc(() => getAuthService().signUp(p as SignUpRequest)),
-  'auth.signIn': (p) => svc(() => getAuthService().signIn(p as SignInRequest)),
-  'auth.unlock': (p) => svc(() => getAuthService().unlock(p as UnlockRequest)),
-  'auth.signOut': () => getAuthService().signOut(),
-  'auth.lock': () => getAuthService().lock(),
-  'session.whoami': () => svc(() => getAuthService().whoami()),
 
   // Preferences (M4)
   'prefs.get': () => ({ preferences: getAppStore().getPreferences() }),

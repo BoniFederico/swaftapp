@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { EnvironmentDto, EnvironmentOwnerKind } from '@swaft/shared';
+import type { EnvironmentDto } from '@swaft/shared';
 import { ApiClient, ApiError } from '../../api-client/client';
 import { useEnvironments } from '../../environment/EnvironmentProvider';
 import { OWNER_KIND_LABEL } from '../../environment/ownerKind';
@@ -67,39 +67,7 @@ export function EnvironmentsSettings({
   );
 }
 
-/** Segmented Personal / Workspace scope choice (fixed at creation). */
-function OwnerKindSeg({
-  value,
-  onChange,
-}: {
-  value: EnvironmentOwnerKind;
-  onChange: (kind: EnvironmentOwnerKind) => void;
-}) {
-  const { t } = useI18n();
-  const kinds: EnvironmentOwnerKind[] = ['user', 'workspace'];
-  return (
-    <div className="ui-field">
-      <span className="ui-field__label">{t('env.settings.owner')}</span>
-      <div className="seg" role="radiogroup" aria-label={t('env.settings.owner')}>
-        {kinds.map((kind) => (
-          <button
-            key={kind}
-            type="button"
-            role="radio"
-            aria-checked={value === kind}
-            className={`seg__btn${value === kind ? ' seg__btn--active' : ''}`}
-            onClick={() => onChange(kind)}
-          >
-            {t(OWNER_KIND_LABEL[kind])}
-          </button>
-        ))}
-      </div>
-      <span className="field-hint">{t(value === 'user' ? 'env.settings.ownerUserHint' : 'env.settings.ownerWorkspaceHint')}</span>
-    </div>
-  );
-}
-
-/** The create form: name + ownership (Personal / Workspace). */
+/** The create form: just a name. Environments are workspace-scoped (there is no user concept). */
 function CreateEnvForm({
   client,
   onCancel,
@@ -112,13 +80,12 @@ function CreateEnvForm({
   const { t } = useI18n();
   const toast = useToast();
   const [name, setName] = useState('');
-  const [ownerKind, setOwnerKind] = useState<EnvironmentOwnerKind>('user');
   const [busy, setBusy] = useState(false);
 
   async function create() {
     setBusy(true);
     try {
-      const res = await client.call('env.create', { name: name.trim(), ownerKind });
+      const res = await client.call('env.create', { name: name.trim(), ownerKind: 'workspace' });
       onCreated(res.environment);
     } catch (err) {
       toast.show(err instanceof ApiError ? err.swaft.message : t('env.settings.saveFailed'), 'error');
@@ -131,7 +98,6 @@ function CreateEnvForm({
     <div className="col" style={{ gap: 'var(--space-4)' }}>
       <h3 className="env-settings__title">{t('env.settings.new')}</h3>
       <TextField label={t('env.settings.name')} value={name} autoFocus onChange={(e) => setName(e.target.value)} />
-      <OwnerKindSeg value={ownerKind} onChange={setOwnerKind} />
       <div className="row" style={{ gap: 'var(--space-2)' }}>
         <Button variant="primary" disabled={!name.trim() || busy} onClick={() => void create()}>
           {t('env.settings.create')}

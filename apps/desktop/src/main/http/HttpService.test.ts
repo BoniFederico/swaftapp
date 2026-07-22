@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SettingsService } from '../workspace/SettingsService';
-import { IdentityCipher } from '../auth/testing';
+import { IdentityCipher } from '../secret/testing';
 import { SecretService } from '../secret/SecretService';
 import { HttpService } from './HttpService';
 

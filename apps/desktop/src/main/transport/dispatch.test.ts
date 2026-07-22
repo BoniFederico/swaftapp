@@ -2,13 +2,10 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { isError } from '@swaft/shared';
 import { dispatch } from './dispatch';
 import { setSessionGate } from './session';
-import { setAuthService } from '../auth/registry';
-import { makeTestAuthService } from '../auth/testing';
 
 afterEach(() => {
-  // Restore the fail-closed default + clear the registered service between tests.
-  setSessionGate({ isSignedIn: () => false });
-  setAuthService(null);
+  // Restore the default (open) gate between tests.
+  setSessionGate({ isSignedIn: () => true });
 });
 
 describe('transport dispatch', () => {
@@ -47,9 +44,11 @@ describe('transport dispatch', () => {
     if (isError(r)) expect(r.error.category).toBe('validation');
   });
 
-  it('session-guards a non-public op when there is no session (fail-closed)', async () => {
-    // Default gate is signed-out; the guard must reject before any handler/AuthService is touched.
-    const r = await dispatch('session.whoami', {});
+  // The session guard is a host-agnostic seam: desktop leaves it open, but an injected closed gate
+  // (as a hosted backend would use) must reject non-public ops before the handler runs.
+  it('session-guards a non-public op when the injected gate is closed', async () => {
+    setSessionGate({ isSignedIn: () => false });
+    const r = await dispatch('prefs.get', {});
     expect(isError(r)).toBe(true);
     if (isError(r)) {
       expect(r.error.code).toBe('NO_SESSION');
@@ -57,23 +56,12 @@ describe('transport dispatch', () => {
     }
   });
 
-  it('allows a non-public op once a session is active', async () => {
-    const { service } = makeTestAuthService();
-    await service.signUp({ username: 'tech', password: 'correct-horse' });
-    setAuthService(service);
-    setSessionGate({ isSignedIn: () => service.isSignedIn() });
-
-    const r = await dispatch('session.whoami', {});
-    expect(isError(r)).toBe(false);
-    if (!isError(r)) {
-      const data = r.data as { profile: { username: string } };
-      expect(data.profile.username).toBe('tech');
-    }
-  });
-
-  it('still session-guards even with a valid payload (guard runs before handler)', async () => {
-    const r = await dispatch('auth.signOut', {});
+  it('lets a non-public op past the guard when the gate is open', async () => {
+    setSessionGate({ isSignedIn: () => true });
+    // No services are wired here, so the handler fails internally — but crucially NOT with NO_SESSION,
+    // which proves the guard let it through.
+    const r = await dispatch('prefs.get', {});
     expect(isError(r)).toBe(true);
-    if (isError(r)) expect(r.error.code).toBe('NO_SESSION');
+    if (isError(r)) expect(r.error.code).not.toBe('NO_SESSION');
   });
 });

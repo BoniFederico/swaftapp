@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isError, type ResultEnvelope } from '@swaft/shared';
 
 type InvokeHandler = (event: unknown, op: unknown, payload: unknown) => Promise<ResultEnvelope<unknown>>;
@@ -14,6 +14,7 @@ vi.mock('electron', () => ({
 
 import { IPC_INVOKE_CHANNEL } from './channels';
 import { registerIpcRouter } from './router';
+import { setSessionGate } from '../transport/session';
 
 /** The security layers the router itself owns: sender trust and the op allow-list (IPC-3/IPC-4). */
 describe('ipc router', () => {
@@ -28,6 +29,11 @@ describe('ipc router', () => {
   beforeEach(() => {
     registered.clear();
     registerIpcRouter((sender) => (sender as unknown) === trustedSender);
+  });
+
+  afterEach(() => {
+    // Restore the default (open) gate.
+    setSessionGate({ isSignedIn: () => true });
   });
 
   it('rejects an untrusted sender before doing anything else', async () => {
@@ -51,7 +57,10 @@ describe('ipc router', () => {
     expect(data.echo).toBe('hello');
   });
 
-  it('fails closed on session-required ops when no session gate is signed in', async () => {
+  it('enforces the session gate when it is closed (host-agnostic seam)', async () => {
+    // Desktop leaves the gate open, but an injected closed gate (as a hosted backend would use) must
+    // reject session-required ops before the handler runs.
+    setSessionGate({ isSignedIn: () => false });
     const result = await invoke(trustedSender, 'workspace.create', {
       name: 'X',
       location: 'mem://x.swaft',
