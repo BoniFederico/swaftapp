@@ -3,3 +3,6 @@ export * from './ops';
 export * from './scenario';
 export * from './http-file';
 export * from './curl';
+export * from './collection';
+export * from './openapi';
+export * from './postman';
