@@ -6,3 +6,4 @@ export * from './curl';
 export * from './collection';
 export * from './openapi';
 export * from './postman';
+export * from './secret-scan';
