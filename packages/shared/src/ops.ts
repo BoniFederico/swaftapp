@@ -336,6 +336,70 @@ export const apiAnalyzeRequestSchema = z
 export const secretSetRequestSchema = z
   .object({ ref: z.string().trim().min(1).max(64), value: z.string().max(4096) })
   .strict();
+export const secretDeleteRequestSchema = z
+  .object({ ref: z.string().trim().min(1).max(64) })
+  .strict();
+
+// --- Open standards: collection import (materialize a neutral collection) ----
+// The renderer parses foreign formats (OpenAPI/Postman/…) with the shared codecs and sends a neutral
+// ImportedCollection here; only the materialization into projects/folders/api templates needs main.
+
+export const importedRequestDtoSchema = z
+  .object({
+    name: z.string().max(200),
+    folderPath: z.array(z.string().max(200)).max(32),
+    request: httpRequestSchema,
+    description: z.string().max(100_000).optional(),
+  })
+  .strict();
+export const importedEnvironmentDtoSchema = z
+  .object({ name: z.string().max(200), vars: z.record(z.string().max(8192)) })
+  .strict();
+export const importedCollectionDtoSchema = z
+  .object({
+    name: z.string().max(200),
+    requests: z.array(importedRequestDtoSchema).max(2000),
+    environments: z.array(importedEnvironmentDtoSchema).max(64),
+  })
+  .strict();
+export const importTargetSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('new-project'), name: z.string().max(120).optional() }).strict(),
+  z.object({ kind: z.literal('project'), projectId: z.string().min(1) }).strict(),
+  z
+    .object({ kind: z.literal('folder'), projectId: z.string().min(1), folderId: z.string().min(1) })
+    .strict(),
+]);
+export const collectionImportRequestSchema = z
+  .object({ collection: importedCollectionDtoSchema, target: importTargetSchema })
+  .strict();
+
+// --- Open standards: export (gather api templates → an interchange format) ---
+export const exportScopeSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('template'), templateId: z.string().min(1) }).strict(),
+  z.object({ kind: z.literal('folder'), folderId: z.string().min(1) }).strict(),
+  z.object({ kind: z.literal('project'), projectId: z.string().min(1) }).strict(),
+  z.object({ kind: z.literal('workspace') }).strict(),
+]);
+export const collectionExportRequestSchema = z
+  .object({
+    scope: exportScopeSchema,
+    format: z.enum(['postman', 'http', 'bruno']),
+    conversion: z.enum(['verbatim', 'variabilize']),
+  })
+  .strict();
+const exportFileSchema = z
+  .object({ path: z.string().min(1).max(1024), content: z.string().max(20_000_000) })
+  .strict();
+export const fileSaveTextRequestSchema = z
+  .object({ suggestedName: z.string().min(1).max(255), content: z.string().max(20_000_000) })
+  .strict();
+export const fileSaveFilesRequestSchema = z
+  .object({ suggestedDirName: z.string().min(1).max(255), files: z.array(exportFileSchema).max(4000) })
+  .strict();
+/** Export the open workspace as a `.swaft` zip container, optionally AES-encrypted. */
+export const containerExportRequestSchema = z
+  .object({ encrypt: z.boolean(), password: z.string().optional() })
+  .strict();
 
 // --- User code: capabilities authored in JavaScript -------------------------
 
@@ -536,6 +600,7 @@ export const OP_NAMES = [
   'api.history.delete',
   'secret.set',
   'secret.list',
+  'secret.delete',
   'batch.analyze',
   'batch.render',
   'action.execute',
@@ -556,6 +621,11 @@ export const OP_NAMES = [
   'scenario.runBatch',
   'scenario.batchStatus',
   'scenario.stopBatch',
+  'collection.import',
+  'collection.export',
+  'container.export',
+  'file.saveText',
+  'file.saveFiles',
 ] as const;
 export type OpName = (typeof OP_NAMES)[number];
 
@@ -640,6 +710,7 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'api.history.delete': idRequestSchema,
   'secret.set': secretSetRequestSchema,
   'secret.list': emptyRequestSchema,
+  'secret.delete': secretDeleteRequestSchema,
   'batch.analyze': batchAnalyzeRequestSchema,
   'batch.render': batchRenderRequestSchema,
   'action.execute': actionExecuteRequestSchema,
@@ -660,6 +731,11 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'scenario.runBatch': scenarioRunBatchRequestSchema,
   'scenario.batchStatus': scenarioBatchRefRequestSchema,
   'scenario.stopBatch': scenarioBatchRefRequestSchema,
+  'collection.import': collectionImportRequestSchema,
+  'collection.export': collectionExportRequestSchema,
+  'container.export': containerExportRequestSchema,
+  'file.saveText': fileSaveTextRequestSchema,
+  'file.saveFiles': fileSaveFilesRequestSchema,
 };
 
 /**
@@ -909,7 +985,7 @@ export interface RequirementDto {
  * which surface as requirements for the user). They are never shown in the Input panel. Single source
  * of truth for both the main host (`SeeboHost`) and the renderer (Input panel pruning).
  */
-export const DATA_CAPABILITIES = ['template', 'env', 'previous'] as const;
+export const DATA_CAPABILITIES = ['template', 'env', 'previous', 'secret'] as const;
 export type DataCapability = (typeof DATA_CAPABILITIES)[number];
 
 export interface DiagnosticDto {
@@ -1276,6 +1352,7 @@ export type UserCodeRefRequest = z.infer<typeof userCodeRefRequestSchema>;
 export type ApiActionsClearRequest = z.infer<typeof apiActionsClearRequestSchema>;
 export type UserCodeRunRequest = z.infer<typeof userCodeRunRequestSchema>;
 export type SecretSetRequest = z.infer<typeof secretSetRequestSchema>;
+export type SecretDeleteRequest = z.infer<typeof secretDeleteRequestSchema>;
 
 export interface HttpSendResponse {
   response: HttpResponseDto;
@@ -1377,6 +1454,44 @@ export interface ReceiptsResponse {
 export interface TreeResponse {
   tree: WorkspaceTree;
 }
+export interface ImportResultDto {
+  projectId: string;
+  folders: number;
+  requests: number;
+  environments: number;
+}
+export interface CollectionImportResponse {
+  tree: WorkspaceTree;
+  result: ImportResultDto;
+}
+export type CollectionImportRequest = z.infer<typeof collectionImportRequestSchema>;
+export type ImportedCollectionDto = z.infer<typeof importedCollectionDtoSchema>;
+export type ImportTargetDto = z.infer<typeof importTargetSchema>;
+
+export interface ExportFileDto {
+  path: string;
+  content: string;
+}
+export interface CollectionExportResponse {
+  files: ExportFileDto[];
+  report: string[];
+}
+export interface FileSavedResponse {
+  path: string | null;
+}
+export interface ContainerExportResponse {
+  /** The chosen `.swaft` path, or null if the save dialog was cancelled. */
+  path: string | null;
+}
+export type ContainerExportRequest = z.infer<typeof containerExportRequestSchema>;
+export interface FilesSavedResponse {
+  dir: string | null;
+  count: number;
+}
+export type CollectionExportRequest = z.infer<typeof collectionExportRequestSchema>;
+export type ExportScopeDto = z.infer<typeof exportScopeSchema>;
+export type FileSaveTextRequest = z.infer<typeof fileSaveTextRequestSchema>;
+export type FileSaveFilesRequest = z.infer<typeof fileSaveFilesRequestSchema>;
 export interface SettingsResponse {
   settings: WorkspaceSettingsDto;
 }
@@ -1464,6 +1579,7 @@ export interface OpContracts {
   'api.history.delete': { request: IdRequest; response: OkResponse };
   'secret.set': { request: SecretSetRequest; response: SecretsResponse };
   'secret.list': { request: EmptyRequest; response: SecretsResponse };
+  'secret.delete': { request: SecretDeleteRequest; response: SecretsResponse };
   'batch.analyze': { request: BatchAnalyzeRequest; response: RequirementsResponse };
   'batch.render': { request: BatchRenderRequest; response: RenderResponse };
   'action.execute': { request: ActionExecuteRequest; response: ReceiptsResponse };
@@ -1484,6 +1600,11 @@ export interface OpContracts {
   'scenario.runBatch': { request: ScenarioRunBatchRequest; response: ScenarioBatchStartedResponse };
   'scenario.batchStatus': { request: ScenarioBatchRefRequest; response: ScenarioBatchStatusResponse };
   'scenario.stopBatch': { request: ScenarioBatchRefRequest; response: OkResponse };
+  'collection.import': { request: CollectionImportRequest; response: CollectionImportResponse };
+  'collection.export': { request: CollectionExportRequest; response: CollectionExportResponse };
+  'container.export': { request: ContainerExportRequest; response: ContainerExportResponse };
+  'file.saveText': { request: FileSaveTextRequest; response: FileSavedResponse };
+  'file.saveFiles': { request: FileSaveFilesRequest; response: FilesSavedResponse };
 }
 
 export type OpRequest<N extends OpName> = OpContracts[N]['request'];

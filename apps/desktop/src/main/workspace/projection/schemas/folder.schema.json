@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://swaft.app/schemas/folder.schema.json",
+  "title": "Swaft folder (folders/<slug>.<shortId>.json)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "name", "projectId", "parentFolderId", "headers", "proxy", "auth", "actions", "notes"],
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "projectId": { "type": ["string", "null"] },
+    "parentFolderId": { "type": ["string", "null"] },
+    "headers": { "type": ["object", "null"] },
+    "proxy": { "type": ["object", "null"] },
+    "auth": { "type": ["object", "null"] },
+    "actions": { "type": ["array", "null"] },
+    "notes": { "type": ["string", "null"] }
+  }
+}

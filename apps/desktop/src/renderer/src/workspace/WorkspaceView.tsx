@@ -22,16 +22,18 @@ import {
   CloseIcon,
   DocumentIcon,
   EmptyState,
+  ExportIcon,
   FolderIcon,
   IconButton,
   LogoutIcon,
+  Menu,
   ScenarioIcon,
   SettingsIcon,
   SwaftMark,
 } from '../ui';
 import { FolderView } from './FolderView';
 import { subscribeTreeChanged } from './treeBus';
-import { WorkingTree } from './WorkingTree';
+import { WorkingTree, type WorkingTreeHandle } from './WorkingTree';
 import { useWorkspace } from './WorkspaceProvider';
 
 const MIN_SIDE = 220;
@@ -70,6 +72,10 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
   const [batch, setBatch] = useState<string[] | null>(null);
   const [sideCollapsed, setSideCollapsed] = useState(false);
   const [sideWidth, setSideWidth] = useState(280);
+  // The Import/Export entry point lives here in the top bar, but the shared dialogs/state stay in the
+  // Working Tree; we drive it imperatively and mirror its selected project for "Export project…".
+  const treeRef = useRef<WorkingTreeHandle>(null);
+  const [treeProject, setTreeProject] = useState<{ id: string; name: string } | null>(null);
   const [batcherEnabled, setBatcherEnabled] = useState(true);
   const [untrusted, setUntrusted] = useState<UntrustedCapabilityDto[]>([]);
   // The tab awaiting a "discard unsaved changes?" confirmation, or null.
@@ -244,6 +250,23 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
           {current?.storageMode === 'git' && <GitStatusButton client={client} />}
           <EnvironmentPicker onManage={() => openSettings('environments')} />
           <span className="ws-sep" aria-hidden="true" />
+          <Menu
+            label={t('impexp.trigger')}
+            icon={<ExportIcon />}
+            items={[
+              { label: t('import.trigger'), onSelect: () => treeRef.current?.openImport() },
+              ...(treeProject
+                ? [
+                    {
+                      label: t('export.exportProject'),
+                      onSelect: () => treeRef.current?.exportProject(),
+                    },
+                  ]
+                : []),
+              { label: t('export.exportWorkspace'), onSelect: () => treeRef.current?.exportWorkspace() },
+              { label: t('export.exportContainer'), onSelect: () => treeRef.current?.exportContainer() },
+            ]}
+          />
           <IconButton label={t('ws.settings')} onClick={() => openSettings('general')}>
             <SettingsIcon />
           </IconButton>
@@ -268,8 +291,10 @@ export function WorkspaceView({ client }: { client: ApiClient }) {
           style={{ width: sideWidth, display: sideCollapsed ? 'none' : undefined }}
         >
           <WorkingTree
+            ref={treeRef}
             client={client}
             openTemplateId={activeId}
+            onSelectedProjectChange={setTreeProject}
             onOpenTemplate={(id, mode = 'view', type = 'document', name = '') => {
               if (!id) return;
               if (mode === 'edit') {

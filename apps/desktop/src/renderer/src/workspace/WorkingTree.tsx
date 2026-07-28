@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  type ExportScopeDto,
   type FolderDto,
+  type ImportedCollectionDto,
   type OpName,
   type TagDto,
   type TemplateSummary,
@@ -33,6 +35,8 @@ import {
 import { usePopover } from '../ui/usePopover';
 import { CreateProjectDialog } from './CreateProjectDialog';
 import { CreateTemplateDialog } from './CreateTemplateDialog';
+import { ExportDialog } from './ExportDialog';
+import { ImportDialog } from './ImportDialog';
 import { NameDialog } from './NameDialog';
 import { ProjectSelector } from './ProjectSelector';
 import { badgeColor, rowBadge } from './badges';
@@ -138,14 +142,16 @@ function TypeFilterButton({
  * funnel button filters by template type. Templates open on click (view) / double-click (editor);
  * folders expand on click. Destructive actions confirm and report via toast.
  */
-export function WorkingTree({
-  client,
-  openTemplateId,
-  onOpenTemplate,
-  onOpenFolder,
-  onCloseTemplate,
-  onCollapse,
-}: {
+/** Imperative triggers the top bar drives (the Import/Export entry point lives up there now). */
+export interface WorkingTreeHandle {
+  openImport(): void;
+  /** Export the currently selected project; no-op when none is selected. */
+  exportProject(): void;
+  exportWorkspace(): void;
+  exportContainer(): void;
+}
+
+interface WorkingTreeProps {
   client: ApiClient;
   openTemplateId: string | null;
   onOpenTemplate: (
@@ -158,7 +164,22 @@ export function WorkingTree({
   onOpenFolder?: (folder: FolderDto) => void;
   onCloseTemplate?: (id: string) => void;
   onCollapse: () => void;
-}) {
+  /** Report the selected project (id + name) up, so the top bar can offer "Export project…". */
+  onSelectedProjectChange?: (project: { id: string; name: string } | null) => void;
+}
+
+export const WorkingTree = forwardRef<WorkingTreeHandle, WorkingTreeProps>(function WorkingTree(
+  {
+    client,
+    openTemplateId,
+    onOpenTemplate,
+    onOpenFolder,
+    onCloseTemplate,
+    onCollapse,
+    onSelectedProjectChange,
+  },
+  ref,
+) {
   const { t } = useI18n();
   const toast = useToast();
   const workspace = useWorkspaceOptional();
@@ -178,6 +199,8 @@ export function WorkingTree({
   const [matchIds, setMatchIds] = useState<Set<string> | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [projectOpen, setProjectOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [exportScope, setExportScope] = useState<{ scope: ExportScopeDto; name: string } | null>(null);
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [createTpl, setCreateTpl] = useState<{ folderId: string | null } | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
@@ -282,6 +305,30 @@ export function WorkingTree({
       await fn();
     } catch (e) {
       toast.show(e instanceof ApiError ? e.swaft.message : String(e), 'error');
+    }
+  }
+
+  async function importCollection(collection: ImportedCollectionDto, projectName: string) {
+    setImportOpen(false);
+    const before = new Set(tree.projects.map((p) => p.id));
+    setBusy(true);
+    try {
+      const res = await client.call('collection.import', {
+        collection,
+        target: { kind: 'new-project', name: projectName },
+      });
+      setTree(res.tree);
+      notifyTreeChanged();
+      const created = res.tree.projects.find((p) => !before.has(p.id));
+      if (created) setSelectedProject(created.id);
+      toast.show(
+        t('import.done', { requests: String(res.result.requests), project: projectName }),
+        'success',
+      );
+    } catch (e) {
+      toast.show(e instanceof ApiError ? e.swaft.message : String(e), 'error');
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -423,6 +470,71 @@ export function WorkingTree({
   const tagById = useMemo(() => new Map(tree.tags.map((t) => [t.id, t])), [tree.tags]);
 
   // --- row renderers ---------------------------------------------------------
+  /** Count api requests vs. skipped non-api templates for an export scope (from the loaded tree). */
+  function scopePreview(scope: ExportScopeDto): { requests: number; skipped: number } {
+    let inScope: TemplateSummary[];
+    if (scope.kind === 'template') {
+      inScope = tree.templates.filter((t) => t.id === scope.templateId);
+    } else if (scope.kind === 'folder') {
+      const set = new Set<string>([scope.folderId]);
+      for (let changed = true; changed; ) {
+        changed = false;
+        for (const f of tree.folders) {
+          if (f.parentFolderId && set.has(f.parentFolderId) && !set.has(f.id)) {
+            set.add(f.id);
+            changed = true;
+          }
+        }
+      }
+      inScope = tree.templates.filter((t) => t.folderId != null && set.has(t.folderId));
+    } else if (scope.kind === 'project') {
+      const folderProject = new Map(tree.folders.map((f) => [f.id, f.projectId]));
+      inScope = tree.templates.filter(
+        (t) => (t.projectId ?? (t.folderId ? folderProject.get(t.folderId) : null)) === scope.projectId,
+      );
+    } else {
+      inScope = tree.templates;
+    }
+    const requests = inScope.filter((t) => t.type === 'api').length;
+    return { requests, skipped: inScope.length - requests };
+  }
+
+  /** Export the whole workspace as a portable `.swaft` zip container (open-standards plan D1). */
+  async function exportContainer(): Promise<void> {
+    try {
+      const res = await client.call('container.export', { encrypt: false });
+      if (res.path) toast.show(t('export.containerDone'), 'success');
+    } catch (e) {
+      toast.show(e instanceof ApiError ? e.swaft.message : String(e), 'error');
+    }
+  }
+
+  // The Import/Export entry point lives in the top bar; expose its actions imperatively so the tree
+  // keeps ownership of the shared dialogs/state (folder & request exports use them too).
+  useImperativeHandle(
+    ref,
+    () => ({
+      openImport: () => setImportOpen(true),
+      exportProject: () => {
+        if (!selectedProject) return;
+        setExportScope({
+          scope: { kind: 'project', projectId: selectedProject },
+          name: tree.projects.find((p) => p.id === selectedProject)?.name ?? 'project',
+        });
+      },
+      exportWorkspace: () => setExportScope({ scope: { kind: 'workspace' }, name: 'workspace' }),
+      exportContainer: () => void exportContainer(),
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedProject, tree],
+  );
+
+  // Keep the top bar's "Export project…" item in sync with the tree selection.
+  useEffect(() => {
+    const p = selectedProject ? tree.projects.find((x) => x.id === selectedProject) : null;
+    onSelectedProjectChange?.(p ? { id: p.id, name: p.name } : null);
+  }, [selectedProject, tree, onSelectedProjectChange]);
+
   function templateMenu(tpl: TemplateSummary): MenuItem[] {
     return [
       { label: t('menu.edit'), onSelect: () => onOpenTemplate(tpl.id, 'edit', tpl.type, tpl.name) },
@@ -430,6 +542,15 @@ export function WorkingTree({
         label: t('menu.rename'),
         onSelect: () => setDialog({ mode: 'renameTemplate', id: tpl.id, value: tpl.name }),
       },
+      ...(tpl.type === 'api'
+        ? [
+            {
+              label: t('export.exportRequest'),
+              onSelect: () =>
+                setExportScope({ scope: { kind: 'template', templateId: tpl.id }, name: tpl.name }),
+            },
+          ]
+        : []),
       {
         label: t('menu.delete'),
         danger: true,
@@ -519,6 +640,11 @@ export function WorkingTree({
       },
       { label: t('menu.newTemplate'), onSelect: () => setCreateTpl({ folderId: folder.id }) },
       {
+        label: t('export.exportFolder'),
+        onSelect: () =>
+          setExportScope({ scope: { kind: 'folder', folderId: folder.id }, name: folder.name }),
+      },
+      {
         label: t('menu.rename'),
         onSelect: () => setDialog({ mode: 'renameFolder', id: folder.id, value: folder.name }),
       },
@@ -597,9 +723,11 @@ export function WorkingTree({
         <div className="tree__field">
           <div className="tree__field-head">
             <span className="ui-field__label">{t('tree.project')}</span>
-            <IconButton label={t('tree.collapse')} className="tree__collapse" onClick={onCollapse}>
-              <ChevronLeftIcon />
-            </IconButton>
+            <span className="row" style={{ gap: 'var(--space-1)' }}>
+              <IconButton label={t('tree.collapse')} className="tree__collapse" onClick={onCollapse}>
+                <ChevronLeftIcon />
+              </IconButton>
+            </span>
           </div>
           <ProjectSelector
             projects={tree.projects}
@@ -708,6 +836,22 @@ export function WorkingTree({
         onClose={() => setCreateTpl(null)}
       />
 
+      <ImportDialog
+        open={importOpen}
+        busy={busy}
+        onImport={(collection, projectName) => void importCollection(collection, projectName)}
+        onClose={() => setImportOpen(false)}
+      />
+
+      <ExportDialog
+        open={exportScope !== null}
+        scope={exportScope?.scope ?? { kind: 'workspace' }}
+        defaultName={exportScope?.name ?? 'export'}
+        preview={exportScope ? scopePreview(exportScope.scope) : null}
+        client={client}
+        onClose={() => setExportScope(null)}
+      />
+
       <ConfirmDialog
         open={confirm !== null}
         title={t('confirm.title')}
@@ -725,4 +869,4 @@ export function WorkingTree({
       />
     </aside>
   );
-}
+});

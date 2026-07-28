@@ -26,6 +26,7 @@ export {
   BoltIcon,
   CopyIcon,
   DownloadIcon,
+  ExportIcon,
   SaveIcon,
   ChevronLeftIcon,
   ChevronRightIcon,

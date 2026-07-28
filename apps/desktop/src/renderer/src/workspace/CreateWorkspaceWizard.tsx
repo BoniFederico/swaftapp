@@ -7,18 +7,25 @@ import { useWorkspace } from './WorkspaceProvider';
 import { workspaceErrorKey } from './workspace-errors';
 
 /**
- * Create Workspace wizard. The storage mode is chosen up front on the homepage
- * (the Create split-button) and passed in here — it is immutable for the life of the workspace:
- * `local` is a single (optionally encrypted) `.swaft` file; `git` is a directory of versioned files in
- * a Git repository (never encrypted). Execution mode defaults to `sandbox`.
+ * How a new workspace is materialized on disk. All three are immutable for the workspace's life:
+ * - `local-file`: a single (optionally encrypted) `.swaft` file (storage mode `local`).
+ * - `local-folder`: a plain directory of readable files (storage mode `local`, never encrypted).
+ * - `git`: a directory of versioned files in a Git repository (never encrypted).
+ */
+export type CreateVariant = 'local-file' | 'local-folder' | 'git';
+
+/**
+ * Create Workspace wizard. The variant is chosen up front on the homepage (the Create split-button)
+ * and passed in here. `local-file` picks a `.swaft` save path and can be encrypted; `local-folder`
+ * and `git` pick a directory and are stored as plain files. Execution mode defaults to `sandbox`.
  */
 export function CreateWorkspaceWizard({
   open,
-  storageMode,
+  variant,
   onClose,
 }: {
   open: boolean;
-  storageMode: StorageMode;
+  variant: CreateVariant;
   onClose: () => void;
 }) {
   const { t } = useI18n();
@@ -32,7 +39,11 @@ export function CreateWorkspaceWizard({
   const [executionMode, setExecutionMode] = useState<ExecutionMode>('sandbox');
   const [localError, setLocalError] = useState<TranslationKey | null>(null);
 
-  const isGit = storageMode === 'git';
+  const isGit = variant === 'git';
+  // Both folder-backed forms pick a directory and are stored as plain files; only the single-file
+  // `.swaft` can be encrypted.
+  const isFile = variant === 'local-file';
+  const storageMode: StorageMode = isGit ? 'git' : 'local';
 
   function reset() {
     setName('');
@@ -51,7 +62,7 @@ export function CreateWorkspaceWizard({
   }
 
   async function chooseLocation() {
-    const path = isGit ? await pickDirectory() : await pickCreateTarget(name);
+    const path = isFile ? await pickCreateTarget(name) : await pickDirectory();
     if (path) setLocation(path);
   }
 
@@ -59,7 +70,7 @@ export function CreateWorkspaceWizard({
     e.preventDefault();
     setLocalError(null);
     clearError();
-    const encrypting = encrypt && !isGit;
+    const encrypting = encrypt && isFile;
     if (encrypting) {
       if (password.length < 8) return setLocalError('auth.error.tooShort');
       if (password !== confirm) return setLocalError('auth.error.mismatch');
@@ -110,21 +121,29 @@ export function CreateWorkspaceWizard({
           <span className="ui-field__label">{t('wizard.storageMode')}</span>
           <div className="wizard__mode">
             <span className="ui-badge">
-              {isGit ? t('wizard.storageModeGit') : t('wizard.storageModeLocal')}
+              {isGit
+                ? t('wizard.storageModeGit')
+                : isFile
+                  ? t('wizard.storageModeLocal')
+                  : t('wizard.storageModeFolder')}
             </span>
             <span className="field-hint">
-              {isGit ? t('wizard.storageGitHint') : t('wizard.storageImmutable')}
+              {isGit
+                ? t('wizard.storageGitHint')
+                : isFile
+                  ? t('wizard.storageImmutable')
+                  : t('wizard.storageFolderHint')}
             </span>
           </div>
         </div>
 
         <div className="ui-field">
           <span className="ui-field__label">
-            {isGit ? t('wizard.locationFolder') : t('wizard.location')}
+            {isFile ? t('wizard.location') : t('wizard.locationFolder')}
           </span>
           <div className="row">
             <Button type="button" variant="secondary" onClick={chooseLocation}>
-              {isGit ? t('wizard.chooseFolder') : t('wizard.chooseLocation')}
+              {isFile ? t('wizard.chooseLocation') : t('wizard.chooseFolder')}
             </Button>
             <span className="muted" data-testid="wizard-location">
               {location || t('wizard.noLocation')}
@@ -142,8 +161,8 @@ export function CreateWorkspaceWizard({
           ]}
         />
 
-        {!isGit && <Switch checked={encrypt} onChange={setEncrypt} label={t('wizard.encrypt')} />}
-        {!isGit && encrypt && (
+        {isFile && <Switch checked={encrypt} onChange={setEncrypt} label={t('wizard.encrypt')} />}
+        {isFile && encrypt && (
           <div className="col" style={{ gap: 'var(--space-3)' }}>
             <TextField
               label={t('wizard.password')}

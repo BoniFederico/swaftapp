@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://swaft.app/schemas/settings.schema.json",
+  "title": "Swaft workspace settings (settings.json)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "executionMode", "blockedDomains", "enforcedHeaders", "batcherEnabled"],
+  "properties": {
+    "id": { "type": "string" },
+    "executionMode": { "enum": ["sandbox", "dev"] },
+    "blockedDomains": {
+      "type": ["array", "null"],
+      "items": { "type": "string" }
+    },
+    "proxyUrl": { "type": ["string", "null"] },
+    "enforcedHeaders": { "type": ["object", "null"] },
+    "batcherEnabled": { "type": "boolean" }
+  }
+}

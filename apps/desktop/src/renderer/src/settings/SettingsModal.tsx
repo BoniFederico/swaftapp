@@ -9,13 +9,20 @@ import { EnvironmentsSettings } from './sections/EnvironmentsSettings';
 import { GeneralSettings } from './sections/GeneralSettings';
 import { PreferencesSettings } from './sections/PreferencesSettings';
 import { RestrictionsSettings } from './sections/RestrictionsSettings';
+import { SecretsSettings } from './sections/SecretsSettings';
 
-export type SettingsSectionId = 'general' | 'restrictions' | 'environments' | 'preferences';
+export type SettingsSectionId =
+  | 'general'
+  | 'restrictions'
+  | 'environments'
+  | 'secrets'
+  | 'preferences';
 
 const NAV: { id: SettingsSectionId; label: TranslationKey }[] = [
   { id: 'general', label: 'set.general' },
   { id: 'restrictions', label: 'set.restrictions' },
   { id: 'environments', label: 'set.environments' },
+  { id: 'secrets', label: 'set.secrets' },
   { id: 'preferences', label: 'set.preferences' },
 ];
 
@@ -184,6 +191,7 @@ export function SettingsModal({
                   onDeleted={() => setEnvSelectedId(null)}
                 />
               )}
+              {active === 'secrets' && <SecretsSettings client={client} />}
               {active === 'preferences' && <PreferencesSettings client={client} />}
             </div>
           </div>

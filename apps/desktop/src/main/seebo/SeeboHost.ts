@@ -76,6 +76,16 @@ export interface EnvDataProvider {
   resolve(key: string): Promise<unknown>;
 }
 
+/**
+ * Resolves the `secret(...)` data-capability: a secret value from the OS keychain. Main-process only —
+ * the value never reaches the renderer and is masked in diagnostics/audit (`policy.redact`). Lenient:
+ * an absent secret resolves to `''` so a preview/render never crashes on a machine where it isn't set.
+ */
+export interface SecretDataProvider {
+  /** Resolve `name` to its stored secret value, or `''` when absent. Never throws. */
+  resolve(name: string): Promise<string> | string;
+}
+
 /** Per-render context so data capabilities can scope their lookups (e.g. `template` → same project). */
 export interface SeeboRenderContext {
   projectId: string | null;
@@ -130,6 +140,7 @@ export interface UserCapabilityProvider {
 export interface SeeboHostDeps {
   templateData?: TemplateDataProvider;
   envData?: EnvDataProvider;
+  secretData?: SecretDataProvider;
   userCapabilities?: UserCapabilityProvider;
 }
 
@@ -180,6 +191,22 @@ function envKey(req: SeeboRequirement): string {
   const args = (req as { args?: Record<string, unknown> }).args;
   if (args && typeof args === 'object') {
     const v = args.key ?? args.ref;
+    if (typeof v === 'string') return v;
+  }
+  const direct = (req as { ref?: unknown }).ref;
+  if (typeof direct === 'string') return direct;
+  return typeof req.id === 'string' ? req.id : String(req.id ?? '');
+}
+
+/**
+ * The secret name passed to a `secret(...)` capability call. Accepts `secret({ name: 'API_TOKEN' })`,
+ * `secret({ key: … })`, `secret({ ref: … })`, or the requirement `id` (so `secret('API_TOKEN')`
+ * works), mirroring the `env(...)` convention.
+ */
+function secretName(req: SeeboRequirement): string {
+  const args = (req as { args?: Record<string, unknown> }).args;
+  if (args && typeof args === 'object') {
+    const v = args.name ?? args.key ?? args.ref;
     if (typeof v === 'string') return v;
   }
   const direct = (req as { ref?: unknown }).ref;
@@ -240,7 +267,7 @@ export class SeeboHost {
     // Register `template` (a data capability) only when a provider is wired — pure widget engines
     // (e.g. tests, the Template Editor without a workspace) keep their original surface untouched.
     const dataCapabilities: string[] = [];
-    const { templateData, envData, userCapabilities } = this.deps;
+    const { templateData, envData, secretData, userCapabilities } = this.deps;
     // `previous(...)` carries an already-executed scenario block's output envelope into a later block.
     // Registered unconditionally (it needs no provider — only the per-render `ctx.scenario` the runner
     // sets). Outside a run it resolves to an empty object, so a block template stays renderable on its
@@ -271,6 +298,15 @@ export class SeeboHost {
       capabilities.env = (req) => envData.resolve(envKey(req));
       dataCapabilities.push('env');
     }
+    // `secret` resolves a value from the OS keychain (main-process only). Its value is masked in
+    // diagnostics/audit via `policy.redact` below; a missing secret resolves to '' (never throws).
+    if (secretData) {
+      capabilities.secret = defineCapability('secret', {
+        type: 'string',
+        resolve: (req) => secretData.resolve(secretName(req)),
+      });
+      dataCapabilities.push('secret');
+    }
     // User-authored capabilities resolve like any other data capability; the difference is that the
     // resolver forwards to an isolated process instead of running here. A built-in always wins, so a
     // capability template can never change what an existing template means.
@@ -287,6 +323,8 @@ export class SeeboHost {
     const alwaysAllowed = [...WIDGET_CAPABILITIES, ...dataCapabilities];
 
     const enginePolicy: SeeboPolicy = { trustLevel: 'trusted' };
+    // Mask `secret(...)` values wherever the engine surfaces values (diagnostics, audit hook).
+    if (secretData) enginePolicy.redact = ['secret'];
     // Widgets + data capabilities are always allowed (the input/data mechanism). An empty list means
     // "no restriction"; a non-empty one still keeps the always-allowed set reachable.
     if (policy?.allowedCapabilities && policy.allowedCapabilities.length > 0) {

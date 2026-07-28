@@ -149,7 +149,8 @@ describe('GitOpsService', () => {
     await ops.commit('add billing');
 
     expect(git.calls).toContain('commit:add billing');
-    expect(git.filesAtCommit).toContain('projects/p1.json'); // saved before the commit ran
+    // Hybrid naming (D2): id `p1`, name "Billing" → `billing.p1.json`.
+    expect(git.filesAtCommit).toContain('projects/billing.p1.json'); // saved before the commit ran
   });
 
   it('reloads the in-memory store after a pull that changed files on disk', async () => {
@@ -240,7 +241,8 @@ describe.skipIf(!gitAvailable)('GitOpsService.clone (real git)', () => {
       git: new GitPersistence({ createBackend: backend, git, deviceId: () => 'dev-1' }),
       probePath: async (p) => {
         try {
-          return (await stat(p)).isDirectory() ? 'dir' : 'file';
+          if (!(await stat(p)).isDirectory()) return 'file';
+          return existsSync(join(p, '.git')) ? 'git' : 'folder';
         } catch {
           return 'missing';
         }

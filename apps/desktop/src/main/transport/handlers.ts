@@ -20,6 +20,7 @@ import {
   type InputStateSetRequest,
   type NameColorRequest,
   type SecretSetRequest,
+  type SecretDeleteRequest,
   type OpName,
   type PingRequest,
   type PingResponse,
@@ -38,6 +39,11 @@ import {
   type ScenarioRunListRequest,
   type ScenarioRunBatchRequest,
   type ScenarioBatchRefRequest,
+  type CollectionImportRequest,
+  type CollectionExportRequest,
+  type ContainerExportRequest,
+  type FileSaveTextRequest,
+  type FileSaveFilesRequest,
   type TemplateCreateRequest,
   type TemplateRefRequest,
   type TemplateSearchRequest,
@@ -58,7 +64,10 @@ import {
   type GitPublishRequest,
   type GitFileDiffRequest,
 } from '@swaft/shared';
-import { toErrorEnvelope } from '../errors';
+import { mkdir } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { AppError, toErrorEnvelope } from '../errors';
+import { writeFileAtomic } from '../storage/atomic-file';
 import {
   getActionService,
   getApiHistoryService,
@@ -69,6 +78,9 @@ import {
   getBatcherService,
   getChangelogService,
   getEnvironmentService,
+  getImportService,
+  getExportService,
+  getContainerService,
   getGitOpsService,
   getOrganizationService,
   getPlatformDialogs,
@@ -115,7 +127,15 @@ export const handlers: Record<OpName, Handler> = {
   'workspace.create': (p) =>
     svc(async () => ({ workspace: await getWorkspaceService().create(p as WorkspaceCreateRequest) })),
   'workspace.open': (p) =>
-    svc(async () => ({ workspace: await getWorkspaceService().open(p as WorkspaceOpenRequest) })),
+    svc(async () => {
+      const r = p as WorkspaceOpenRequest;
+      // A `.swaft` zip container is unzipped to a sibling folder and opened as a folder workspace
+      // (open-standards plan D1). A legacy single-file SQLite `.swaft` returns null here and opens
+      // as-is. An encrypted container throws PASSWORD_REQUIRED, prompting the same password dialog.
+      const folder = await getContainerService().openAsContainer(r.path, r.password);
+      const target: WorkspaceOpenRequest = folder ? { path: folder } : r;
+      return { workspace: await getWorkspaceService().open(target) };
+    }),
   'workspace.close': () =>
     svc(async () => {
       await getWorkspaceService().close();
@@ -389,6 +409,11 @@ export const handlers: Record<OpName, Handler> = {
       return { refs: getSecretService().list() };
     }),
   'secret.list': () => ({ refs: getSecretService().list() }),
+  'secret.delete': (p) =>
+    svc(() => {
+      getSecretService().delete((p as SecretDeleteRequest).ref);
+      return { refs: getSecretService().list() };
+    }),
 
   // Batcher + actions (M10)
   'batch.analyze': (p) =>
@@ -491,5 +516,59 @@ export const handlers: Record<OpName, Handler> = {
     svc(async () => {
       await getScenarioService().stopBatch((p as ScenarioBatchRefRequest).batchId);
       return { ok: true as const };
+    }),
+
+  // Open standards: materialize a neutral collection (parsed by the renderer's shared codecs).
+  'collection.import': (p) =>
+    svc(async () => {
+      const r = p as CollectionImportRequest;
+      const result = await getImportService().importCollection(r.collection, r.target);
+      return { tree: await getOrganizationService().getTree(), result };
+    }),
+  'collection.export': (p) =>
+    svc(async () => {
+      const r = p as CollectionExportRequest;
+      return getExportService().export(r.scope, r.format, r.conversion);
+    }),
+  // Package the open workspace into a portable `.swaft` zip container (D1), optionally encrypted.
+  'container.export': (p) =>
+    svc(async () => {
+      const r = p as ContainerExportRequest;
+      if (r.encrypt && (!r.password || r.password.length < 8)) {
+        throw new AppError(
+          'PASSWORD_REQUIRED',
+          'validation',
+          'A password of at least 8 characters is required to encrypt the container.',
+        );
+      }
+      const bytes = await getContainerService().export(r.encrypt ? r.password : undefined);
+      const name = getWorkspaceService().current()?.name ?? 'workspace';
+      const path = await getPlatformDialogs().pickSaveTarget(`${name}.swaft`);
+      if (path) await writeFileAtomic(path, bytes);
+      return { path };
+    }),
+  // Save exported content to disk via the native dialogs (main-process only).
+  'file.saveText': (p) =>
+    svc(async () => {
+      const r = p as FileSaveTextRequest;
+      const path = await getPlatformDialogs().pickSaveTarget(r.suggestedName);
+      if (path) await writeFileAtomic(path, r.content);
+      return { path };
+    }),
+  'file.saveFiles': (p) =>
+    svc(async () => {
+      const r = p as FileSaveFilesRequest;
+      const dir = await getPlatformDialogs().pickDirectory();
+      if (!dir) return { dir: null, count: 0 };
+      let count = 0;
+      for (const f of r.files) {
+        // Reject path traversal; write only within the chosen directory.
+        if (f.path.split(/[\\/]/).includes('..')) continue;
+        const dest = join(dir, f.path);
+        await mkdir(dirname(dest), { recursive: true });
+        await writeFileAtomic(dest, f.content);
+        count++;
+      }
+      return { dir, count };
     }),
 };

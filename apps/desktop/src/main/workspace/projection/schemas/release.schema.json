@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://swaft.app/schemas/release.schema.json",
+  "title": "Swaft release snapshot (templates/<slug>.<shortId>/releases/v<version>.<shortId>.json)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "templateId", "version", "name", "subtype", "source"],
+  "properties": {
+    "id": { "type": "string" },
+    "templateId": { "type": "string" },
+    "version": { "type": "number" },
+    "name": { "type": "string" },
+    "subtype": { "type": ["string", "null"] },
+    "source": { "type": "string" }
+  }
+}

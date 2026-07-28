@@ -25,6 +25,9 @@ import {
   setBatcherService,
   setChangelogService,
   setEnvironmentService,
+  setImportService,
+  setExportService,
+  setContainerService,
   setGitOpsService,
   setHttpService,
   setOrganizationService,
@@ -46,6 +49,9 @@ import { ApiRunService } from './workspace/ApiRunService';
 import { BatcherService } from './workspace/BatcherService';
 import { ChangelogService } from './workspace/ChangelogService';
 import { EnvironmentService } from './workspace/EnvironmentService';
+import { ExportService } from './workspace/ExportService';
+import { ImportService } from './workspace/ImportService';
+import { ContainerService } from './workspace/ContainerService';
 import { OrganizationService } from './workspace/OrganizationService';
 import { ReleaseService } from './workspace/ReleaseService';
 import { RenderService } from './workspace/RenderService';
@@ -54,6 +60,7 @@ import { TemplateDataProvider } from './workspace/TemplateDataProvider';
 import { TemplateService } from './workspace/TemplateService';
 import { WorkspaceService } from './workspace/WorkspaceService';
 import { GitPersistence } from './workspace/persistence/GitPersistence';
+import { FolderPersistence } from './workspace/persistence/FolderPersistence';
 import { SystemGitService } from './git/GitService';
 import { GitOpsService } from './git/GitOpsService';
 
@@ -98,9 +105,18 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
     onOpened: (summary) => appStore.recordRecent(summary),
     // `git` storage mode: a workspace is a directory of versioned files.
     git: new GitPersistence({ createBackend, git, deviceId: () => appStore.getDeviceId() }),
+    // Folder-backed `local` mode (D1): a workspace is a plain directory of files, no git.
+    folder: new FolderPersistence({ createBackend, deviceId: () => appStore.getDeviceId() }),
     probePath: async (path) => {
       try {
-        return (await stat(path)).isDirectory() ? 'dir' : 'file';
+        if (!(await stat(path)).isDirectory()) return 'file';
+        // A directory with a `.git` entry is a git workspace; otherwise a plain Swaft folder.
+        try {
+          await stat(join(path, '.git'));
+          return 'git';
+        } catch {
+          return 'folder';
+        }
       } catch {
         return 'missing';
       }
@@ -176,7 +192,17 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
     // for the code it carries.
     trust: appStore,
   });
-  const host = new SeeboHost({}, { templateData, envData: environments, userCapabilities });
+  // Secrets live in the OS keychain (never in `.swaft`/files). The `secret(...)` data capability
+  // reveals a value at render/send time in the main process only; the renderer holds refs, never values.
+  const secretService = new SecretService(
+    join(app.getPath('userData'), 'secrets.json'),
+    new SafeStorageCipher(),
+  );
+  const secretData = { resolve: (name: string) => secretService.get(name) ?? '' };
+  const host = new SeeboHost(
+    {},
+    { templateData, envData: environments, secretData, userCapabilities },
+  );
   const render = new RenderService(workspaceService, templates, host, releases);
   const apiRequest = new ApiRequestService(templates, host, organization);
   const batcher = new BatcherService(templates, releases, host);
@@ -188,10 +214,6 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
     currentUsername,
   });
 
-  const secretService = new SecretService(
-    join(app.getPath('userData'), 'secrets.json'),
-    new SafeStorageCipher(),
-  );
   // Folder-propagated proxies route through a dedicated Electron session per proxy target, so the
   // Chromium network stack handles both http and https (CONNECT tunneling) transparently.
   const proxyFetchFn = (proxy: FolderProxyDto): typeof fetch => {
@@ -243,6 +265,21 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
   setActionService(actionService);
   setScenarioService(scenarioService);
   setEnvironmentService(environments);
+  setImportService(new ImportService({ organization, templates, environments }));
+  setExportService(new ExportService({ organization, templates }));
+  setContainerService(
+    new ContainerService({
+      workspace: workspaceService,
+      crypto,
+      read: async (path) => {
+        try {
+          return await readFile(path);
+        } catch {
+          return null;
+        }
+      },
+    }),
+  );
   setGitOpsService(new GitOpsService(workspaceService, git));
   setPlatformDialogs(dialogs);
 }
