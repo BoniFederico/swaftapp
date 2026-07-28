@@ -1,500 +1,281 @@
-# Swaft & Open Standards — Action Plan
+# Swaft & Open Standards — Status & Remaining Work
 
-> **Status: action plan.** Decisions are locked per the product owner's direction (§1); a few
-> residual calls are listed in §12. Claims about the current app are grounded in the working tree with
-> `file:line` anchors (pointers, not contracts). Written in English to match the code symbols and the
-> published docs.
+> **Status: mostly implemented.** This file used to be a forward-looking action plan; it is now a
+> **handoff document** — a precise ledger of what was built (with `file:line` anchors into the current
+> working tree) and what is still open. A fresh session with no other context should be able to read
+> this file alone and continue the work.
 >
-> **Goal:** make Swaft store and exchange its data using **open, plain-file standards** — the folder
-> of files is the source of truth, API requests are `.http` files, scenarios are Arazzo documents,
-> documents are Markdown-with-front-matter — while keeping Seebo formulas and Swaft's richer features,
-> and offering guided import/export to the wider ecosystem (Postman, Bruno, OpenAPI, cURL, HAR).
+> **Goal (unchanged):** make Swaft store and exchange its data using **open, plain-file standards** —
+> the folder of files is the source of truth, API requests are `.http` files, while keeping Seebo
+> formulas and Swaft's richer features, and offering guided import/export to the wider ecosystem
+> (Postman, Bruno, OpenAPI, cURL, HAR). Scenarios-as-Arazzo and documents-as-front-matter were designed
+> but **not yet wired in** — see §3.
+
+The load-bearing architectural principle held throughout: **the canonical *runtime* model is
+unchanged.** An API request is still a `HttpRequestModel` ([`ops.ts`](packages/shared/src/ops.ts)) held
+in the `source` column; a scenario is still a `ScenarioGraph` ([`scenario.ts`](packages/shared/src/scenario.ts)).
+Only the **on-disk file form** changes, via per-type codecs in the projection
+([`projection.ts`](apps/desktop/src/main/workspace/projection/projection.ts)). `ApiView`, the Seebo
+engine, the send path and its security enforcement, the tab router — none of this changed.
 
 ---
 
-## 1. Locked decisions
+## 1. What's implemented
 
-| # | Decision | Source |
-|---|----------|--------|
-| D1 | **Folder is the source of truth.** A local workspace is a directory of open files; `.swaft` is an **export/import container** (a zip), not the primary store. (Model 1.) | owner |
-| D2 | **Hybrid naming:** human-readable, slug-based paths **plus** a stable UUID kept *inside* the files (rename = `git mv`; identity is content-based, not path-based). | owner |
-| D3 | **API templates are stored as `.http` files + inline Seebo formulas** — the actual on-disk form in both `local` and `git` folders. | owner |
-| D4 | **Export a request** as `.http`, **copy as cURL**, **export as Postman / Bruno**; **export a folder** as a Postman/Bruno **collection**; **import** the same back. | owner |
-| D5 | **On export, only if Seebo formulas are present, ask the user how to convert:** (a) variabilize → `{{ }}`, (b) resolve/snapshot the formula value, (c) for inputs (`need`) → promote to environment/collection variables or leave empty. | owner |
-| D6 | **Scenarios are stored in the Arazzo standard where possible** (with `x-swaft` extensions for the rest); offer Arazzo **export/import with guided conflict resolution**. | owner |
-| D7 | **Documents** → Markdown/standard body + YAML front matter (§9, detailed). Secrets model reworked (§10, detailed). | owner (C2 & 7 confirmed) |
+### 1.1 Interchange codecs (pure functions, `packages/shared/src`)
 
-### 1.1 The load-bearing architectural principle (assumed — see §12/A1)
+All of these are **pure, dependency-light, unit-tested** converters — no Electron/Node dependency,
+usable from the renderer or main:
 
-**The canonical *runtime* model stays exactly as today; only the *file* form changes, via a codec in
-the projection layer.** Internally an API request is still a `HttpRequestModel`
-([`ops.ts:303-318`](packages/shared/src/ops.ts)) held in the `source` column; a scenario is still a
-`ScenarioGraph` ([`scenario.ts`](packages/shared/src/scenario.ts)). What changes is how the projection
-([`projection.ts`](apps/desktop/src/main/workspace/projection/projection.ts)) reads/writes those to
-disk: instead of `source.json`, it runs a **codec** (`HttpRequestModel ⇄ .http`,
-`ScenarioGraph ⇄ Arazzo`, document `source ⇄ Markdown+front-matter`).
-
-Why this matters: `ApiView`, the Seebo engine, the send path and its security enforcement, the tab
-router — **none change**. The blast radius is confined to the projection's per-type codecs plus the
-new adapters/UI. This is what makes the plan tractable.
-
----
-
-## 2. Target architecture (end state)
-
-```
-                     ┌───────────────────────────── source of truth ─────────────────────────────┐
-   Swaft UI  ⇄  SQLite working store (cache/index, rebuilt from files)  ⇄  OPEN FOLDER OF FILES
-   (ApiView,      (HttpRequestModel / ScenarioGraph                        (.http, .arazzo.yaml,
-    Scenario       JSON in `source` — UNCHANGED)          projection        .md+front-matter, .json)
-    canvas…)                                              CODECS ↑↓
-                                                                            .swaft  =  zip(folder)   ← export/import container
-                                                                            adapters ↔ Postman / Bruno / OpenAPI / cURL / HAR / Arazzo / dotenv
-```
-
-Three layers, cleanly separated:
-
-1. **Runtime model** (unchanged): `HttpRequestModel`, `ScenarioGraph`, document `source`, env sets.
-2. **On-disk open form** (new codecs in the projection): `.http`, Arazzo YAML, Markdown+front-matter,
-   canonical JSON — the *source of truth*, git-native, human-readable.
-3. **Interchange adapters** (new, pure functions): convert the runtime model ⇄ foreign formats, with a
-   **guided Seebo-conversion dialog** and a **fidelity report** (§5, §6).
-
----
-
-## 3. The on-disk layout (final)
-
-Reuse and extend today's projection tree
-([`projection.ts:57-102,238-299`](apps/desktop/src/main/workspace/projection/projection.ts)). Hybrid
-naming (D2): directories are `<slug>.<shortId>` so they're browsable *and* rename-stable; the full id
-lives inside the file.
-
-```
-workspace.json                         # manifest (+ formatVersion, schemaVersion)
-settings.json
-FORMAT.md                              # NEW: human spec of this layout (points at the JSON Schemas)
-schemas/*.schema.json                  # NEW: published JSON Schemas for every file shape
-projects/<slug>.<id>.json
-folders/<slug>.<id>.json               # name, parent, propagated headers/proxy/auth/actions, notes
-tags/<slug>.<id>.json
-environments/<name>.env                # NEW form: dotenv (config; non-secret) — see §10
-changelog/<id>.json
-templates/<slug>.<id>/
-    template.json                      # generic metadata: id, name, type, subtype, tags, folder/project,
-                                       #   hasDraft + (api only) optional `api` block: structured auth, actions
-    request.http                       # API templates (D3): method/url/headers/body + Seebo, info as comments
-    scenario.arazzo.yaml               # scenario templates (D6): Arazzo + x-swaft extensions
-    content.<ext> + front matter       # document templates (§9): .md/.html/.mmd/… with YAML front matter
-    code.js                            # capability/action templates (unchanged, verbatim)
-    releases/<version>.<id>.<ext>      # release snapshots, same per-type form as the draft
-/.swaft/                               # git-ignored: local-only data (history, receipts, inputs, selections) + DB cache
-.secrets.local                         # git-ignored: secret values (or OS keychain) — NEVER committed (§10)
-.gitignore .gitattributes
-```
-
-`.swaft` file (D1) = a **zip of this folder** (magic marker + `formatVersion`), optionally encrypted;
-used only to move/archive a workspace, never the live store.
-
----
-
-## 4. Workstream 1 — Folder as source of truth; `.swaft` as a container
-
-**Objective (D1):** local workspaces live as the open folder above; `.swaft` becomes export/import.
-
-**Tasks**
-- Generalize `WorkspacePersistence`
-  ([`WorkspacePersistence.ts:19-31`](apps/desktop/src/main/workspace/persistence/WorkspacePersistence.ts))
-  with a **`FolderPersistence`** (folder-backed `local`), reusing `dumpWorkspace`/`hydrateWorkspace`
-  ([`projection.ts:114-135`](apps/desktop/src/main/workspace/projection/projection.ts)) verbatim. The
-  SQLite store becomes an in-memory cache rebuilt on open (as `GitPersistence.open` already does,
-  [`GitPersistence.ts:79-104`](apps/desktop/src/main/workspace/persistence/GitPersistence.ts)).
-- Implement **`.swaft` = zip(folder)**: "Export .swaft" zips the folder (+ optional AES, reusing
-  [`CryptoService`](apps/desktop/src/main/crypto/CryptoService.ts)); "Open .swaft" unzips to a working
-  dir and hydrates. Keep reading **legacy SQLite `.swaft`** via the current `LocalFilePersistence`
-  ([`LocalFilePersistence.ts:31-93`](apps/desktop/src/main/workspace/persistence/LocalFilePersistence.ts))
-  for back-compat.
-- Apply **hybrid naming** (D2): change file/dir naming from `<id>` to `<slug>.<shortId>`; keep the full
-  id inside each file; make the loader identify entities by **in-file id**, not path (so renames are
-  pure moves). Update `dumpFlat`/`dumpTemplates`/`removeStaleJson`
-  ([`projection.ts:205-299,406-419`](apps/desktop/src/main/workspace/projection/projection.ts)).
-- Keep **local-only data out of the open tree** (already excluded,
-  [`projection.ts:17-21`](apps/desktop/src/main/workspace/projection/projection.ts)) — move it under a
-  git-ignored `/.swaft/`.
-- **Publish the format:** author `FORMAT.md` + JSON Schemas for every file; govern `FORMAT_VERSION`
-  ([`projection.ts:29-30,160-168`](apps/desktop/src/main/workspace/projection/projection.ts)).
-
-**Acceptance**
-- Create a local workspace → a readable folder appears; edits produce meaningful diffs; delete = file
-  removal. Export `.swaft` → reopen elsewhere → identical workspace. Legacy `.swaft` still opens.
-- `FORMAT.md` + schemas validate every emitted file in tests.
-
----
-
-## 5. Workstream 2 — API templates as `.http` files
-
-**Objective (D3):** the on-disk form of an `api` template is `request.http` + Seebo, with Swaft-only
-extras in `template.json`.
-
-### 5.1 The `.http` codec (`HttpRequestModel ⇄ request.http`)
-A per-type codec inside the projection. Mapping:
-
-| `HttpRequestModel` | `.http` |
-|---|---|
-| `method`, `url` | request line `GET https://…` |
-| `headers` | `Header: value` lines |
-| `query` | folded into the URL query string (URL is already the source of truth, [`ApiView.tsx:66-69`]) |
-| `body`, `bodyType` | blank line + body; `Content-Type` header encodes `bodyType` |
-| `info` | leading `#` comment lines |
-| `auth` **header-expressible** (bearer, apikey-in-header, basic) | rendered as the actual `Authorization`/apikey header |
-| `auth` **not header-expressible** (apikey-in-**query**, `inherit`, `secretRef`) | kept in `template.json` `api.auth`; a `# @swaft-auth: …` marker notes it |
-| `actions` (pre/post) | kept in `template.json` `api.actions` (no `.http` equivalent) |
-
-**Interpolation (decided A3, §12):** **Seebo is stored verbatim in the `.http`** — `${ env('X') }`,
-`${ … }` logic and all — using **one syntax on disk**. No `{{X}}` mapping happens at rest. The
-`.http` is still valid `.http` *syntax* (readable, git-native, diffable), but a formula-bearing file
-carries Seebo inline, so another REST client would send `${ env('X') }` **literally**. Cross-tool use
-therefore goes through **export** (§6.2), where the user chooses whether to translate `env('X') →
-{{X}}`, snapshot values, etc. Requests with **no** Seebo are plain `.http` and run verbatim anywhere.
-(Trade-off accepted: one uniform on-disk syntax + user-controlled translation at export, instead of a
-more-portable-but-dual-syntax file.)
-
-Example `templates/get-order.a1b2/request.http`:
-```http
-# Fetch one order by id
-GET https://${ env('BASE_URL') }/orders/${ orderId }
-Authorization: Bearer ${ secret('API_TOKEN') }
-Accept: application/json
-```
-…with `template.json` carrying `{ id, name, type:"api", tags, api?: { auth?, actions? } }`. (Here
-`env('BASE_URL')` is config, `orderId` an input, `secret('API_TOKEN')` a keychain secret — see §9;
-on export to a foreign tool these become `{{BASE_URL}}` / `{{orderId}}` / `{{API_TOKEN}}` or resolved
-values, per the §6.2 dialog.)
-
-### 5.2 Send path & editor — unchanged
-`request.http` is parsed to `HttpRequestModel` on load and serialized back on save; everything
-downstream (`ApiView`, `ApiRequestService` formula resolution
-[`ApiRequestService.ts:81-88`](apps/desktop/src/main/workspace/ApiRequestService.ts), `HttpService`
-send + SSRF/blocked-domain enforcement) is untouched. Editing the `.http` by hand and reloading
-re-parses it (defensive parse, mirroring `parseRequest` [`ApiView.tsx:62-76`]).
-
-**Acceptance**
-- A saved api template is a valid `.http` file another REST client can read; formula-free requests run
-  verbatim elsewhere. Round-trip `HttpRequestModel → .http → HttpRequestModel` is lossless (extras via
-  `template.json`). Hand-edited `.http` loads; a malformed one degrades gracefully.
-
----
-
-## 6. Workstream 3 — Interchange adapters + the Seebo-conversion dialog
-
-**Objective (D4/D5):** move requests and collections in and out of the ecosystem, with guided handling
-of Seebo.
-
-### 6.1 Adapters (pure, main-process; new session-guarded ops in [`ops.ts`](packages/shared/src/ops.ts))
-
-| Adapter | Direction | Scope | Notes |
+| Codec | File | Direction | Notes |
 |---|---|---|---|
-| **cURL** | in / out | request | Paste cURL → request; copy request → cURL. |
-| **`.http`** | in / out | request | Already the native form (§5) — "export `.http`" is a file save; import parses a foreign `.http`. |
-| **Postman v2.1** | in / out | folder = collection | folders↔items, folder policy↔collection auth/vars ([`folderUpdateRequestSchema`](packages/shared/src/ops.ts)), `env`↔variables. Scripts↔actions best-effort. |
-| **Bruno** | in / out | folder = collection | file-per-request DSL; maps almost 1:1 to the folder tree. |
-| **OpenAPI 3.1** | **in** (→ templates) | spec → many api templates | One template per operation; `servers` → `BASE_URL` env; reuse [`parseSpec.ts`] to read the spec, add a request generator. Export is lossy (report-only). |
-| **HAR 1.2** | out | history | Export `api_history` as HAR. |
+| `.http` | [`http-file.ts`](packages/shared/src/http-file.ts) | `HttpRequestModel ⇄ request.http` | Seebo stored verbatim (`${ … }`); `info` as `#` comments; `bodyType` ⇄ `Content-Type`. |
+| cURL | [`curl.ts`](packages/shared/src/curl.ts) | `fromCurl` / `toCurl` | Shell tokenizer, POSIX quoting. Wired into `ApiView` (Copy as cURL / Paste cURL). |
+| OpenAPI 3.1 | [`openapi.ts`](packages/shared/src/openapi.ts) | **import only** → `ImportedCollection` | `{param}` → `${ param }`; `servers` → `BASE_URL` env; `security` → `${ secret('...') }`. |
+| Postman v2.1 | [`postman.ts`](packages/shared/src/postman.ts) | `fromPostman` / `toPostman` (verbatim) | Conversion (variabilize vs. verbatim) is externalized to `ExportService`, not the codec. |
+| Bruno | [`bruno.ts`](packages/shared/src/bruno.ts) | `toBruno` / `fromBruno` | File-per-request `.bru` DSL + `bruno.json`; brace-depth-aware block scanner. |
+| HAR 1.2 | [`har.ts`](packages/shared/src/har.ts) | **export only** | `toHar(entries)`; wired to a UI action (API view → History → "Export HAR"). |
+| Arazzo 1.0 | [`arazzo.ts`](packages/shared/src/arazzo.ts) | `toArazzo` / `fromArazzo` | **Codec exists and is unit-tested, but is NOT wired into the projection or any UI** — see §3.1. |
+| Front matter | [`front-matter.ts`](packages/shared/src/front-matter.ts) | `toFrontMatter` / `parseFrontMatter` | Dependency-free YAML-ish front matter. **NOT wired into the projection** — see §3.2. |
+| Seebo conversion | [`seebo-convert.ts`](packages/shared/src/seebo-convert.ts) | `variabilizeSeebo`, `bracesToSeebo` | `env`/`secret`/bare `${ }` ⇄ `{{ }}`; used by `ExportService` at export time only (on-disk form always keeps Seebo verbatim). |
+| Secret scan | [`secret-scan.ts`](packages/shared/src/secret-scan.ts) | `scanForSecrets`, `hasSecretLiteral` | Detector exists and is unit-tested. **NOT wired into any write/commit path yet** — see §3.4. |
+| Neutral collection model | [`collection.ts`](packages/shared/src/collection.ts) | `ImportedCollection`, `ImportedRequest`, `ImportedEnvironment` | The shared shape all import adapters produce and `ImportService` consumes. |
+| ZIP (store method) | [`zip.ts`](packages/shared/src/zip.ts) | `zip`/`unzip`, `zipText`/`unzipText` | Dependency-free, browser-safe. Verified interoperable with a standard unzip tool (Windows `Expand-Archive`). Backs the `.swaft` container (§1.3). |
 
-### 6.2 The Seebo-conversion dialog (D5)
-Triggered **only** when exporting to a foreign format **and** the model contains Seebo beyond a plain
-`{{var}}`. The user chooses (globally, with per-formula override):
+### 1.2 API templates stored as `.http` (Workstream 2 — done)
 
-| Strategy | Behavior |
-|---|---|
-| **Variabilize → `{{ }}`** | `env('X')`/`${ X }` → `{{X}}`; a declared **input** (`need`/widget) → a `{{id}}` collection variable; other formulas → attempt to variabilize, else fall through to the next choice. |
-| **Resolve / snapshot** | Evaluate the formula with the **active environment + saved input values** → a concrete literal. Portable but static. |
-| **Inputs (`need`) handling** | For interactive inputs with no value at export: **promote to environment/collection variable** `{{id}}` (empty default) **or leave empty/placeholder** — user's pick. |
+`FORMAT_VERSION = 2` ([`projection.ts:35`](apps/desktop/src/main/workspace/projection/projection.ts)):
+an `api` template's on-disk body is `templates/<slug>.<id>/request.http` (via `toHttpFile`/`fromHttpFile`)
+plus a `template.json` `api` block for what `.http` can't carry (structured non-header auth, pre/post
+actions). v1 workspaces (`source.json`) still hydrate; the next save upgrades them to v2. Send path,
+editor and Seebo formula resolution are untouched.
 
-**Secrets are never resolved into an exported file** — always emitted as `{{SECRET_NAME}}` variable
-placeholders (flagged secret in Postman/Bruno) or omitted (§10).
+### 1.3 Folder-as-truth + hybrid naming + `.swaft` container (Workstream 1 — done)
 
-Every export returns a **fidelity report**: what was variabilized, what was snapshotted, which inputs
-became variables, and what was dropped (e.g. pre/post actions with no target-format equivalent). Import
-produces the inverse report (e.g. Postman scripts → skipped/stubbed as `action` templates + note).
+- **Hybrid naming (D2):** every flat entity, template directory and release file is named
+  `<slug>.<shortId>` ([`naming.ts`](apps/desktop/src/main/workspace/projection/naming.ts):
+  `slugify`/`shortId`/`entityBaseName`), wired into `dumpFlat`/`dumpTemplates`
+  ([`projection.ts:209-319`](apps/desktop/src/main/workspace/projection/projection.ts)). The loader
+  keys off the **in-file id**, never the path — legacy `<id>.json` files still hydrate; a rename is a
+  pure file move.
+- **Folder-backed `local` workspaces (D1):** [`FolderPersistence`](apps/desktop/src/main/workspace/persistence/FolderPersistence.ts)
+  reuses `dumpWorkspace`/`hydrateWorkspace` verbatim (same on-disk form as a `git` workspace, minus git,
+  minus encryption). [`WorkspaceService`](apps/desktop/src/main/workspace/WorkspaceService.ts) picks the
+  strategy by location shape: a `.swaft` path stays single-file/encryptable
+  (`isSwaftFile`/`localFor`, lines 18/103-104); any other path is folder-backed. `probePath` is
+  `'file' | 'git' | 'folder' | 'missing'` (a directory with `.git` → git; otherwise a plain folder).
+  Surfaced in the create UI as a third variant ("Local folder") alongside "Local file (.swaft)" and
+  "Git".
+- **`.swaft` as a zip container (D1):** [`ContainerService`](apps/desktop/src/main/workspace/ContainerService.ts) +
+  [`projection/container.ts`](apps/desktop/src/main/workspace/projection/container.ts) pack the open
+  workspace into a `.swaft` zip (optionally AES-encrypted, reusing
+  [`CryptoService`](apps/desktop/src/main/crypto/CryptoService.ts)). Opening a `.swaft` is unified into
+  `workspace.open`: a zip is unzipped to a sibling folder and opened as a folder workspace (idempotent);
+  a legacy single-file SQLite `.swaft` returns `null` from the sniff and opens as before. New op
+  `container.export` ([`ops.ts:626`](packages/shared/src/ops.ts)); UI action "Export .swaft container…"
+  in the Working Tree's Import/Export menu.
+- **Local-only data** (history, run logs, input state, selections) was already excluded from the
+  projection (🔵 tables, [`projection.ts`](apps/desktop/src/main/workspace/projection/projection.ts)
+  doc comment) — it simply isn't persisted for folder/git workspaces today. A dedicated git-ignored
+  `/.swaft/` cache directory for this data was **not built** (see §3.5) — not needed yet since nothing
+  currently needs to persist it there.
 
-### 6.3 Collection scope: from where, what's included, what we warn about
+### 1.4 Published, machine-checkable format (Workstream "Phase 0" — done)
 
-This is the reconciliation between Swaft's structure (a workspace of projects → nestable folders →
-mixed-type templates) and Postman/Bruno's (a **Collection** = a recursive tree of **requests**).
+[`FORMAT.md`](FORMAT.md) (repo root) documents the full on-disk layout, hybrid naming, per-file JSON
+shapes, the `.http` + `template.json` `api` block split, verbatim Seebo, `formatVersion`/`schemaVersion`,
+what is deliberately not versioned, and the `.swaft` container. Backed by JSON Schema (draft-07) for
+every JSON file shape under
+[`apps/desktop/src/main/workspace/projection/schemas/`](apps/desktop/src/main/workspace/projection/schemas):
+`workspace`, `settings`, `project`, `folder`, `tag`, `environment`, `changelog`, `template`, `release`.
+A test ([`schemas.test.ts`](apps/desktop/src/main/workspace/projection/schemas.test.ts)) dumps a
+workspace exercising every shape and validates each emitted file against its schema with `ajv` (a
+devDependency), so a projection change that isn't reflected in the schemas — or vice versa — fails
+loudly.
 
-**Structural mapping.** A Postman/Bruno collection is a recursive tree, so **any Swaft subtree maps to
-a collection rooted there.**
+### 1.5 Import/Export UI (Workstream 3 — done for Postman/Bruno/.http/OpenAPI-import/cURL)
 
-| Swaft | Postman | Bruno |
-|---|---|---|
-| Workspace | one Collection (projects → top-level folders) **or** a bundle of Collections | a set of collection directories |
-| Project | a Collection root (its folders → top-level folders) | a collection directory |
-| Folder (subtree) | a Collection root, or a sub-folder | a folder (`folder.bru`) |
-| Folder HTTP policy (auth / headers / actions / proxy) | collection/folder `auth` + headers/scripts; **proxy not representable** | folder `auth` / `headers` / scripts |
-| `api` template | a request `item` | a `.bru` request file |
-| `document` / `capability` / `scenario` template | **— skipped** (no request equivalent) | **— skipped** |
-| `action` template (pre/post) | pre-request/test **script** (best-effort) | `script:pre-request` / `post-response` (best-effort) |
-| tags | request description / metadata (lossy) | Bruno `meta` (lossy) |
-| release selection | the **selected** version is exported; other releases/history dropped | same |
-| environment (chosen) | a separate environment JSON | `environments/*.bru` |
+- **Import:** [`ImportDialog.tsx`](apps/desktop/src/renderer/src/workspace/ImportDialog.tsx) parses a
+  foreign spec (OpenAPI JSON/YAML, Postman) with the shared codecs, previews it, and materializes it via
+  op `collection.import` → [`ImportService`](apps/desktop/src/main/workspace/ImportService.ts) into a
+  new/existing project, folder or workspace (target picker: new workspace / new project / new folder /
+  existing node).
+- **Export:** [`ExportDialog.tsx`](apps/desktop/src/renderer/src/workspace/ExportDialog.tsx) → op
+  `collection.export` → [`ExportService`](apps/desktop/src/main/workspace/ExportService.ts). Scope =
+  template / folder / project / workspace; format = Postman / `.http` / Bruno; conversion =
+  verbatim / variabilize (only asked when the scope actually contains Seebo). Produces a **fidelity
+  report** (what was skipped — non-api templates have no collection equivalent). Saved via native
+  dialogs (`file.saveText` for a single file, `file.saveFiles` for a tree, with a path-traversal guard).
+- **Entry points:** the Working Tree's per-node menus (folder → "Export folder…", api template →
+  "Export request…"/"Copy as cURL"/"Replace from cURL") plus a single **Import/Export** menu in the top
+  bar (`ExportIcon`, borderless, placed left of Settings) exposing Import, Export project (when a
+  project is selected), Export workspace, and Export `.swaft` container. The Working Tree is a
+  `forwardRef` ([`WorkingTree.tsx`](apps/desktop/src/renderer/src/workspace/WorkingTree.tsx),
+  `WorkingTreeHandle`) so the top bar drives it imperatively while the dialogs/state stay owned by the
+  tree (shared with the per-node menus).
+- **Not built:** the **environments multi-select at export time** and the **"personal environment"
+  opt-in/flag** described in the original plan's §6.3 — today `ExportService` exports whichever
+  environments the scope implies, with no picker and no personal/shared distinction in the dialog.
+  Also not built: **round-trip identity preservation** (a Bruno `meta.swaftId` marker so a re-import
+  updates in place instead of creating new entities) — every import today creates fresh ids.
 
-**Export unit — from any node (recommended).** Offer **"Export as collection ▾ (Postman / Bruno)"** on:
-- a **Folder** → that folder + its nested folders/requests become the collection;
-- a **Project** → the project is the collection root; its folders become top-level folders;
-- the **Workspace** → either **one collection** (projects → top-level folders) **or** a **bundle**
-  (one collection per project, zipped) — user's choice (default: **one-per-project bundle**, since
-  projects are the natural top-level grouping). See §12/A7.
+### 1.6 Secrets (Workstream 6, partial — see §3.3/§3.4 for what's left)
 
-**Environments are chosen explicitly.** The export dialog shows a **multi-select** of every
-environment in scope (workspace + your personal/user ones), so the user picks exactly which to emit as
-companion files — none, one, or several. Default selection is the **active** environment. Two rules are
-enforced: **user-scoped (personal) environments are opt-in and flagged** (so a shared export doesn't
-leak personal config), and **secret-typed variables are exported as `{{NAME}}` placeholders, never as
-values** (§9/§6.2).
-
-**Include vs. skip — a pre-export *scope preview*, never a silent drop.** A Swaft folder is a
-**superset** of an HTTP collection (it can also hold documents, scenarios, code), so a collection
-export is a **projection onto the api subset**. Before writing anything, show a scope preview — this is
-the §6.2 fidelity report moved *ahead* of the action, and it is the direct answer to "do we warn that
-only API calls are exported?": **yes, explicitly, with counts, and the user proceeds knowingly.**
-
-> Exporting **"Payments"** (project) as a **Postman collection**:
-> - **24 API requests** across **6 folders** will be exported.
-> - **Skipped** (no collection equivalent): 3 documents, 1 scenario, 2 capabilities.
-> - **Partially mapped:** folder **proxy** settings (dropped); **4 pre/post actions** → script stubs;
->   **tags** → descriptions.
-> - **Formulas:** 9 requests contain Seebo → conversion: [ Variabilize `{{ }}` ▾ ] (§6.2).
-> - **Environments to export** (companion files): [✓] Staging (12) · [ ] Prod (12) · [ ] Local (8)
->   · [ ] *Personal: mine (5)* ⚠
->
-> [ Export ]  [ Cancel ]
-
-**Import — the inverse, and additive.** The import dialog lets the user pick **or create** the target
-on the fly:
-- **New workspace…** — create a brand-new workspace *from* the collection (a fast onboarding path:
-  "import this Postman collection → a ready Swaft workspace"). The user picks storage mode
-  (local folder / git) and the collection becomes its first project.
-- **New project…** or **New folder…** — created as part of the import, named from the collection.
-- **Existing project / folder ▾** — import under a node that already exists.
-
-Then: nested folders → nested Swaft folders, requests → `api` templates, collection/folder auth →
-folder-propagated policy, variables → a new (or merged) **workspace environment**, scripts →
-best-effort `action` stubs + a report. Import **never overwrites** (it creates new entities) and shows
-the same scope preview.
-
-**Identity & round-trip.** Export → import preserves *structure and requests* (minus skipped types).
-Swaft **ids survive where the format allows**: **Bruno** (file-based, permissive) can carry a
-`meta.swaftId`, so a Bruno round-trip can update in place; **Postman v2.1** has no formal extension
-slot, so a Postman round-trip creates **new** ids by default (optionally matched by name to update).
-
-**Acceptance**
-- "Export as collection" is available on a folder, a project, and the workspace; each shows a **scope
-  preview** with request/skip counts before writing.
-- The export dialog offers an **explicit multi-select of environments** (default: active; personal
-  ones flagged; secrets as placeholders); exporting with none / one / several all work.
-- **Import can create its target**: choosing "New workspace" from a Postman/Bruno collection yields a
-  ready workspace; "New project"/"New folder" create the target inline; existing nodes also work.
-- Export a formula-free collection to Postman/Bruno → re-import → equivalent structure (api subset).
-  Export a formula-bearing request → the conversion dialog appears → each strategy yields the
-  documented output + a report. cURL in/out and `.http` in/out round-trip. An OpenAPI spec imports into
-  a browsable folder of api templates. A workspace with mixed template types exports **only** its api
-  requests, and the preview lists exactly what was skipped.
-
----
-
-## 7. Workstream 4 — Scenarios as Arazzo
-
-**Objective (D6):** store scenarios in the **Arazzo Specification** where possible; export/import Arazzo
-with guided conflict resolution.
-
-### 7.1 The Arazzo codec (`ScenarioGraph ⇄ scenario.arazzo.yaml`)
-
-| Swaft (`scenario.ts`) | Arazzo |
-|---|---|
-| scenario | a `workflow` in `workflows[]` |
-| `template` node (api) | a `step` (references the request's `operationId`/`operationPath`) |
-| `alias` + `previous('alias').json.x` | step `outputs` + `$steps.alias.outputs.x` runtime expressions |
-| `decision` condition (boolean Seebo) | `successCriteria` + `onSuccess`/`onFailure` (`goto`) — Seebo logic under `x-swaft` when not expressible |
-| edges / single active path | step order + `onSuccess.goto` targets |
-| per-node `inputs` overrides | step `parameters` / `requestBody` |
-| **`action` / `capability` / `delay` nodes** | **no native Arazzo concept** → `x-swaft` step extensions |
-| canvas node positions | `x-swaft-layout` (ignored by other Arazzo tools) |
-
-Where a scenario uses only api steps + simple criteria, the file is **clean, portable Arazzo**. Where
-it uses actions/capabilities/delays or Seebo logic, those live under **`x-swaft-*` extensions** (Arazzo
-permits vendor extensions), so the file stays a valid Arazzo document that other tools can partially
-read.
-
-### 7.2 Export/import with guided conflict resolution
-- **Export** a scenario (or a folder of scenarios + their referenced requests) → an Arazzo doc (+ its
-  OpenAPI, generated from the requests). When Swaft-only pieces can't be expressed natively, a
-  **guided dialog** lets the user: keep them as `x-swaft` extensions, **snapshot/omit** delays and
-  non-HTTP steps, or abort. Same fidelity-report pattern as §6.2.
-- **Import** an Arazzo doc → a scenario graph (+ api templates for referenced operations), resolving
-  the same conflicts in reverse (unmapped constructs → a report; positions auto-laid-out if absent).
-
-**Acceptance**
-- A pure-HTTP scenario round-trips through clean Arazzo and is readable by an external Arazzo tool. A
-  scenario with an action/decision round-trips through Swaft losslessly via `x-swaft` and surfaces a
-  clear report on foreign export.
+- **`secret('NAME')` data capability:** [`SeeboHost.ts`](apps/desktop/src/main/seebo/SeeboHost.ts)
+  registers `secret` in `DATA_CAPABILITIES` ([`ops.ts:988`](packages/shared/src/ops.ts)), resolved
+  main-process-only from the OS keychain via
+  [`SecretService`](apps/desktop/src/main/secret/SecretService.ts) (`SafeStorageCipher`), redacted via
+  `enginePolicy.redact`. Never written to any file, never sent to the renderer.
+- **Secrets management UI:** Settings → Secrets
+  ([`SecretsSettings.tsx`](apps/desktop/src/renderer/src/settings/sections/SecretsSettings.tsx)) lists
+  secret names (never values), and adds/updates/deletes them. Ops `secret.set` / `secret.list` /
+  `secret.delete` ([`ops.ts:601-603`](packages/shared/src/ops.ts)).
+- **Not built:** the **config-vs-secret label on individual environment variables** (§3.3), **dotenv
+  on-disk form for environments** (§3.3), the **pre-write/pre-commit secret scan wiring** (§3.4), and a
+  **one-click `secretRef` → `secret('NAME')` migration action** (§3.4) — the legacy `auth.secretRef` →
+  keychain path still works unchanged as a fallback
+  ([`HttpService.ts`](apps/desktop/src/main/http/HttpService.ts)), it's just not offered a conversion UI.
 
 ---
 
-## 8. Workstream 5 — Documents as Markdown + front matter (detail of C2)
+## 2. Cross-cutting facts that still hold
 
-**Objective:** make a document template a single, portable, open file.
-
-**Design**
-- The document body already *is* the standard artifact per subtype: **CommonMark** (`markdown`), HTML,
-  **Mermaid** (`.mmd`), **ECharts option JSON**, **OpenAPI/Swagger** YAML
-  ([`SUBTYPES`](packages/shared/src/ops.ts), [`sourceExtension`](apps/desktop/src/main/workspace/projection/projection.ts)).
-- Move the template metadata that currently sits in `template.json` (id, name, subtype, tags) into a
-  **YAML front-matter block** at the top of the body file (the Jekyll/Hugo/Obsidian convention), so a
-  document is **one file** you can open anywhere:
-  ```markdown
-  ---
-  swaftId: 7f3a…
-  name: Release notes
-  type: document
-  subtype: markdown
-  tags: [ops, template]
-  ---
-  # Release ${ textbox({ id: 'version', label: 'Version' }) }
-  …
-  ```
-- **Seebo formulas stay inline in the body.** They degrade gracefully — a non-Swaft Markdown viewer
-  renders `${ … }` as literal text. Document the widget vocabulary in `FORMAT.md` so others *could*
-  interpret inputs, but don't require it.
-- **Front matter is only for document types**; api/scenario/code keep their dedicated forms (§5/§7 and
-  verbatim `code.js`). Front-matter parsing must be defensive (missing/oversized block → treat body as
-  content, mirroring the projection's tolerant JSON reads).
-
-**Acceptance**
-- A markdown document is a single `.md` file with front matter, editable in any editor, that
-  re-imports losslessly; other subtypes are their native standard file + front matter.
+- **Runtime model unchanged.** No change to `HttpRequestModel`, `ScenarioGraph`, document `source`, the
+  Seebo engine, the send path's SSRF/blocked-domain/enforced-header enforcement, the sandbox, or the
+  transport/IPC allow-list model (every new capability is an ordinary session-guarded op).
+- **Storage mode is immutable** at workspace creation
+  ([`WorkspaceService.ts`](apps/desktop/src/main/workspace/WorkspaceService.ts)) — `local` (file or
+  folder) vs `git`.
+- **Back-compat:** legacy single-file SQLite `.swaft` still opens directly; v1 `source.json` api
+  templates still hydrate; legacy `<id>.json` flat-entity files still hydrate.
+- Full test suite (node + dom) is green; typecheck and lint are clean; a production build succeeds. Run
+  `npm test`, `npm run typecheck`, `npm run lint` from the repo root to re-verify after further changes.
 
 ---
 
-## 9. Workstream 6 — Secrets & the config/secret split (detail of §7-old / point 7)
+## 3. What's left (concrete, actionable)
 
-**Why now:** opening the folder (D1) makes committing plaintext dangerous. Today the only
-"never-in-files" secret path is the legacy `auth.secretRef` → OS keychain
-([`HttpService.ts:114-133`](apps/desktop/src/main/http/HttpService.ts),
-[`SecretService.ts:9-13`](apps/desktop/src/main/secret/SecretService.ts)), while modern formula auth
-pushes secrets into **plaintext env vars** ([`environments/*`](apps/desktop/src/main/workspace/projection/projection.ts)).
+Ordered roughly by how directly each continues existing, tested code (least new plumbing first). Each
+item names the exact files to touch and what "done" looks like, mirroring how Workstreams 1/2 were
+delivered — projection codec first (with a domain-level round-trip test, since the on-disk form won't
+be byte-identical to the runtime JSON), then UI.
 
-**Design**
-1. **A first-class `secret('NAME')` data capability**, resolved from the OS keychain (never written to
-   any file), usable anywhere a formula is — the safe replacement for "put the token in an env var".
-   Registered alongside `env`/`template`/`previous` in
-   [`DATA_CAPABILITIES`](packages/shared/src/ops.ts); resolved in the main process only (like
-   `secretRef` today), so the renderer never sees values.
-2. **Explicit config-vs-secret split (dotenv convention):**
-   - **Config** = non-secret, versioned. Environments export/store as **`environments/<name>.env`**
-     (committed) and are read by `env('K')`/`${ K }`.
-   - **Secret** = never versioned. Values live in the **OS keychain** (default) and/or a git-ignored
-     **`.secrets.local`** (dotenv form, for portability), referenced only by name via `secret('K')`.
-   - The UI labels each variable **config** or **secret** (mirrors Postman's `default`/`secret` types);
-     a secret can never be moved into a committed file without an explicit, warned action.
-3. **A pre-write / pre-commit secret scan:** before writing the open folder (or on `git.commit`), scan
-   for probable secret literals (high-entropy strings, literal `Authorization:` values) and refuse /
-   warn, pointing at `secret(...)`. Reuse the existing redaction discipline already applied to
-   receipts/history.
-4. **Migration:** existing `auth.secretRef` values keep working (already the fallback path,
-   [`HttpService.ts:116`](apps/desktop/src/main/http/HttpService.ts)); offer a one-click "convert
-   secretRef → `secret('NAME')`".
-5. **Export interaction:** secrets are **never** resolved into an exported file; they become
-   `{{SECRET_NAME}}` placeholders (flagged secret) or are omitted, with a report line (§6.2).
+### 3.1 Scenarios stored as Arazzo (was Workstream 4)
 
-**Acceptance**
-- A workspace can be fully committed to a public repo with **no secret value** in any file (verified by
-  the scan in tests). `secret('X')` resolves at send time; the renderer never receives it. Legacy
-  `secretRef` still sends; conversion works.
+The `toArazzo`/`fromArazzo` codec exists and is unit-tested
+([`arazzo.ts`](packages/shared/src/arazzo.ts), `arazzo.test.ts`) but scenario templates still write
+`source.json` verbatim — `sourceExtension('scenario', …)` still returns `'json'`
+([`projection.ts:497`](apps/desktop/src/main/workspace/projection/projection.ts)).
+
+**To do:**
+1. In `dumpTemplates`/`hydrateTemplates` ([`projection.ts:242-385`](apps/desktop/src/main/workspace/projection/projection.ts)),
+   branch on `type === 'scenario'` the same way `type === 'api'` already branches: write
+   `scenario.arazzo.yaml` via `toArazzo`, put Swaft-only pieces (action/capability/delay nodes, canvas
+   layout) under `x-swaft-*` extensions; `hydrateTemplates` reads `scenario.arazzo.yaml` back via
+   `fromArazzo` when present, else falls back to `source.json` (v1/back-compat, mirroring how api
+   templates fall back to `source.json` today).
+2. Bump `FORMAT_VERSION` to 3 and document the migration in `FORMAT.md` + the new schema
+   (`apps/desktop/src/main/workspace/projection/schemas/scenario.schema.json` for the parts not
+   expressible in Arazzo itself, if any remain outside `x-swaft`).
+3. A domain-level round-trip test in `projection.test.ts`, following the `canonicalApiSource` pattern
+   already there (the `.yaml` form won't be byte-identical to the runtime `ScenarioGraph` JSON, so
+   compare the rehydrated graph, not raw bytes).
+4. UI: an "Export scenario as Arazzo" / "Import Arazzo" action with a guided-conflict-resolution dialog
+   (mirrors `ExportDialog`/`ImportDialog`) for scenarios that use Swaft-only constructs — same
+   fidelity-report pattern as the existing collection export/import.
+
+### 3.2 Documents stored as Markdown/native + YAML front matter (was Workstream 5)
+
+The `front-matter.ts` codec exists and is unit-tested but document templates still write a plain
+`source.<ext>` sidecar with a separate `template.json` for metadata.
+
+**To do:**
+1. In `dumpTemplates`, for `type === 'document'`, prepend a front-matter block (id, name, subtype, tags)
+   to the body via `toFrontMatter` instead of writing a bare `source.<ext>` + separate `template.json`
+   fields; `hydrateTemplates` parses it back via `parseFrontMatter` (defensive: a missing/malformed
+   block degrades to treating the whole file as body content, same tolerance the projection already
+   applies to other JSON reads).
+2. Front matter only for `document` types; api/scenario/capability/action keep their dedicated forms.
+3. Round-trip test + `FORMAT.md`/schema update, same shape as §3.1.
+
+### 3.3 Config/secret split for environment variables + dotenv form
+
+Environments today store `vars` as an untyped `string → string` map
+([`EnvironmentService.ts`](apps/desktop/src/main/workspace/EnvironmentService.ts)) and are dumped as
+plain JSON (`environments/<slug>.<id>.json`, `environment.schema.json`). The plan called for:
+
+1. **Per-variable label** (`config` vs `secret`) in the data model, UI
+   ([`EnvironmentsSettings.tsx`](apps/desktop/src/renderer/src/settings/sections/EnvironmentsSettings.tsx))
+   and schema — mirrors Postman's `default`/`secret` variable types. A variable marked `secret` should
+   not be exportable as a literal value (route it through the `${ secret('NAME') }` capability instead,
+   or export as a placeholder — same rule already applied to keychain secrets in `ExportService`).
+2. **Environments as `.env` (dotenv) files on disk** instead of JSON — the plan's `environments/<name>.env`
+   form (§3 of the old plan). This is a projection change (new codec) plus an `environment.schema.json`
+   revision (or its retirement in favor of a documented dotenv grammar in `FORMAT.md`).
+3. Decide whether this is worth the churn now — the JSON form already works and is validated; the
+   dotenv form is mostly a portability/readability nicety for hand-editing. If deprioritized, at least
+   add the per-variable `config`/`secret` label (item 1), which has real security value.
+
+### 3.4 Pre-write secret scan + `secretRef` migration
+
+`scanForSecrets`/`hasSecretLiteral` ([`secret-scan.ts`](packages/shared/src/secret-scan.ts)) exist and
+are unit-tested but are **not called from anywhere in `apps/desktop/src/main`**.
+
+**To do:**
+1. Wire the scan into the write path before a folder/git workspace is persisted — likely in
+   `dumpWorkspace` ([`projection.ts:119-124`](apps/desktop/src/main/workspace/projection/projection.ts))
+   or at `git.commit` time ([`GitOpsService.ts`](apps/desktop/src/main/git/GitOpsService.ts)) — flagging
+   probable secret literals (high-entropy strings, literal `Authorization:` header values) before they
+   reach a committed file, pointing the user at `secret(...)`.
+2. Decide UX: hard refuse vs. warn-and-confirm. A local (non-git) folder workspace has weaker stakes
+   than a `git commit`, so the gate might only need to be strict on the git commit path.
+3. A one-click "convert `secretRef` → `secret('NAME')`" action (folder/auth editor UI) — the legacy
+   `auth.secretRef` path already resolves through the keychain identically to the new capability
+   ([`HttpService.ts`](apps/desktop/src/main/http/HttpService.ts)), so this is a UI convenience, not a
+   behavior change.
+
+### 3.5 Local-only data under a git-ignored `/.swaft/` cache directory
+
+Not built. Today, local-only tables (request/run history, receipts, input state, selections) simply
+aren't projected to files for folder/git workspaces — they live only in the in-memory SQLite cache and
+are lost across a close/reopen of a folder or git workspace (this was already true before this work;
+it is called out here because the original plan assumed a persistent local cache directory that was
+never implemented). If this data should survive a reopen, add a `/.swaft/` directory (git-ignored, like
+`.gitignore` already reserves) holding a serialized cache of the 🔵 local-only tables, read on open and
+written on save, alongside (not instead of) the versioned projection tree.
+
+### 3.6 Export dialog: environment multi-select + personal/shared flag
+
+Noted in §1.5 as not built. `ExportDialog`/`ExportService` don't yet let the user pick which
+environments to bundle with a collection export, and don't distinguish workspace-scoped from
+user-scoped ("personal") environments. Add a multi-select to `ExportDialog.tsx`, default to the active
+environment, and flag personal ones so a shared export can't silently leak them.
+
+### 3.7 Round-trip identity for Bruno exports
+
+`toBruno`/`fromBruno` don't yet carry a `meta.swaftId` field, so re-importing a previously-exported
+Bruno collection creates new entities rather than updating in place. Add the id to the `.bru` `meta`
+block on export and match on it during import (Postman v2.1 has no equivalent extension slot, so this
+stays Bruno-only, as originally scoped).
 
 ---
 
-## 10. Cross-cutting impact
+## 4. Glossary of the standards involved
 
-| Area | Impact | Notes |
-|---|---|---|
-| **Projection codecs** | Medium–High | New per-type codecs (`.http`, Arazzo, Markdown+front-matter) inside the existing dump/hydrate; the rest of the projection is reused. |
-| **Persistence** | Medium | `FolderPersistence` for `local`; `.swaft` zip container; legacy SQLite read path retained. |
-| **Runtime model** | **None** | `HttpRequestModel`/`ScenarioGraph`/document `source` unchanged (§1.1) — the key blast-radius limiter. |
-| **Shared contract (`ops.ts`)** | Medium | New ops: `collection.import/export`, `request.import/export` (curl/http), `openapi.import`, `arazzo.import/export`, `env.import/export`; DTOs for **fidelity reports**. New `secret('…')` capability + `DATA_CAPABILITIES` entry. |
-| **Adapters (new code)** | Medium–High | Pure converters + the conversion-dialog logic + reports. Reuse `parseSpec` for OpenAPI. |
-| **Secrets/security** | Medium (critical) | `secret()`, config/secret split, pre-write scan — must land **before** folder-local is committed anywhere (Phase order below). |
-| **UI** | Medium | "Export as ▾" (request/folder/scenario), import dialog, the **Seebo-conversion dialog** + report modal, config/secret labels, "open folder" affordance. |
-| **Back-compat / migration** | Medium | Legacy SQLite `.swaft` opens; existing git workspaces migrate `source.json`→`.http`/Arazzo on first save (behind `FORMAT_VERSION` bump + a documented migration). New folder-local is opt-in at creation (storage mode is immutable, [`WorkspaceService.ts`](apps/desktop/src/main/workspace/WorkspaceService.ts)). |
-| **Performance** | Low–Medium | Many small files vs one blob (fine for Git; batch writes as the projection already does). Adapters run off the send path. |
-| **Testing** | Medium–High | Golden-file round-trip tests per codec/adapter (import→export→import stable; documented losses asserted); the secret scan; mirror the projection's existing DB⇄files inverse tests. |
-| **Docs** | Low | `FORMAT.md`, an "Import/Export" guide page, a "Config vs Secrets" guide page in the published site. |
-
-**Unchanged:** the Seebo engine, the send path + SSRF/blocked-domain/enforced-header enforcement, the
-sandbox, the transport/IPC allow-list (adapters are ordinary session-guarded ops).
-
----
-
-## 11. Phased delivery
-
-Each phase is independently shippable and test-gated. Ordered to derisk security first and to land the
-owner's headline asks early.
-
-- **Phase 0 — Specify the format (no behavior change).** `FORMAT.md` + JSON Schemas for the *current*
-  projection shapes; document/govern `FORMAT_VERSION`. Pure documentation of what already exists.
-- **Phase 1 — Secrets split + cURL + `.http` I/O.** `secret('NAME')`, config/secret labels,
-  pre-write scan (§9); cURL import/export; `.http` import/export of a single request. **High value,
-  low risk, closes the security gap before anything is committed.**
-- **Phase 2 — API templates natively `.http`.** The `.http` codec in the projection (§5); requests on
-  disk become `request.http` + `template.json` `api` block. Migrate existing git workspaces on save.
-- **Phase 3 — Folder-as-truth for local + `.swaft` container.** `FolderPersistence`, hybrid naming,
-  `.swaft` = zip, legacy read path (§4).
-- **Phase 4 — Collections: Postman & Bruno + OpenAPI import.** Folder ⇄ Postman/Bruno with the
-  conversion dialog + reports (§6); OpenAPI 3.1 import → api templates; `.env` env I/O.
-- **Phase 5 — Scenarios as Arazzo + HAR.** Arazzo codec + export/import with guided conflict
-  resolution (§7); HAR history export.
-- **Phase 6 — Documents as front matter.** Markdown+front-matter form for document templates (§8).
-
-**Ship-first:** Phase 0 + Phase 1 (small, derisks secrets, delivers a visible "save/share an API call
-in an open format" win) — then Phase 2/3 for the folder-native vision.
-
----
-
-## 12. Open decisions for you
-
-These are the residual calls I made to keep the plan concrete; flag any you want changed.
-
-| # | Decision I assumed | Alternative |
-|---|---|---|
-| **A1** | **Runtime model stays canonical; only the file form changes via codecs** (§1.1) — minimal blast radius. | Make `.http`/Arazzo the *in-memory* truth too (bigger rewrite of `ApiView`/engine wiring; not recommended). |
-| **A2** | **`.http` + `template.json` `api` block** for the bits `.http` can't hold (structured auth, pre/post actions). | Single `.http` with `# @swaft-*` structured comments (one file, but pollutes it and is harder to parse). |
-| **A3** ✔ decided | **Store Seebo verbatim** (`${ env('X') }`, `${ … }`) in the `.http` — one on-disk syntax; the `env('X') → {{X}}` translation is offered **only at export** (§6.2). | *(Rejected: writing `{{X}}` at rest for portability — adds a second syntax and an un-mapping step on load.)* |
-| **A4** | **Arazzo + `x-swaft` extensions** as the stored scenario form (D6 "where possible"). | Keep native `ScenarioGraph` JSON canonical and treat Arazzo as import/export only (safer, but not "stored as Arazzo"). |
-| **A5** | **Documents: front matter replaces `template.json`** for document types (single file). | Keep a separate `template.json` for documents too (uniform with other types, but two files). |
-| **A6** | **Secrets default to the OS keychain**, `.secrets.local` (git-ignored dotenv) as a portable option. | Keychain-only (more secure, less portable between machines). |
-| **A7** | **Workspace → collection export defaults to a one-per-project bundle** (§6.3); folder/project export a single collection. | One flat collection for the whole workspace (projects → top-level folders). |
-
----
-
-## 13. Glossary of the standards
-
-- **`.http` / `.rest` file** — plain-text request format (VS Code REST Client, JetBrains HTTP Client);
-  `{{var}}` interpolation, `# @name`, `###` separators. The native on-disk form for Swaft requests.
-- **Postman Collection v2.1** — the de-facto JSON interchange for a collection of saved requests
-  (folders, auth, variables, pre-request/test scripts). Imported by nearly every API tool.
-- **Bruno / `.bru`** — open-source, **file-per-request**, git-native collection format (plain-text DSL
-  + `bruno.json`).
-- **OpenAPI 3.1** — the standard for *describing* an HTTP API (paths, operations, schemas, security,
-  servers), built on JSON Schema 2020-12. Import source, not a store of saved calls.
-- **Arazzo Specification 1.0** — the OpenAPI Initiative standard for *API workflows* (steps, outputs,
-  success criteria, branching, `$` runtime expressions). The open counterpart of Swaft scenarios.
-- **HAR 1.2** — JSON log of HTTP requests/responses ("HTTP Archive"); for captured traffic/history.
-- **dotenv (`.env`)** — `KEY=value` files; the standard config/secret split is `.env` (committed) vs
-  `.env.local` (git-ignored secrets).
+- **`.http` / `.rest` file** — plain-text request format (VS Code REST Client, JetBrains HTTP Client).
+  The native on-disk form for Swaft's api templates.
+- **Postman Collection v2.1** — the de-facto JSON interchange for a collection of saved requests.
+- **Bruno / `.bru`** — open-source, file-per-request, git-native collection format.
+- **OpenAPI 3.1** — the standard for *describing* an HTTP API; import source only (not a store of saved
+  calls).
+- **Arazzo Specification 1.0** — the OpenAPI Initiative standard for API *workflows*; the open
+  counterpart of Swaft scenarios (codec built, not yet wired — §3.1).
+- **HAR 1.2** — JSON log of HTTP requests/responses; used for history export.
+- **dotenv (`.env`)** — `KEY=value` files; `.env` (committed config) vs `.env.local` (git-ignored
+  secrets) is the standard split (not yet adopted for Swaft environments — §3.3).
 - **CommonMark** — the standardized Markdown spec.
-- **YAML front matter** — a `---`-delimited metadata block at the top of a text file (Jekyll/Hugo/
-  Obsidian convention) used to attach type/tags/id to a document.
-- **JSON Schema 2020-12** — used by OpenAPI and to **publish/validate Swaft's own file shapes** so the
-  native format is itself open.
+- **YAML front matter** — a `---`-delimited metadata block at the top of a text file; not yet adopted
+  for Swaft documents — §3.2.
+- **JSON Schema (draft-07)** — used to publish/validate Swaft's own on-disk file shapes (§1.4).
 - **OPC / Zip container** — the "documented zip of open files" pattern behind `.docx`/`.xlsx`/`.epub`;
-  the model for `.swaft`.
-```
+  the model for `.swaft` (§1.3).
