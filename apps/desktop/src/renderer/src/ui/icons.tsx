@@ -226,6 +226,15 @@ export function DownloadIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** Export glyph: an arrow leaving a tray upward (the vertical mirror of {@link DownloadIcon}). */
+export function ExportIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M5 20h14v-2H5v2zM12 3l-7 7h4v6h6v-6h4l-7-7z" />
+    </Icon>
+  );
+}
+
 /** A "none/blocked" glyph (the third state of the row-badge toggle: show nothing). */
 export function EmptyIcon(props: SVGProps<SVGSVGElement>) {
   return (

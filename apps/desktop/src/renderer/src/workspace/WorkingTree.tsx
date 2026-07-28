@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   type ExportScopeDto,
@@ -20,7 +20,6 @@ import {
   ChevronLeftIcon,
   ConfirmDialog,
   DocumentIcon,
-  DownloadIcon,
   EmptyIcon,
   FilterIcon,
   FolderIcon,
@@ -143,14 +142,16 @@ function TypeFilterButton({
  * funnel button filters by template type. Templates open on click (view) / double-click (editor);
  * folders expand on click. Destructive actions confirm and report via toast.
  */
-export function WorkingTree({
-  client,
-  openTemplateId,
-  onOpenTemplate,
-  onOpenFolder,
-  onCloseTemplate,
-  onCollapse,
-}: {
+/** Imperative triggers the top bar drives (the Import/Export entry point lives up there now). */
+export interface WorkingTreeHandle {
+  openImport(): void;
+  /** Export the currently selected project; no-op when none is selected. */
+  exportProject(): void;
+  exportWorkspace(): void;
+  exportContainer(): void;
+}
+
+interface WorkingTreeProps {
   client: ApiClient;
   openTemplateId: string | null;
   onOpenTemplate: (
@@ -163,7 +164,22 @@ export function WorkingTree({
   onOpenFolder?: (folder: FolderDto) => void;
   onCloseTemplate?: (id: string) => void;
   onCollapse: () => void;
-}) {
+  /** Report the selected project (id + name) up, so the top bar can offer "Export project…". */
+  onSelectedProjectChange?: (project: { id: string; name: string } | null) => void;
+}
+
+export const WorkingTree = forwardRef<WorkingTreeHandle, WorkingTreeProps>(function WorkingTree(
+  {
+    client,
+    openTemplateId,
+    onOpenTemplate,
+    onOpenFolder,
+    onCloseTemplate,
+    onCollapse,
+    onSelectedProjectChange,
+  },
+  ref,
+) {
   const { t } = useI18n();
   const toast = useToast();
   const workspace = useWorkspaceOptional();
@@ -493,6 +509,32 @@ export function WorkingTree({
     }
   }
 
+  // The Import/Export entry point lives in the top bar; expose its actions imperatively so the tree
+  // keeps ownership of the shared dialogs/state (folder & request exports use them too).
+  useImperativeHandle(
+    ref,
+    () => ({
+      openImport: () => setImportOpen(true),
+      exportProject: () => {
+        if (!selectedProject) return;
+        setExportScope({
+          scope: { kind: 'project', projectId: selectedProject },
+          name: tree.projects.find((p) => p.id === selectedProject)?.name ?? 'project',
+        });
+      },
+      exportWorkspace: () => setExportScope({ scope: { kind: 'workspace' }, name: 'workspace' }),
+      exportContainer: () => void exportContainer(),
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedProject, tree],
+  );
+
+  // Keep the top bar's "Export project…" item in sync with the tree selection.
+  useEffect(() => {
+    const p = selectedProject ? tree.projects.find((x) => x.id === selectedProject) : null;
+    onSelectedProjectChange?.(p ? { id: p.id, name: p.name } : null);
+  }, [selectedProject, tree, onSelectedProjectChange]);
+
   function templateMenu(tpl: TemplateSummary): MenuItem[] {
     return [
       { label: t('menu.edit'), onSelect: () => onOpenTemplate(tpl.id, 'edit', tpl.type, tpl.name) },
@@ -682,31 +724,6 @@ export function WorkingTree({
           <div className="tree__field-head">
             <span className="ui-field__label">{t('tree.project')}</span>
             <span className="row" style={{ gap: 'var(--space-1)' }}>
-              <Menu
-                label={t('import.trigger')}
-                icon={<DownloadIcon />}
-                items={[
-                  { label: t('import.trigger'), onSelect: () => setImportOpen(true) },
-                  ...(selectedProject
-                    ? [
-                        {
-                          label: t('export.exportProject'),
-                          onSelect: () =>
-                            setExportScope({
-                              scope: { kind: 'project', projectId: selectedProject },
-                              name: tree.projects.find((p) => p.id === selectedProject)?.name ?? 'project',
-                            }),
-                        },
-                      ]
-                    : []),
-                  {
-                    label: t('export.exportWorkspace'),
-                    onSelect: () =>
-                      setExportScope({ scope: { kind: 'workspace' }, name: 'workspace' }),
-                  },
-                  { label: t('export.exportContainer'), onSelect: () => void exportContainer() },
-                ]}
-              />
               <IconButton label={t('tree.collapse')} className="tree__collapse" onClick={onCollapse}>
                 <ChevronLeftIcon />
               </IconButton>
@@ -852,4 +869,4 @@ export function WorkingTree({
       />
     </aside>
   );
-}
+});
