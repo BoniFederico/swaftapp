@@ -14,15 +14,30 @@ export function InputPanel({
   requirements,
   values,
   onChange,
+  remembered,
+  onToggleRemember,
 }: {
   requirements: RequirementDto[];
   values: Record<string, unknown>;
   onChange: (id: string, value: unknown) => void;
+  /**
+   * Requirement ids currently flagged "reuse for other inputs with the same id in this run". When
+   * omitted, no reuse checkbox is shown (the plain Document-view case, which has no run to share across).
+   */
+  remembered?: Set<string>;
+  onToggleRemember?: (id: string) => void;
 }) {
   return (
     <div className="col" style={{ gap: 'var(--space-4)' }}>
       {requirements.map((req) => (
-        <Widget key={req.id} req={req} value={values[req.id]} onChange={(v) => onChange(req.id, v)} />
+        <Widget
+          key={req.id}
+          req={req}
+          value={values[req.id]}
+          onChange={(v) => onChange(req.id, v)}
+          remembered={remembered?.has(req.id)}
+          onToggleRemember={onToggleRemember ? () => onToggleRemember(req.id) : undefined}
+        />
       ))}
     </div>
   );
@@ -32,10 +47,14 @@ function Widget({
   req,
   value,
   onChange,
+  remembered,
+  onToggleRemember,
 }: {
   req: RequirementDto;
   value: unknown;
   onChange: (value: unknown) => void;
+  remembered?: boolean;
+  onToggleRemember?: () => void;
 }) {
   const { t } = useI18n();
   const label = req.label ?? req.id;
@@ -144,6 +163,13 @@ function Widget({
   return (
     <div>
       {field}
+      {onToggleRemember && (
+        <Switch
+          label={t('scenario.rememberInput')}
+          checked={remembered === true}
+          onChange={onToggleRemember}
+        />
+      )}
       {errorText && (
         <span className="field-error" role="alert">
           {errorText}

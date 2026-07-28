@@ -55,8 +55,12 @@ interface RunState {
   cancelled: boolean;
   /** The inputs a paused (single-mode) block still needs. */
   pending: { nodeId: string; requirements: RequirementDto[] } | null;
-  /** Resolve the pause with provided input values, or 'cancelled' to abort. */
+  /** Node whose execution is being held by a breakpoint, while `run.status === 'paused-breakpoint'`. */
+  pausedAtNodeId: string | null;
+  /** Resolve the pause (input-required or breakpoint) with provided values, or 'cancelled' to abort. */
   resume: ((v: Record<string, unknown> | 'cancelled') => void) | null;
+  /** Input values the user opted to reuse across the run, keyed by requirement id. */
+  rememberedInputs: Record<string, unknown>;
 }
 
 interface RunRow {
@@ -167,7 +171,9 @@ export class ScenarioService extends RepoBase {
       previousAlias: null,
       cancelled: false,
       pending: null,
+      pausedAtNodeId: null,
       resume: null,
+      rememberedInputs: {},
     };
     this.active.set(runId, state);
     await this.insertRun(run);
@@ -270,13 +276,31 @@ export class ScenarioService extends RepoBase {
         [runId],
       )
     ).map(stepFromRow);
-    return { run, steps, pending: live?.pending ?? null };
+    return { run, steps, pending: live?.pending ?? null, pausedAtNodeId: live?.pausedAtNodeId ?? null };
   }
 
-  /** Provide the inputs a paused (single-mode) run was waiting on, so it continues. */
-  async provideInput(runId: string, values: Record<string, unknown>): Promise<void> {
+  /**
+   * Provide the inputs a paused (single-mode) run was waiting on, so it continues. `remember` lists
+   * requirement ids (among `values`) whose value should also auto-fill any later prompt with the same
+   * id in this run — either another document template or an api block.
+   */
+  async provideInput(
+    runId: string,
+    values: Record<string, unknown>,
+    remember?: string[],
+  ): Promise<void> {
     const state = this.active.get(runId);
-    if (state?.resume) state.resume(values);
+    if (!state) return;
+    for (const id of remember ?? []) {
+      if (Object.prototype.hasOwnProperty.call(values, id)) state.rememberedInputs[id] = values[id];
+    }
+    if (state.resume) state.resume(values);
+  }
+
+  /** Resume a run paused at a breakpoint (see {@link pauseForBreakpoint}). */
+  async resume(runId: string): Promise<void> {
+    const state = this.active.get(runId);
+    if (state?.resume) state.resume({});
   }
 
   /** Request cancellation. Cooperative: the run stops before the next step (and unblocks a pause). */
@@ -334,6 +358,10 @@ export class ScenarioService extends RepoBase {
         });
         node = this.nextNode(state, current, branch ? 'true' : 'false');
       } else {
+        if (current.breakpoint) {
+          const held = await this.pauseForBreakpoint(state, current.id);
+          if (held === 'cancelled') break;
+        }
         const out = await this.execBlock(state, current, ctx);
         if (out === 'cancelled') break;
         const key = current.alias ?? current.id;
@@ -403,11 +431,35 @@ export class ScenarioService extends RepoBase {
         } catch (e) {
           const pending = inputRequired(e);
           if (!pending) return failOutput(errMsg(e), 'api');
+          const { filled, remaining } = this.applyRemembered(state, pending);
+          if (Object.keys(filled).length > 0) values = { ...values, ...filled };
+          if (remaining.length === 0) continue;
           if (state.mode === 'batch') return failOutput('Missing inputs (unattended run).', 'api');
-          const provided = await this.pauseForInput(state, node.id, pending);
+          const provided = await this.pauseForInput(state, node.id, remaining);
           if (provided === 'cancelled') return 'cancelled';
           values = { ...values, ...provided };
         }
+      }
+    }
+
+    if (type === 'document') {
+      let values = { ...(await this.deps.render.getInputState(refId)), ...overrides };
+      for (;;) {
+        const result = await this.deps.render.render(refId, values, { scenario: ctx });
+        if (result.status === 'failed') {
+          const message = result.diagnostics.map((d) => d.message).join('; ') || 'Render failed.';
+          return failOutput(message, 'document');
+        }
+        if (result.status === 'completed') {
+          return { kind: 'document', ok: true, output: result.output, error: null };
+        }
+        const { filled, remaining } = this.applyRemembered(state, result.pending);
+        if (Object.keys(filled).length > 0) values = { ...values, ...filled };
+        if (remaining.length === 0) continue;
+        if (state.mode === 'batch') return failOutput('Missing inputs (unattended run).', 'document');
+        const provided = await this.pauseForInput(state, node.id, remaining);
+        if (provided === 'cancelled') return 'cancelled';
+        values = { ...values, ...provided };
       }
     }
 
@@ -481,6 +533,43 @@ export class ScenarioService extends RepoBase {
           void this.updateRunStatus(state);
         }
         resolve(v);
+      };
+    });
+  }
+
+  /** Split a block's pending requirements into ones a remembered value already resolves vs. not. */
+  private applyRemembered(
+    state: RunState,
+    pending: RequirementDto[],
+  ): { filled: Record<string, unknown>; remaining: RequirementDto[] } {
+    const filled: Record<string, unknown> = {};
+    const remaining: RequirementDto[] = [];
+    for (const req of pending) {
+      if (Object.prototype.hasOwnProperty.call(state.rememberedInputs, req.id)) {
+        filled[req.id] = state.rememberedInputs[req.id];
+      } else {
+        remaining.push(req);
+      }
+    }
+    return { filled, remaining };
+  }
+
+  /** Suspend the run right before executing a breakpointed block, until {@link resume} is called. */
+  private pauseForBreakpoint(state: RunState, nodeId: string): Promise<'continue' | 'cancelled'> {
+    state.pausedAtNodeId = nodeId;
+    state.run.status = 'paused-breakpoint';
+    void this.updateRunStatus(state);
+    return new Promise((resolve) => {
+      state.resume = (v) => {
+        state.resume = null;
+        state.pausedAtNodeId = null;
+        if (v === 'cancelled') {
+          resolve('cancelled');
+          return;
+        }
+        state.run.status = 'running';
+        void this.updateRunStatus(state);
+        resolve('continue');
       };
     });
   }

@@ -359,6 +359,53 @@ export const WorkingTree = forwardRef<WorkingTreeHandle, WorkingTreeProps>(funct
     }
   }
 
+  /** Extension → document subtype, best-effort (falls back to plain text). */
+  function subtypeFromFilename(name: string): string {
+    const ext = name.slice(name.lastIndexOf('.') + 1).toLowerCase();
+    const map: Record<string, string> = {
+      md: 'markdown',
+      markdown: 'markdown',
+      html: 'html',
+      htm: 'html',
+      css: 'css',
+      csv: 'csv',
+      json: 'json',
+      yaml: 'yaml',
+      yml: 'yaml',
+      eml: 'eml',
+      js: 'javascript',
+      java: 'java',
+      mmd: 'mermaid',
+      mermaid: 'mermaid',
+    };
+    return map[ext] ?? 'text';
+  }
+
+  /**
+   * Import files dropped from the OS (not the tree's own drag-to-reorder) as document templates, one
+   * per file, in `folderId` (or the project root when null). Best-effort: one file's failure doesn't
+   * stop the rest.
+   */
+  async function importDroppedFiles(files: FileList, folderId: string | null) {
+    if (!selectedProject) return;
+    for (const file of Array.from(files)) {
+      try {
+        const source = await file.text();
+        const payload: Record<string, unknown> = {
+          name: file.name,
+          type: 'document',
+          subtype: subtypeFromFilename(file.name),
+          source,
+          ...(folderId ? { folderId } : { projectId: selectedProject }),
+        };
+        await run('template.create', payload);
+      } catch (e) {
+        toast.show(e instanceof ApiError ? e.swaft.message : String(e), 'error');
+      }
+    }
+    if (folderId) expand(folderId);
+  }
+
   async function createTemplate(name: string, type: TemplateType) {
     const target = createTpl;
     setCreateTpl(null);
@@ -674,7 +721,8 @@ export const WorkingTree = forwardRef<WorkingTreeHandle, WorkingTreeProps>(funct
           onDrop={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            void dropOn(folder.id);
+            if (e.dataTransfer?.files?.length) void importDroppedFiles(e.dataTransfer.files, folder.id);
+            else void dropOn(folder.id);
           }}
           onClick={() => {
             // A click both expands/collapses the folder and opens its detail tab.
@@ -802,7 +850,8 @@ export const WorkingTree = forwardRef<WorkingTreeHandle, WorkingTreeProps>(funct
         onDragLeave={() => setDragOver((cur) => (cur === 'root' ? null : cur))}
         onDrop={(e) => {
           e.preventDefault();
-          void dropOn(null);
+          if (e.dataTransfer?.files?.length) void importDroppedFiles(e.dataTransfer.files, null);
+          else void dropOn(null);
         }}
       >
         {roots.map((f) => renderFolder(f, 0))}

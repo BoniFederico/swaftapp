@@ -482,6 +482,13 @@ export function ScenarioView({
     setSelection({ kind: 'node', id: node.id });
     setConfirmDelete(true);
   }
+  function menuToggleBreakpoint(node: ScenarioNode) {
+    setNodeMenu(null);
+    commit(
+      { ...graph, nodes: graph.nodes.map((n) => (n.id === node.id ? { ...n, breakpoint: !n.breakpoint } : n)) },
+      `field:${node.id}:breakpoint`,
+    );
+  }
 
   if (parseError) {
     return (
@@ -699,9 +706,12 @@ export function ScenarioView({
         <NodeContextMenu
           menu={nodeMenu}
           canEdit={nodeMenu.node.kind === 'template' && !!nodeMenu.node.ref && !!onOpenTemplate}
+          canBreakpoint={nodeMenu.node.kind === 'template'}
+          breakpointOn={!!nodeMenu.node.breakpoint}
           onEdit={() => menuEdit(nodeMenu.node)}
           onRun={() => menuRun(nodeMenu.node, true)}
           onRunFrom={() => menuRun(nodeMenu.node, false)}
+          onToggleBreakpoint={() => menuToggleBreakpoint(nodeMenu.node)}
           onDelete={() => menuDelete(nodeMenu.node)}
           onClose={() => setNodeMenu(null)}
         />
@@ -743,17 +753,23 @@ export function ScenarioView({
 function NodeContextMenu({
   menu,
   canEdit,
+  canBreakpoint,
+  breakpointOn,
   onEdit,
   onRun,
   onRunFrom,
+  onToggleBreakpoint,
   onDelete,
   onClose,
 }: {
   menu: NodeMenu;
   canEdit: boolean;
+  canBreakpoint: boolean;
+  breakpointOn: boolean;
   onEdit: () => void;
   onRun: () => void;
   onRunFrom: () => void;
+  onToggleBreakpoint: () => void;
   onDelete: () => void;
   onClose: () => void;
 }) {
@@ -800,6 +816,13 @@ function NodeContextMenu({
           {t('scenario.runFromHere')}
         </button>
       </li>
+      {canBreakpoint && (
+        <li role="none">
+          <button type="button" role="menuitem" className="ui-menu__item" onClick={onToggleBreakpoint}>
+            {breakpointOn ? t('scenario.removeBreakpoint') : t('scenario.setBreakpoint')}
+          </button>
+        </li>
+      )}
       <li role="none">
         <button type="button" role="menuitem" className="ui-menu__item ui-menu__item--danger" onClick={onDelete}>
           {t('menu.delete')}

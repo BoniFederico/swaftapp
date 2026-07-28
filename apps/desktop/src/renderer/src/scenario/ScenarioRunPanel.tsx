@@ -43,10 +43,14 @@ export function ScenarioRunPanel({
   const { status, runs, batch, batchActive } = controller;
   const [detail, setDetail] = useState<ScenarioRunStepDto | null>(null);
   const [inputs, setInputs] = useState<Record<string, unknown>>({});
+  const [remember, setRemember] = useState<Set<string>>(new Set());
 
   // Reset the pending-input form each time a new pause begins.
   const pendingNode = status?.pending?.nodeId ?? null;
-  useEffect(() => setInputs({}), [pendingNode]);
+  useEffect(() => {
+    setInputs({});
+    setRemember(new Set());
+  }, [pendingNode]);
 
   // A readable name for a step with no resolved template/alias (control nodes, or a since-deleted ref).
   const fallbackName = (kind: string): string =>
@@ -107,9 +111,30 @@ export function ScenarioRunPanel({
                     requirements={status.pending.requirements}
                     values={inputs}
                     onChange={(id, v) => setInputs((s) => ({ ...s, [id]: v }))}
+                    remembered={remember}
+                    onToggleRemember={(id) =>
+                      setRemember((s) => {
+                        const next = new Set(s);
+                        if (next.has(id)) next.delete(id);
+                        else next.add(id);
+                        return next;
+                      })
+                    }
                   />
-                  <Button variant="primary" onClick={() => void controller.provideInput(inputs)}>
+                  <Button
+                    variant="primary"
+                    onClick={() => void controller.provideInput(inputs, Array.from(remember))}
+                  >
                     {t('scenario.continue')}
+                  </Button>
+                </div>
+              )}
+
+              {status.run.status === 'paused-breakpoint' && (
+                <div className="scenario-run__pending">
+                  <span className="ui-field__label">{t('scenario.pausedAtBreakpoint')}</span>
+                  <Button variant="primary" onClick={() => void controller.resume()}>
+                    {t('scenario.resume')}
                   </Button>
                 </div>
               )}

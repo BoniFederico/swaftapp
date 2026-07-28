@@ -11,7 +11,7 @@ const TERMINAL: ReadonlySet<string> = new Set(['completed', 'failed', 'cancelled
 const POLL_MS = 400;
 
 /** Per-node visual status for the canvas, derived from a run's recorded steps + the paused node. */
-export type NodeRunStatus = 'succeeded' | 'failed' | 'branch-true' | 'branch-false' | 'awaiting';
+export type NodeRunStatus = 'succeeded' | 'failed' | 'branch-true' | 'branch-false' | 'awaiting' | 'paused';
 
 export interface ScenarioRunController {
   /** The run currently being followed (live or a reopened past run), or null. */
@@ -40,7 +40,9 @@ export interface ScenarioRunController {
   }) => Promise<void>;
   stop: () => Promise<void>;
   stopBatch: () => Promise<void>;
-  provideInput: (values: Record<string, unknown>) => Promise<void>;
+  provideInput: (values: Record<string, unknown>, remember?: string[]) => Promise<void>;
+  /** Resume a run paused at a breakpoint. */
+  resume: () => Promise<void>;
   view: (runId: string) => void;
   /** Stop following the current run: clears the status + the per-node highlight + the history highlight. */
   clearFocus: () => void;
@@ -151,11 +153,18 @@ export function useScenarioRun(client: ApiClient, scenarioId: string): ScenarioR
   }, [client, batchId]);
 
   const provideInput = useCallback(
-    async (values: Record<string, unknown>) => {
-      if (runId) await client.call('scenario.provideInput', { runId, values }).catch(() => undefined);
+    async (values: Record<string, unknown>, remember?: string[]) => {
+      if (runId)
+        await client
+          .call('scenario.provideInput', { runId, values, remember })
+          .catch(() => undefined);
     },
     [client, runId],
   );
+
+  const resume = useCallback(async () => {
+    if (runId) await client.call('scenario.resume', { runId }).catch(() => undefined);
+  }, [client, runId]);
 
   const view = useCallback(
     (id: string) => {
@@ -193,6 +202,7 @@ export function useScenarioRun(client: ApiClient, scenarioId: string): ScenarioR
       else map[step.nodeId] = 'succeeded';
     }
     if (status?.pending) map[status.pending.nodeId] = 'awaiting';
+    if (status?.pausedAtNodeId) map[status.pausedAtNodeId] = 'paused';
     return map;
   }, [status]);
 
@@ -208,6 +218,7 @@ export function useScenarioRun(client: ApiClient, scenarioId: string): ScenarioR
     stop,
     stopBatch,
     provideInput,
+    resume,
     view,
     clearFocus,
     refreshRuns,

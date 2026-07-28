@@ -41,7 +41,7 @@ template/version it points to, a decision's condition, or a delay's duration.
 | Kind | Purpose | Ports |
 |------|---------|-------|
 | **Start** | Entry point of the run. | One output, no input. |
-| **Block** | Runs an **API**, **action** or **capability** template. | One input, one output. |
+| **Block** | Runs an **API**, **action**, **capability** or **document** template. | One input, one output. |
 | **Decision** | Branches on a boolean [Seebo formula](../seebo/index.md). | One input; **two** outputs: `true` and `false`. |
 | **Delay** | Waits a fixed number of milliseconds. | One input, one output. |
 
@@ -100,6 +100,22 @@ first).
 |------|-----------|
 | **single** | Attended. If a block needs an input that isn't bound, the run **pauses** and asks you to provide it, then resumes. |
 | **batch** | Unattended. A missing input **fails that step** instead of prompting. Runs the scenario `count` times back-to-back (up to 1000), spaced by an inter-run delay. |
+
+### Breakpoints
+
+Right-click a block and choose **Set breakpoint** (or clear the hover dot in its top-left corner)
+to make a run **pause right before that block executes**, whichever start node it was launched
+from. While paused, the Run panel shows every step recorded so far and a **Resume** button; the
+scenario's active edges and outputs are held in memory, so resuming continues exactly where it
+left off (only for as long as the app stays open — a breakpoint pause does not survive an app
+restart).
+
+### Reusing an input across a run
+
+When an attended run pauses for a missing input (an **API** or **document** block), each field in
+the input panel has a **"Reuse this value for other inputs with the same id in this run"** toggle.
+Values it checks are remembered for the rest of that run: any later block — api or document — that
+asks for an input with the same id is filled automatically instead of pausing again.
 
 ### Authorizing actions
 

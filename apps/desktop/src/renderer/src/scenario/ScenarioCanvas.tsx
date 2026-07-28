@@ -252,7 +252,7 @@ export function ScenarioCanvas({
     } catch {
       return;
     }
-    if (tpl.type === 'document' || tpl.type === 'scenario') return; // only executable blocks
+    if (tpl.type === 'scenario') return; // only executable blocks (documents render like api/action blocks)
     const p = screenToWorld(e.clientX, e.clientY);
     const { w, h } = nodeSize('template');
     let position: Point = { x: p.x - w / 2, y: p.y - h / 2 };
@@ -376,7 +376,8 @@ function NodeView({
   const cls =
     `scenario-node scenario-node--${node.kind}` +
     `${selected ? ' is-selected' : ''}${dropTarget ? ' is-drop-target' : ''}` +
-    `${runStatus ? ` scenario-node--run-${runStatus}` : ''}`;
+    `${runStatus ? ` scenario-node--run-${runStatus}` : ''}` +
+    `${node.breakpoint ? ' has-breakpoint' : ''}`;
   return (
     <div
       className={cls}
@@ -385,6 +386,9 @@ function NodeView({
       onPointerDown={(e) => onPointerDown(e, node)}
       onContextMenu={(e) => onContextMenu(e, node)}
     >
+      {node.kind === 'template' && (
+        <span className="scenario-node__breakpoint" aria-hidden="true" title="Breakpoint" />
+      )}
       {node.kind === 'decision' && (
         <svg className="scenario-node__diamond" viewBox={`0 0 ${w} ${h}`} aria-hidden="true">
           <polygon points={`${w / 2},3 ${w - 3},${h / 2} ${w / 2},${h - 3} 3,${h / 2}`} />
