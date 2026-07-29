@@ -82,6 +82,7 @@ export function ScenarioCanvas({
   onChange,
   onSelect,
   onNodeContextMenu,
+  onNodeDoubleClick,
   onInteract,
   resolveTemplate,
 }: {
@@ -94,6 +95,8 @@ export function ScenarioCanvas({
   onSelect: (sel: Selection | null) => void;
   /** Right-click on a node → open its context menu at the cursor (screen coords). */
   onNodeContextMenu?: (node: ScenarioNode, x: number, y: number) => void;
+  /** Double-click on a node → open its template. */
+  onNodeDoubleClick?: (node: ScenarioNode) => void;
   /** Any pointer-down anywhere on the canvas (background, node, port or edge). */
   onInteract?: () => void;
   resolveTemplate: (id: string) => ResolvedTemplate | null;
@@ -257,12 +260,13 @@ export function ScenarioCanvas({
     const { w, h } = nodeSize('template');
     let position: Point = { x: p.x - w / 2, y: p.y - h / 2 };
     if (snapEnabled) position = snapNodePosition('template', position);
+    const nodeId = newId('n');
     const node: ScenarioNode = {
-      id: newId('n'),
+      id: nodeId,
       kind: 'template',
       ref: tpl.id,
       templateType: tpl.type,
-      alias: slug(tpl.name),
+      alias: `block_${nodeId.slice(-6)}`,
       position,
     };
     onChange({ ...graph, nodes: [...graph.nodes, node] });
@@ -342,6 +346,7 @@ export function ScenarioCanvas({
             template={node.ref ? resolveTemplate(node.ref) : null}
             onPointerDown={onNodePointerDown}
             onContextMenu={onNodeContext}
+            onDoubleClick={onNodeDoubleClick}
             onPortPointerDown={onPortPointerDown}
           />
         ))}
@@ -359,6 +364,7 @@ function NodeView({
   template,
   onPointerDown,
   onContextMenu,
+  onDoubleClick,
   onPortPointerDown,
 }: {
   node: ScenarioNode;
@@ -368,6 +374,7 @@ function NodeView({
   template: ResolvedTemplate | null;
   onPointerDown: (e: ReactPointerEvent, node: ScenarioNode) => void;
   onContextMenu: (e: ReactMouseEvent, node: ScenarioNode) => void;
+  onDoubleClick?: (node: ScenarioNode) => void;
   onPortPointerDown: (e: ReactPointerEvent, node: ScenarioNode, branch: ScenarioBranch | null) => void;
 }) {
   const { w, h } = nodeSize(node.kind);
@@ -385,6 +392,7 @@ function NodeView({
       draggable={false}
       onPointerDown={(e) => onPointerDown(e, node)}
       onContextMenu={(e) => onContextMenu(e, node)}
+      onDoubleClick={() => node.kind === 'template' && onDoubleClick?.(node)}
     >
       {node.kind === 'template' && (
         <span className="scenario-node__breakpoint" aria-hidden="true" title="Breakpoint" />
