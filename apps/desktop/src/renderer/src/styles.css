@@ -3911,9 +3911,9 @@ body {
   outline: none;
 }
 /* Seebo formula slots — semantic highlight ALWAYS on top of the base language highlight (Atom One
-   palette), even inside quoted strings (e.g. a JSON string value containing `${…}`). CodeMirror's
-   own syntax-highlight stylesheet is injected at runtime and can land after this one with equal
-   selector specificity, so `!important` is required to guarantee Seebo colors always win. */
+   palette), even inside quoted strings (e.g. a JSON string value containing `${…}`). The seebo-cm.ts
+   decoration is `Prec.highest` so it nests innermost against the syntax-highlight span; `!important`
+   here is a belt-and-braces backstop in case some other decoration ever nests inside ours instead. */
 .cm-sb-delim,
 .cm-sb-kw {
   color: #a626a4 !important;

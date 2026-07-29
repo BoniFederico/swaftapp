@@ -20,4 +20,20 @@ describe('CodeEditor — Seebo semantic highlight', () => {
     expect(screen.getByText('id').className).toContain('cm-sb-prop');
     expect(screen.getByText("'name'").className).toContain('cm-sb-str');
   });
+
+  it('stays visible inside a JSON string, on top of the base string highlight', async () => {
+    render(
+      <AppProviders>
+        <CodeEditor
+          value={`{\n  "test": "Hi \${ textbox({ id: 'name' }) }!"\n}`}
+          language="json"
+          onChange={() => {}}
+          ariaLabel="Source"
+        />
+      </AppProviders>,
+    );
+    // Seebo's decoration must nest innermost so its class (not the JSON string's) colors the text.
+    expect((await screen.findByText('textbox')).className).toContain('cm-sb-fn');
+    expect(screen.getByText('id').className).toContain('cm-sb-prop');
+  });
 });

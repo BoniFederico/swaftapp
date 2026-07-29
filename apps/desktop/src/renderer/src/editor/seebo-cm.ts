@@ -4,7 +4,7 @@ import {
   type CompletionContext,
   type CompletionResult,
 } from '@codemirror/autocomplete';
-import { RangeSetBuilder } from '@codemirror/state';
+import { Prec, RangeSetBuilder } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 
 /**
@@ -97,7 +97,7 @@ function buildDecorations(view: EditorView): DecorationSet {
   return builder.finish();
 }
 
-export const seeboHighlight = ViewPlugin.fromClass(
+const seeboHighlightPlugin = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
     constructor(view: EditorView) {
@@ -109,6 +109,13 @@ export const seeboHighlight = ViewPlugin.fromClass(
   },
   { decorations: (v) => v.decorations },
 );
+/**
+ * Wrapped at `Prec.highest` so its marks nest *innermost* against the base language's syntax-highlight
+ * spans (CodeMirror nests overlapping mark decorations by extension precedence — the highest-precedence
+ * source wraps closest to the text). Without this, the base highlight's span ends up innermost and its
+ * color always wins over ours for its own text, however the CSS specificity of `.cm-sb-*` is tuned.
+ */
+export const seeboHighlight = Prec.highest(seeboHighlightPlugin);
 
 const widget = (name: string, detail: string, body: string): Completion =>
   snippetCompletion(`${name}({ ${body} })`, { label: name, type: 'function', detail });
