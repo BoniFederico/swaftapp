@@ -500,7 +500,12 @@ export const scenarioRunRequestSchema = z
   .strict();
 export const scenarioRunRefRequestSchema = z.object({ runId: z.string().min(1) }).strict();
 export const scenarioProvideInputRequestSchema = z
-  .object({ runId: z.string().min(1), values: z.record(z.unknown()) })
+  .object({
+    runId: z.string().min(1),
+    values: z.record(z.unknown()),
+    /** Requirement ids among `values` to remember for the rest of this run (auto-fill future prompts). */
+    remember: z.array(z.string()).optional(),
+  })
   .strict();
 export const scenarioRunListRequestSchema = z.object({ scenarioId: z.string().min(1) }).strict();
 
@@ -616,6 +621,7 @@ export const OP_NAMES = [
   'scenario.runStatus',
   'scenario.stop',
   'scenario.provideInput',
+  'scenario.resume',
   'scenario.runList',
   'scenario.runClear',
   'scenario.runBatch',
@@ -726,6 +732,7 @@ export const OP_REQUEST_SCHEMAS: Record<OpName, z.ZodTypeAny> = {
   'scenario.runStatus': scenarioRunRefRequestSchema,
   'scenario.stop': scenarioRunRefRequestSchema,
   'scenario.provideInput': scenarioProvideInputRequestSchema,
+  'scenario.resume': scenarioRunRefRequestSchema,
   'scenario.runList': scenarioRunListRequestSchema,
   'scenario.runClear': scenarioRunListRequestSchema,
   'scenario.runBatch': scenarioRunBatchRequestSchema,
@@ -1196,7 +1203,7 @@ export interface EnvironmentSelectionResponse {
  * value/logs. Always an object, so member access in formulas is predictable.
  */
 export interface BlockOutput {
-  kind: 'api' | 'action' | 'capability' | 'decision' | 'delay' | 'start';
+  kind: 'api' | 'action' | 'capability' | 'document' | 'decision' | 'delay' | 'start';
   ok: boolean;
   output: unknown;
   /** API metadata (never bodies): the method + url the call used. */
@@ -1213,7 +1220,13 @@ export interface BlockOutput {
   error?: string | null;
 }
 
-export type ScenarioRunStatus = 'running' | 'awaiting-input' | 'completed' | 'failed' | 'cancelled';
+export type ScenarioRunStatus =
+  | 'running'
+  | 'awaiting-input'
+  | 'paused-breakpoint'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
 export type ScenarioRunMode = z.infer<typeof scenarioRunModeSchema>;
 
 export interface ScenarioRunDto {
@@ -1251,6 +1264,8 @@ export interface ScenarioRunStatusResponse {
   steps: ScenarioRunStepDto[];
   /** When `run.status === 'awaiting-input'`: the paused node and the inputs it still needs. */
   pending: { nodeId: string; requirements: RequirementDto[] } | null;
+  /** When `run.status === 'paused-breakpoint'`: the node whose execution is being held. */
+  pausedAtNodeId: string | null;
 }
 export interface ScenarioRunStartedResponse {
   runId: string;
@@ -1595,6 +1610,7 @@ export interface OpContracts {
   'scenario.runStatus': { request: ScenarioRunRefRequest; response: ScenarioRunStatusResponse };
   'scenario.stop': { request: ScenarioRunRefRequest; response: OkResponse };
   'scenario.provideInput': { request: ScenarioProvideInputRequest; response: OkResponse };
+  'scenario.resume': { request: ScenarioRunRefRequest; response: OkResponse };
   'scenario.runList': { request: ScenarioRunListRequest; response: ScenarioRunsResponse };
   'scenario.runClear': { request: ScenarioRunListRequest; response: ScenarioRunsResponse };
   'scenario.runBatch': { request: ScenarioRunBatchRequest; response: ScenarioBatchStartedResponse };

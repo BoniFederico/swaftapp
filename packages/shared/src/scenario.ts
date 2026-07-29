@@ -35,6 +35,8 @@ export const scenarioNodeSchema = z
     version: z.string().max(64).optional(),
     /** Per-node input overrides (values or `${ … }` formulas) layered over the template's saved inputs. */
     inputs: z.record(z.unknown()).optional(),
+    /** When true, a run pauses right before executing this block until explicitly resumed. */
+    breakpoint: z.boolean().optional(),
 
     // `decision` nodes:
     /** A Seebo formula that must evaluate to a boolean; chooses the true/false outgoing edge. */

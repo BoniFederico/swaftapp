@@ -643,6 +643,11 @@ body {
 .tree-action--dashed {
   border-style: dashed !important;
 }
+.import-dropzone {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
 .tree__body {
   flex: 1;
   min-height: 0;
@@ -2012,6 +2017,31 @@ body {
 .scenario-node--template.is-selected {
   border-color: var(--primary);
   box-shadow: 0 0 0 1px var(--primary);
+}
+/* Breakpoint: a dot in the top-left corner. Faint on hover as an affordance, solid red when armed. */
+.scenario-node__breakpoint {
+  position: absolute;
+  top: -5px;
+  left: -5px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--danger);
+  opacity: 0;
+  transition: opacity 0.1s ease;
+  pointer-events: none;
+}
+.scenario-node--template:hover .scenario-node__breakpoint {
+  opacity: 0.35;
+}
+.scenario-node--template.has-breakpoint .scenario-node__breakpoint {
+  opacity: 1;
+}
+.scenario-node--template.has-breakpoint {
+  border-color: var(--danger);
+}
+.scenario-node--run-paused.scenario-node--template {
+  box-shadow: 0 0 0 2px var(--danger);
 }
 /* Start: an accent pill. */
 .scenario-node--start {

@@ -45,13 +45,21 @@ export class RenderService extends RepoBase {
     return requirements.map(toRequirementDto).filter((r) => !data.has(r.capability));
   }
 
-  /** Render the template's effective source with the provided values; persists them as last inputs. */
-  async render(templateId: string, values: Record<string, unknown>): Promise<RenderResultDto> {
+  /**
+   * Render the template's effective source with the provided values; persists them as last inputs.
+   * `scenario`, when set, is passed through so `previous(...)` resolves when this document renders as
+   * a scenario block (skips the local input-state persistence, mirroring the api-block skipHistory).
+   */
+  async render(
+    templateId: string,
+    values: Record<string, unknown>,
+    opts?: { scenario?: SeeboRenderContext['scenario'] },
+  ): Promise<RenderResultDto> {
     await this.templates.requireTemplate(templateId);
-    await this.setInputState(templateId, values);
+    if (!opts?.scenario) await this.setInputState(templateId, values);
     const { source } = await this.releases.resolveSource(templateId);
     const ctx = await this.renderCtx(templateId);
-    const state = await this.host.render(source, values, undefined, ctx);
+    const state = await this.host.render(source, values, undefined, { ...ctx, scenario: opts?.scenario });
     return toRenderResult(state);
   }
 

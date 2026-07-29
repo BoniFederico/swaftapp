@@ -41,6 +41,12 @@ export interface ScenarioServiceDeps {
 
 type ScenarioCtx = NonNullable<SeeboRenderContext['scenario']>;
 
+/** One attempt at an attended block: it either succeeds, fails outright, or needs more input. */
+type Attempt =
+  | { kind: 'success'; output: BlockOutput }
+  | { kind: 'pending'; requirements: RequirementDto[] }
+  | { kind: 'error'; message: string };
+
 /** In-memory state of a run in progress (the main process is long-lived, so runs live across ops). */
 interface RunState {
   run: ScenarioRunDto;
@@ -55,8 +61,12 @@ interface RunState {
   cancelled: boolean;
   /** The inputs a paused (single-mode) block still needs. */
   pending: { nodeId: string; requirements: RequirementDto[] } | null;
-  /** Resolve the pause with provided input values, or 'cancelled' to abort. */
+  /** Node whose execution is being held by a breakpoint, while `run.status === 'paused-breakpoint'`. */
+  pausedAtNodeId: string | null;
+  /** Resolve the pause (input-required or breakpoint) with provided values, or 'cancelled' to abort. */
   resume: ((v: Record<string, unknown> | 'cancelled') => void) | null;
+  /** Input values the user opted to reuse across the run, keyed by requirement id. */
+  rememberedInputs: Record<string, unknown>;
 }
 
 interface RunRow {
@@ -167,7 +177,9 @@ export class ScenarioService extends RepoBase {
       previousAlias: null,
       cancelled: false,
       pending: null,
+      pausedAtNodeId: null,
       resume: null,
+      rememberedInputs: {},
     };
     this.active.set(runId, state);
     await this.insertRun(run);
@@ -270,13 +282,31 @@ export class ScenarioService extends RepoBase {
         [runId],
       )
     ).map(stepFromRow);
-    return { run, steps, pending: live?.pending ?? null };
+    return { run, steps, pending: live?.pending ?? null, pausedAtNodeId: live?.pausedAtNodeId ?? null };
   }
 
-  /** Provide the inputs a paused (single-mode) run was waiting on, so it continues. */
-  async provideInput(runId: string, values: Record<string, unknown>): Promise<void> {
+  /**
+   * Provide the inputs a paused (single-mode) run was waiting on, so it continues. `remember` lists
+   * requirement ids (among `values`) whose value should also auto-fill any later prompt with the same
+   * id in this run — either another document template or an api block.
+   */
+  async provideInput(
+    runId: string,
+    values: Record<string, unknown>,
+    remember?: string[],
+  ): Promise<void> {
     const state = this.active.get(runId);
-    if (state?.resume) state.resume(values);
+    if (!state) return;
+    for (const id of remember ?? []) {
+      if (Object.prototype.hasOwnProperty.call(values, id)) state.rememberedInputs[id] = values[id];
+    }
+    if (state.resume) state.resume(values);
+  }
+
+  /** Resume a run paused at a breakpoint (see {@link pauseForBreakpoint}). */
+  async resume(runId: string): Promise<void> {
+    const state = this.active.get(runId);
+    if (state?.resume) state.resume({});
   }
 
   /** Request cancellation. Cooperative: the run stops before the next step (and unblocks a pause). */
@@ -334,6 +364,10 @@ export class ScenarioService extends RepoBase {
         });
         node = this.nextNode(state, current, branch ? 'true' : 'false');
       } else {
+        if (current.breakpoint) {
+          const held = await this.pauseForBreakpoint(state, current.id);
+          if (held === 'cancelled') break;
+        }
         const out = await this.execBlock(state, current, ctx);
         if (out === 'cancelled') break;
         const key = current.alias ?? current.id;
@@ -377,8 +411,8 @@ export class ScenarioService extends RepoBase {
     if (type === 'api') {
       const { source } = await this.deps.releases.resolveSource(refId);
       const request = parseRequest(source);
-      let values = { ...(await this.deps.render.getInputState(refId)), ...overrides };
-      for (;;) {
+      const initial = { ...(await this.deps.render.getInputState(refId)), ...overrides };
+      return this.runAttempts(state, node, 'api', initial, async (values) => {
         try {
           const res = await this.deps.apiRun.send(refId, request, values, {
             scenario: ctx,
@@ -387,28 +421,42 @@ export class ScenarioService extends RepoBase {
           const json = parseJsonOr<unknown>(res.response.body, undefined);
           const sent = res.request ?? request;
           return {
-            kind: 'api',
-            ok: res.response.status < 400,
-            output: json ?? res.response.body,
-            method: sent.method,
-            url: sent.url,
-            status: res.response.status,
-            statusText: res.response.statusText,
-            headers: res.response.headers,
-            body: res.response.body,
-            json,
-            durationMs: res.response.durationMs,
-            error: res.response.status >= 400 ? `HTTP ${res.response.status}` : null,
+            kind: 'success',
+            output: {
+              kind: 'api',
+              ok: res.response.status < 400,
+              output: json ?? res.response.body,
+              method: sent.method,
+              url: sent.url,
+              status: res.response.status,
+              statusText: res.response.statusText,
+              headers: res.response.headers,
+              body: res.response.body,
+              json,
+              durationMs: res.response.durationMs,
+              error: res.response.status >= 400 ? `HTTP ${res.response.status}` : null,
+            },
           };
         } catch (e) {
           const pending = inputRequired(e);
-          if (!pending) return failOutput(errMsg(e), 'api');
-          if (state.mode === 'batch') return failOutput('Missing inputs (unattended run).', 'api');
-          const provided = await this.pauseForInput(state, node.id, pending);
-          if (provided === 'cancelled') return 'cancelled';
-          values = { ...values, ...provided };
+          return pending ? { kind: 'pending', requirements: pending } : { kind: 'error', message: errMsg(e) };
         }
-      }
+      });
+    }
+
+    if (type === 'document') {
+      const initial = { ...(await this.deps.render.getInputState(refId)), ...overrides };
+      return this.runAttempts(state, node, 'document', initial, async (values) => {
+        const result = await this.deps.render.render(refId, values, { scenario: ctx });
+        if (result.status === 'failed') {
+          const message = result.diagnostics.map((d) => d.message).join('; ') || 'Render failed.';
+          return { kind: 'error', message };
+        }
+        if (result.status === 'completed') {
+          return { kind: 'success', output: { kind: 'document', ok: true, output: result.output, error: null } };
+        }
+        return { kind: 'pending', requirements: result.pending };
+      });
     }
 
     if (type === 'capability' || type === 'action') {
@@ -481,6 +529,71 @@ export class ScenarioService extends RepoBase {
           void this.updateRunStatus(state);
         }
         resolve(v);
+      };
+    });
+  }
+
+  /**
+   * Drive an attended block (api or document) to completion: run `attempt` with the current values;
+   * on `pending`, fill what remembered inputs already resolve and retry, pause for the rest (fail
+   * instead, in batch mode), then retry with the provided values. Shared by both block types so the
+   * remember/pause loop is written once.
+   */
+  private async runAttempts(
+    state: RunState,
+    node: ScenarioNode,
+    blockKind: 'api' | 'document',
+    initialValues: Record<string, unknown>,
+    attempt: (values: Record<string, unknown>) => Promise<Attempt>,
+  ): Promise<BlockOutput | 'cancelled'> {
+    let values = initialValues;
+    for (;;) {
+      const res = await attempt(values);
+      if (res.kind === 'error') return failOutput(res.message, blockKind);
+      if (res.kind === 'success') return res.output;
+      const { filled, remaining } = this.applyRemembered(state, res.requirements);
+      if (Object.keys(filled).length > 0) values = { ...values, ...filled };
+      if (remaining.length === 0) continue;
+      if (state.mode === 'batch') return failOutput('Missing inputs (unattended run).', blockKind);
+      const provided = await this.pauseForInput(state, node.id, remaining);
+      if (provided === 'cancelled') return 'cancelled';
+      values = { ...values, ...provided };
+    }
+  }
+
+  /** Split a block's pending requirements into ones a remembered value already resolves vs. not. */
+  private applyRemembered(
+    state: RunState,
+    pending: RequirementDto[],
+  ): { filled: Record<string, unknown>; remaining: RequirementDto[] } {
+    const filled: Record<string, unknown> = {};
+    const remaining: RequirementDto[] = [];
+    for (const req of pending) {
+      if (Object.prototype.hasOwnProperty.call(state.rememberedInputs, req.id)) {
+        filled[req.id] = state.rememberedInputs[req.id];
+      } else {
+        remaining.push(req);
+      }
+    }
+    return { filled, remaining };
+  }
+
+  /** Suspend the run right before executing a breakpointed block, until {@link resume} is called. */
+  private pauseForBreakpoint(state: RunState, nodeId: string): Promise<'continue' | 'cancelled'> {
+    state.pausedAtNodeId = nodeId;
+    state.run.status = 'paused-breakpoint';
+    void this.updateRunStatus(state);
+    return new Promise((resolve) => {
+      state.resume = (v) => {
+        state.resume = null;
+        state.pausedAtNodeId = null;
+        if (v === 'cancelled') {
+          resolve('cancelled');
+          return;
+        }
+        state.run.status = 'running';
+        void this.updateRunStatus(state);
+        resolve('continue');
       };
     });
   }

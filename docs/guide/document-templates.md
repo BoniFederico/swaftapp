@@ -21,6 +21,15 @@ A **document template** turns typed inputs into rendered text — a report, an e
 payload, a diagram, and so on. It is the most common template type and the best way to learn
 [Seebo formulas](../seebo/index.md).
 
+## Importing files as document templates
+
+Drag one or more files from your OS onto the Working Tree — a folder, or the tree's empty area for
+the project root — to create a document template per file, in that location. The subtype is guessed
+from the file extension (`.md` → markdown, `.html` → html, `.mermaid`/`.mmd` → mermaid, `.eml` →
+eml, and so on; anything unrecognized becomes plain text), and the file's content becomes the
+template's source. This is the same mechanism used to run a document template as a **scenario
+block** (see [Scenarios](scenarios.md#node-kinds)).
+
 ## The Document view
 
 Opening a document template shows three areas:

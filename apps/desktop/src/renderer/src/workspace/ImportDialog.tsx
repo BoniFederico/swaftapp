@@ -108,7 +108,15 @@ export function ImportDialog({
       }
     >
       <div className="col" style={{ gap: 'var(--space-4)' }}>
-        <label className="ui-field">
+        <label
+          className="ui-field import-dropzone"
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault();
+            const f = e.dataTransfer.files?.[0];
+            if (f) void f.text().then(analyze);
+          }}
+        >
           <span className="ui-field__label">{t('import.orFile')}</span>
           <input
             type="file"

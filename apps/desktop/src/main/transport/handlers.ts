@@ -491,7 +491,12 @@ export const handlers: Record<OpName, Handler> = {
   'scenario.provideInput': (p) =>
     svc(async () => {
       const r = p as ScenarioProvideInputRequest;
-      await getScenarioService().provideInput(r.runId, r.values);
+      await getScenarioService().provideInput(r.runId, r.values, r.remember);
+      return { ok: true as const };
+    }),
+  'scenario.resume': (p) =>
+    svc(async () => {
+      await getScenarioService().resume((p as ScenarioRunRefRequest).runId);
       return { ok: true as const };
     }),
   'scenario.runList': (p) =>
