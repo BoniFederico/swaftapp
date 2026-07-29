@@ -8,9 +8,9 @@
 > **Goal (unchanged):** make Swaft store and exchange its data using **open, plain-file standards** —
 > the folder of files is the source of truth, API requests are `.http` files, while keeping Seebo
 > formulas and Swaft's richer features, and offering guided import/export to the wider ecosystem
-> (Postman, Bruno, OpenAPI, cURL, HAR). Scenarios-as-Arazzo is now wired into the projection (§1.7); a
-> dedicated import/export UI for it, and documents-as-front-matter, were designed but **not yet wired
-> in** — see §3.
+> (Postman, Bruno, OpenAPI, cURL, HAR). Scenarios-as-Arazzo is now wired end to end — projection +
+> per-scenario Export/Import UI (§1.7). Documents-as-front-matter was designed but **not yet wired
+> in** — see §3.2.
 
 The load-bearing architectural principle held throughout: **the canonical *runtime* model is
 unchanged.** An API request is still a `HttpRequestModel` ([`ops.ts`](packages/shared/src/ops.ts)) held
@@ -36,7 +36,7 @@ usable from the renderer or main:
 | Postman v2.1 | [`postman.ts`](packages/shared/src/postman.ts) | `fromPostman` / `toPostman` (verbatim) | Conversion (variabilize vs. verbatim) is externalized to `ExportService`, not the codec. |
 | Bruno | [`bruno.ts`](packages/shared/src/bruno.ts) | `toBruno` / `fromBruno` | File-per-request `.bru` DSL + `bruno.json`; brace-depth-aware block scanner. |
 | HAR 1.2 | [`har.ts`](packages/shared/src/har.ts) | **export only** | `toHar(entries)`; wired to a UI action (API view → History → "Export HAR"). |
-| Arazzo 1.0 | [`arazzo.ts`](packages/shared/src/arazzo.ts) | `toArazzo` / `fromArazzo` | Wired into the projection (`scenario` templates, `FORMAT_VERSION` 3) — see §1.7/§3.1. A dedicated import/export UI is not built yet — see §3.1 item 4. |
+| Arazzo 1.0 | [`arazzo.ts`](packages/shared/src/arazzo.ts) | `toArazzo` / `fromArazzo` | Wired into the projection (`scenario` templates, `FORMAT_VERSION` 3) and into a per-scenario Export/Import UI — see §1.7/§3.1. |
 | Front matter | [`front-matter.ts`](packages/shared/src/front-matter.ts) | `toFrontMatter` / `parseFrontMatter` | Dependency-free YAML-ish front matter. **NOT wired into the projection** — see §3.2. |
 | Seebo conversion | [`seebo-convert.ts`](packages/shared/src/seebo-convert.ts) | `variabilizeSeebo`, `bracesToSeebo` | `env`/`secret`/bare `${ }` ⇄ `{{ }}`; used by `ExportService` at export time only (on-disk form always keeps Seebo verbatim). |
 | Secret scan | [`secret-scan.ts`](packages/shared/src/secret-scan.ts) | `scanForSecrets`, `hasSecretLiteral` | Detector exists and is unit-tested. **NOT wired into any write/commit path yet** — see §3.4. |
@@ -137,7 +137,7 @@ loudly.
   keychain path still works unchanged as a fallback
   ([`HttpService.ts`](apps/desktop/src/main/http/HttpService.ts)), it's just not offered a conversion UI.
 
-### 1.7 Scenario templates stored as Arazzo (Workstream 4, projection done — see §3.1 for remaining UI)
+### 1.7 Scenario templates stored as Arazzo (Workstream 4 — done, incl. UI)
 
 `FORMAT_VERSION = 3` ([`projection.ts:35`](apps/desktop/src/main/workspace/projection/projection.ts)):
 a `scenario` template's on-disk body is `templates/<slug>.<id>/scenario.arazzo.yaml` (via
@@ -146,6 +146,12 @@ non-HTTP nodes, decision branches, breakpoints, canvas positions — lives under
 nothing Swaft-specific needed its own JSON schema. v1/v2 workspaces (a scenario graph in `source.json`)
 still hydrate; the next save upgrades them to v3. The canvas, execution engine and Seebo formula
 resolution are untouched — only the on-disk form changed.
+
+**UI (§3.1 item 4):** the scenario row's context menu in the Working Tree offers "Export scenario as
+Arazzo…" (saves the current graph as a standalone `.arazzo.yaml`) and "Import Arazzo…" (replaces the
+graph in place from a pasted/dropped Arazzo document, via
+[`ImportArazzoDialog.tsx`](apps/desktop/src/renderer/src/workspace/ImportArazzoDialog.tsx)). Full detail
+in §3.1.
 
 ---
 
@@ -187,12 +193,29 @@ block-breakpoints feature) was on `ScenarioNode` but never round-tripped by `toS
 a legacy `source.json` back-compat case) is in `projection.test.ts` (`canonicalScenarioSource`,
 `N.tplScenario`), following the `canonicalApiSource` pattern already there.
 
-**Still open (item 4):**
-- UI: an "Export scenario as Arazzo" / "Import Arazzo" action with a guided-conflict-resolution dialog
-  (mirrors `ExportDialog`/`ImportDialog`) for scenarios that use Swaft-only constructs — same
-  fidelity-report pattern as the existing collection export/import. Note this is UI-only scope now:
-  every scenario already round-trips through Arazzo transparently on every save/load, with or without
-  this dialog.
+**Item 4 done.** Per-scenario "Export scenario as Arazzo…" / "Import Arazzo…" actions live on the
+scenario row's context menu in the Working Tree
+([`WorkingTree.tsx`](apps/desktop/src/renderer/src/workspace/WorkingTree.tsx), `templateMenu`,
+`exportScenarioArazzo`/`importScenarioArazzo`). Unlike the collection Export/Import (scope + format
+picker over many api templates), this is a single-scenario, single-format action, so it reuses the
+existing generic `template.get`/`template.updateSource` ops instead of adding new ones — no new op,
+service, or schema. Parsing/serialization happen in the renderer with the shared pure codecs
+(`toArazzo`/`fromArazzo`/`parseScenarioGraph`/`serializeScenarioGraph` from `@swaft/shared`, dynamic
+`import('js-yaml')` for YAML dump/parse — the same `parseSpec` JSON-or-YAML helper the OpenAPI import
+path already uses), mirroring how `ImportDialog` parses OpenAPI/Postman client-side and only
+materializes via an op.
+- **Export** — `template.get` to read the current source, `parseScenarioGraph` + `toArazzo` + a YAML
+  dump, saved via the existing `file.saveText` op. No dialog: a single scenario has no scope/format
+  choice to make.
+- **Import** — [`ImportArazzoDialog.tsx`](apps/desktop/src/renderer/src/workspace/ImportArazzoDialog.tsx)
+  accepts a pasted/dropped Arazzo document (YAML or JSON), parses it with `fromArazzo`, previews the
+  node/edge count, and — mirroring the collection import/export **fidelity-report** pattern rather than
+  an interactive per-step remapping UI — lists any step whose `x-swaft` template `ref` doesn't resolve
+  to a template id in this workspace (e.g. an Arazzo doc authored elsewhere, or hand-edited). Unresolved
+  refs are reported, not blocked: confirming still replaces the scenario's graph in place via
+  `template.updateSource`, importing the dangling ref as-is so it can be rewired on the canvas.
+  Covered by `ImportArazzoDialog.test.tsx` (parse/preview/unresolved-ref report) and an end-to-end case
+  in `tree.test.tsx` (menu → dialog → `template.updateSource` → persisted graph).
 
 ### 3.2 Documents stored as Markdown/native + YAML front matter (was Workstream 5)
 

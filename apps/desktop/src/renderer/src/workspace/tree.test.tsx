@@ -161,4 +161,59 @@ describe('Working Tree — nesting & drag-and-drop', () => {
     await waitFor(() => expect(document.querySelector('.tree-tagdot')).not.toBeNull());
     expect(document.querySelector('.tree-tagdot')).toHaveAttribute('title', 'urgent');
   });
+
+  it('replaces a scenario\'s graph in place via "Import Arazzo…"', async () => {
+    const { workspace } = installTestWorkspaceBackend();
+    await workspace.create({ name: 'WS', location: 'mem://arazzo.swaft', encrypt: false });
+    const org = getOrganizationService();
+    let tree = await org.createProject({ name: 'P' });
+    tree = await org.createFolder({ name: 'F', projectId: tree.projects[0]!.id });
+    const folderId = tree.folders[0]!.id;
+    const made = await getTemplateService().createTemplate({
+      folderId,
+      name: 'Flow',
+      type: 'scenario',
+    });
+    const scenarioId = made.templates.find((t) => t.name === 'Flow')!.id;
+
+    render(
+      <AppProviders>
+        <WorkingTree
+          client={client}
+          openTemplateId={null}
+          onOpenTemplate={() => {}}
+          onCollapse={() => {}}
+        />
+      </AppProviders>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Select project' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'P' }));
+    fireEvent.click((await screen.findByText('F')).closest('.tree-item')!);
+    const flowRow = (await screen.findByText('Flow')).closest('.tree-item')!;
+    fireEvent.click(flowRow.querySelector('.tree-item__menu button')!);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Import Arazzo…' }));
+
+    const doc = {
+      arazzo: '1.0.0',
+      info: { title: 'Flow', version: '1.0.0' },
+      workflows: [
+        {
+          workflowId: 'flow',
+          steps: [{ stepId: 'n1', 'x-swaft': { kind: 'delay', position: { x: 0, y: 0 } }, ms: 500 }],
+          'x-swaft-start': { id: 'start', position: { x: 0, y: 0 }, next: 'n1' },
+        },
+      ],
+    };
+    fireEvent.change(await screen.findByPlaceholderText(/Paste an Arazzo/), {
+      target: { value: JSON.stringify(doc) },
+    });
+    await screen.findByText(/2 nodes · 1 edges/);
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+
+    await waitFor(async () => {
+      const full = await getTemplateService().getTemplate(scenarioId);
+      expect(JSON.parse(full!.source).nodes).toHaveLength(2);
+    });
+  });
 });

@@ -1,10 +1,14 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  parseScenarioGraph,
+  serializeScenarioGraph,
+  toArazzo,
   type ExportScopeDto,
   type FolderDto,
   type ImportedCollectionDto,
   type OpName,
+  type ScenarioGraph,
   type TagDto,
   type TemplateSummary,
   type TemplateType,
@@ -36,6 +40,7 @@ import { usePopover } from '../ui/usePopover';
 import { CreateProjectDialog } from './CreateProjectDialog';
 import { CreateTemplateDialog } from './CreateTemplateDialog';
 import { ExportDialog } from './ExportDialog';
+import { ImportArazzoDialog } from './ImportArazzoDialog';
 import { ImportDialog } from './ImportDialog';
 import { NameDialog } from './NameDialog';
 import { ProjectSelector } from './ProjectSelector';
@@ -56,6 +61,11 @@ type ConfirmState = { kind: 'project' | 'folder' | 'template'; id: string; name:
 type DragItem = { kind: 'folder' | 'template'; id: string };
 
 const EMPTY: WorkspaceTree = { projects: [], folders: [], tags: [], templates: [] };
+
+/** Filesystem-safe file-name stem for a scenario's Arazzo export (mirrors `ExportService.safe`). */
+function fileSlug(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'scenario';
+}
 
 /** The left-hand icon for a template, by type — colored so the types read at a glance. */
 function TypeIcon({ type }: { type: TemplateType }) {
@@ -201,6 +211,7 @@ export const WorkingTree = forwardRef<WorkingTreeHandle, WorkingTreeProps>(funct
   const [projectOpen, setProjectOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [exportScope, setExportScope] = useState<{ scope: ExportScopeDto; name: string } | null>(null);
+  const [importArazzo, setImportArazzo] = useState<{ id: string; name: string } | null>(null);
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [createTpl, setCreateTpl] = useState<{ folderId: string | null } | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
@@ -325,6 +336,47 @@ export const WorkingTree = forwardRef<WorkingTreeHandle, WorkingTreeProps>(funct
         t('import.done', { requests: String(res.result.requests), project: projectName }),
         'success',
       );
+    } catch (e) {
+      toast.show(e instanceof ApiError ? e.swaft.message : String(e), 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Export a scenario's current graph as a standalone Arazzo 1.0 YAML file (open-standards §3.1). */
+  async function exportScenarioArazzo(tpl: TemplateSummary) {
+    setBusy(true);
+    try {
+      const full = await client.call('template.get', { id: tpl.id });
+      const { graph } = parseScenarioGraph(full.template.source);
+      const doc = toArazzo(tpl.name, graph);
+      const { dump } = await import('js-yaml');
+      const content = dump(doc, { noRefs: true, lineWidth: 100 });
+      const saved = await client.call('file.saveText', {
+        suggestedName: `${fileSlug(tpl.name)}.arazzo.yaml`,
+        content,
+      });
+      if (!saved.path) return; // cancelled
+      toast.show(t('export.done'), 'success');
+    } catch (e) {
+      toast.show(e instanceof ApiError ? e.swaft.message : String(e), 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Replace a scenario's graph in place from an imported Arazzo document. */
+  async function importScenarioArazzo(graph: ScenarioGraph) {
+    const target = importArazzo;
+    setImportArazzo(null);
+    if (!target) return;
+    setBusy(true);
+    try {
+      await client.call('template.updateSource', {
+        id: target.id,
+        source: serializeScenarioGraph(graph),
+      });
+      toast.show(t('import.arazzoDone'), 'success');
     } catch (e) {
       toast.show(e instanceof ApiError ? e.swaft.message : String(e), 'error');
     } finally {
@@ -515,6 +567,7 @@ export const WorkingTree = forwardRef<WorkingTreeHandle, WorkingTreeProps>(funct
     folderTemplates(folderId).length > 0 ||
     childFolders(folderId).some((f) => subtreeHasMatches(f.id));
   const tagById = useMemo(() => new Map(tree.tags.map((t) => [t.id, t])), [tree.tags]);
+  const templateIds = useMemo(() => new Set(tree.templates.map((tp) => tp.id)), [tree.templates]);
 
   // --- row renderers ---------------------------------------------------------
   /** Count api requests vs. skipped non-api templates for an export scope (from the loaded tree). */
@@ -595,6 +648,15 @@ export const WorkingTree = forwardRef<WorkingTreeHandle, WorkingTreeProps>(funct
               label: t('export.exportRequest'),
               onSelect: () =>
                 setExportScope({ scope: { kind: 'template', templateId: tpl.id }, name: tpl.name }),
+            },
+          ]
+        : []),
+      ...(tpl.type === 'scenario'
+        ? [
+            { label: t('export.exportScenario'), onSelect: () => void exportScenarioArazzo(tpl) },
+            {
+              label: t('import.importArazzo'),
+              onSelect: () => setImportArazzo({ id: tpl.id, name: tpl.name }),
             },
           ]
         : []),
@@ -899,6 +961,15 @@ export const WorkingTree = forwardRef<WorkingTreeHandle, WorkingTreeProps>(funct
         preview={exportScope ? scopePreview(exportScope.scope) : null}
         client={client}
         onClose={() => setExportScope(null)}
+      />
+
+      <ImportArazzoDialog
+        open={importArazzo !== null}
+        busy={busy}
+        scenarioName={importArazzo?.name ?? ''}
+        existingTemplateIds={templateIds}
+        onImport={(graph) => void importScenarioArazzo(graph)}
+        onClose={() => setImportArazzo(null)}
       />
 
       <ConfirmDialog
