@@ -164,7 +164,7 @@ export class ExportService {
       const full = await this.deps.templates.getTemplate(t.id);
       if (!full) continue;
       const request = convertRequest(parseRequest(full.source), conversion);
-      requests.push({ name: t.name, folderPath: rootPath(t), request });
+      requests.push({ name: t.name, folderPath: rootPath(t), request, swaftId: t.id });
     }
 
     const report: string[] = [];

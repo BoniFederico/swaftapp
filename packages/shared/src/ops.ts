@@ -355,6 +355,8 @@ export const importedRequestDtoSchema = z
     folderPath: z.array(z.string().max(200)).max(32),
     request: httpRequestSchema,
     description: z.string().max(100_000).optional(),
+    /** Originating Swaft template id, round-tripped via Bruno's `meta.swaftId` (open-standards §3.7). */
+    swaftId: z.string().max(200).optional(),
   })
   .strict();
 export const importedEnvironmentDtoSchema = z
@@ -1487,6 +1489,8 @@ export interface ImportResultDto {
   projectId: string;
   folders: number;
   requests: number;
+  /** Existing templates matched by `swaftId` and updated in place, not counted in `requests` (§3.7). */
+  updated: number;
   environments: number;
 }
 export interface CollectionImportResponse {

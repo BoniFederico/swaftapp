@@ -18,6 +18,10 @@ export interface ImportedRequest {
   request: HttpRequestModel;
   /** Optional human description (maps to a request's `info`). */
   description?: string;
+  /** The originating Swaft template id, round-tripped through a Bruno `meta.swaftId` (open-standards
+   *  §3.7) so re-importing a previously-exported collection updates that template in place instead of
+   *  creating a duplicate. Postman/`.http` have no slot for it and never set it. */
+  swaftId?: string;
 }
 
 /** A named set of plain (non-secret) variables — maps to a Swaft environment / a dotenv file. */

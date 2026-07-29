@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { fromBruno } from '@swaft/shared';
 import { CryptoService } from '../crypto/CryptoService';
 import { InProcessDbBackend } from '../storage/db-backend';
 import { ChangelogService } from './ChangelogService';
 import { EnvironmentService } from './EnvironmentService';
 import { ExportService } from './ExportService';
+import { ImportService } from './ImportService';
 import { OrganizationService } from './OrganizationService';
 import { TemplateService } from './TemplateService';
 import { WorkspaceService, type WorkspaceFs } from './WorkspaceService';
@@ -126,6 +128,23 @@ describe('ExportService.export', () => {
       const { exporter, projectId } = await setupWithEnv();
       const res = await exporter.export({ kind: 'project', projectId }, 'postman', 'verbatim', ['missing']);
       expect(res.files).toHaveLength(1);
+    });
+  });
+
+  describe('Bruno round-trip identity (open-standards §3.7)', () => {
+    it('a re-imported Bruno export updates the same template instead of duplicating it', async () => {
+      const { exporter, org, templates, environments, projectId } = await setup();
+      const exported = await exporter.export({ kind: 'project', projectId }, 'bruno', 'verbatim');
+      const bruFiles = exported.files.map((f) => ({ path: f.path.replace(/^Shop\//, ''), content: f.content }));
+      const col = fromBruno(bruFiles);
+      expect(col.requests[0].swaftId).toBeDefined();
+
+      const importer = new ImportService({ organization: org, templates, environments });
+      const result = await importer.importCollection(col, { kind: 'project', projectId });
+
+      expect(result).toMatchObject({ requests: 0, updated: 1 });
+      const tree = await org.getTree();
+      expect(tree.templates.filter((t) => t.name === 'Get order')).toHaveLength(1);
     });
   });
 });

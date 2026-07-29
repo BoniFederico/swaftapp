@@ -66,7 +66,7 @@ function parseDict(body: string): Record<string, string> {
 
 // --- import ------------------------------------------------------------------
 
-function parseBru(content: string): { name: string; request: HttpRequestModel } | null {
+function parseBru(content: string): { name: string; request: HttpRequestModel; swaftId?: string } | null {
   const blocks = scanBlocks(content);
   const meta = blocks.find((b) => b.name === 'meta');
   const methodBlock = blocks.find((b) => HTTP_METHODS.has(b.name));
@@ -115,7 +115,8 @@ function parseBru(content: string): { name: string; request: HttpRequestModel } 
   }
 
   const name = bruName(meta?.body) ?? method;
-  return { name, request };
+  const swaftId = meta ? parseDict(meta.body).swaftId : undefined;
+  return { name, request, ...(swaftId ? { swaftId } : {}) };
 }
 
 function bruName(metaBody: string | undefined): string | undefined {
@@ -140,7 +141,12 @@ export function fromBruno(files: BrunoFile[]): ImportedCollection {
     const parsed = parseBru(f.content);
     if (!parsed) continue;
     const segs = f.path.split('/').slice(0, -1).filter((s) => s !== '' && s !== '.');
-    requests.push({ name: parsed.name, folderPath: segs, request: parsed.request });
+    requests.push({
+      name: parsed.name,
+      folderPath: segs,
+      request: parsed.request,
+      ...(parsed.swaftId ? { swaftId: parsed.swaftId } : {}),
+    });
   }
   return { name, requests, environments: [] };
 }
@@ -178,6 +184,7 @@ function toBru(req: ImportedRequest, seq: number): string {
     ['name', req.name],
     ['type', 'http'],
     ['seq', String(seq)],
+    ...(req.swaftId ? ([['swaftId', req.swaftId]] as [string, string][]) : []),
   ])}${DL}}${DL}`;
   out += `${DL}${method} {${DL}${dict([
     ['url', r.url],

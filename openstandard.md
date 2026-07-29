@@ -117,8 +117,9 @@ loudly.
 - **Environments multi-select + personal flag (§6.3) — done, see §3.6.** `ExportDialog` now offers a
   checkbox list of every environment (defaulting to the active one), with a Personal/Workspace
   ownership badge next to each so a shared export can't silently include a personal one unnoticed.
-  Not built: **round-trip identity preservation** (a Bruno `meta.swaftId` marker so a re-import
-  updates in place instead of creating new entities) — every import today creates fresh ids (§3.7).
+- **Round-trip identity preservation (§3.7) — done.** Bruno exports carry a `meta.swaftId` marker;
+  re-importing into an existing project/folder updates that template in place instead of creating a
+  duplicate. Postman/`.http` still always create fresh ids (no extension slot for one), as scoped.
 
 ### 1.6 Secrets (Workstream 6, partial — see §3.3/§3.4 for what's left)
 
@@ -393,12 +394,28 @@ Covered by new cases in `ExportService.test.ts` (Postman/Bruno env file content,
 shape), and `ExportDialog.test.tsx` (default-to-active-environment, personal badge shown, toggling
 changes the `collection.export` payload).
 
-### 3.7 Round-trip identity for Bruno exports
+### 3.7 Round-trip identity for Bruno exports — done
 
-`toBruno`/`fromBruno` don't yet carry a `meta.swaftId` field, so re-importing a previously-exported
-Bruno collection creates new entities rather than updating in place. Add the id to the `.bru` `meta`
-block on export and match on it during import (Postman v2.1 has no equivalent extension slot, so this
-stays Bruno-only, as originally scoped).
+`ImportedRequest` (`packages/shared/src/collection.ts`) gained an optional `swaftId?: string`
+(mirrored by `importedRequestDtoSchema`, `ops.ts`). `ExportService` stamps each exported request with
+its own template id; `toBruno` writes it as a `swaftId` line in the `.bru` `meta { }` block (`bruno.ts`
+— `dict()`/`parseDict()` already tolerated an extra key, so this was additive); `fromBruno` reads it
+back. Postman/`.http` never set it (no extension slot), exactly as originally scoped.
+
+`ImportService.importCollection` now checks each request's `swaftId` before creating anything: if it
+still names a **live** template in this workspace (`TemplateService.getTemplate`), that template's
+`source` is updated in place (`updateSource`) instead of a duplicate being created; any other id
+(foreign workspace, stale, deleted) is ignored and falls through to a normal create — a stale id is
+never reused for an unrelated new entity. `ImportResult`/`ImportResultDto` gained an `updated` counter
+alongside `requests`, so callers can tell "created" from "updated in place" apart.
+
+Covered by `bruno.test.ts` (meta round-trip, absent when no id), `ImportService.test.ts` (update path,
+unknown-id fallback), and an `ExportService.test.ts` end-to-end case (export a project as Bruno,
+`fromBruno` + re-`importCollection` into the same project, assert one template updated and no
+duplicate). The renderer's import target picker still only offers "new project" (§1.5's noted gap),
+so the update-in-place path is exercised whenever a collection is re-imported into an **existing**
+project/folder — a scenario the backend now supports correctly even though today's UI doesn't yet
+drive it end-to-end.
 
 ---
 
