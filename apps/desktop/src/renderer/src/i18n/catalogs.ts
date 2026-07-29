@@ -440,6 +440,12 @@ export const en = {
   'auth.placementQuery': 'Query param',
   'auth.inheritPreview': 'Inherited authentication',
   'auth.inheritNone': 'Nothing to inherit — no folder up the chain defines authentication.',
+  'auth.legacySecretRef.migrateHint':
+    'This request still points at the keychain secret "{{ref}}" the old way. Migrate it to a `secret(...)` formula in the field above.',
+  'auth.legacySecretRef.unusedHint':
+    'A legacy keychain reference to "{{ref}}" is set but unused (the field above already has a value). Safe to remove.',
+  'auth.legacySecretRef.migrate': 'Migrate to secret(...)',
+  'auth.legacySecretRef.remove': 'Remove unused reference',
   'api.send': 'Send',
   'api.sending': 'Sending…',
   'api.release': 'Version',
@@ -1084,6 +1090,12 @@ export const it: Partial<Record<TranslationKey, string>> = {
   'auth.placementQuery': 'Query param',
   'auth.inheritPreview': 'Autenticazione ereditata',
   'auth.inheritNone': 'Niente da ereditare — nessuna cartella superiore definisce un’autenticazione.',
+  'auth.legacySecretRef.migrateHint':
+    'Questa richiesta punta ancora al segreto del keychain "{{ref}}" nel modo vecchio. Migra a una formula `secret(...)` nel campo sopra.',
+  'auth.legacySecretRef.unusedHint':
+    'È presente un riferimento keychain legacy a "{{ref}}" ma inutilizzato (il campo sopra ha già un valore). Puoi rimuoverlo.',
+  'auth.legacySecretRef.migrate': 'Migra a secret(...)',
+  'auth.legacySecretRef.remove': 'Rimuovi riferimento inutilizzato',
   'api.send': 'Invia',
   'api.sending': 'Invio…',
   'api.release': 'Versione',

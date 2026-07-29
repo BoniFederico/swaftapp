@@ -300,10 +300,20 @@ no-header back-compat case). See §1.8 for the full write-up.
   (new — the renderer had no test file
   for this section before).
 
-**Item 2 (dotenv on-disk form) — deprioritized, not done.** The JSON form already works, is validated,
-and (as of item 1) now carries the secret label too; dotenv is a portability/hand-editing nicety with
-no security value beyond what item 1 already delivers. Revisit only if a concrete need for hand-editable
-`.env` files surfaces.
+**Item 2 (dotenv on-disk form) — done.** `FORMAT_VERSION` 4→5
+([`projection.ts`](apps/desktop/src/main/workspace/projection/projection.ts)): every
+`environments/<slug>.<id>.json` gets a companion `environments/<slug>.<id>.env` — a plain `KEY=value`
+mirror for tools that read dotenv directly. **Write-only**, matching the front-matter precedent from
+§3.2: the JSON stays the sole source of truth, the `.env` is regenerated on every save and never read
+back on hydrate (`hydrateFlat` already only globs `*.json`, so this needed no hydrate change at all).
+Secret-labeled vars (item 1) are never written to it — left out entirely, only named in a trailing
+`# secret-labeled (omitted): ...` comment — so the file carries no more risk than the JSON it mirrors,
+and needs no change to the §3.4 secret scan (same values, already covered there). Values needing it
+are double-quoted (whitespace/`#`/quotes/newlines escaped); a renamed or deleted environment's stale
+`.env` is cleaned up the same way `dumpFlat` already does for `.json` files.
+Covered by a new `projection.test.ts` block: content + secret exclusion + quoting + stale-file cleanup
++ confirmation that hydrate ignores it entirely (a hand-edited `.env` with a different value has zero
+effect on the rehydrated `vars`).
 
 ### 3.4 Pre-write secret scan + `secretRef` migration
 
@@ -334,11 +344,23 @@ framing).
   `projection.test.ts` (`scanWorkspaceForSecrets` unit cases), and `GitStatusButton.test.tsx` (the full
   refuse → dialog → confirm → retry round trip).
 
-**Item 3 (one-click `secretRef` → `secret('NAME')` migration action) — deferred, not done.** Pure UI
-convenience per the plan's own framing (the legacy `auth.secretRef` keychain path keeps resolving
-unchanged in [`HttpService.ts`](apps/desktop/src/main/http/HttpService.ts) either way) — and today
-`secretRef` has **no UI at all** (not shown/editable in `AuthEditor.tsx`), so this would start from
-scratch rather than adding a button next to an existing field. Revisit as its own pass.
+**Item 3 (one-click `secretRef` → `secret('NAME')` migration action) — done.**
+[`AuthEditor.tsx`](apps/desktop/src/renderer/src/document/AuthEditor.tsx) shows a banner whenever
+`auth.secretRef` is set (a state no UI could ever produce, but reachable by hand-editing JSON or a
+pre-this-work workspace): `HttpService.applyAuth`'s own priority is "the plain field wins, `secretRef`
+is only a fallback for bearer/basic/apikey" (`token ?? secret`, `password ?? secret`, `value ?? secret`)
+— so the banner's action depends on whether that field is actually empty:
+- **Field empty (secretRef is live):** "Migrate to secret(...)" — sets the field to
+  `${ secret('<ref>') }` and drops `secretRef` in one `onChange`, in the same object-patch pattern every
+  other field already uses (no new save path; the existing whole-request `template.updateSource` picks
+  it up).
+- **Field already set (secretRef is dead) or kind has no target (`none`/`inherit`):** "Remove unused
+  reference" — just drops `secretRef`, no value overwritten.
+
+`secret('NAME')` and `secretRef` are confirmed the same addressing scheme (both a flat key into
+`SecretService`'s store), so migration is a literal string substitution — no re-derivation needed.
+Covered by a new `AuthEditor.test.tsx` (no banner without a `secretRef`; migrate path for
+bearer/basic/apikey; remove-only path when the target field is occupied or the kind has none).
 
 ### 3.5 Local-only data under a git-ignored `/.swaft/` cache directory — done
 
