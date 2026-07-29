@@ -6,7 +6,7 @@ import { LocalAdapter } from '../LocalAdapter';
 import { canonicalJson } from './canonical-json';
 import { MemoryDirFs } from './dir-fs';
 import { fromArazzo, fromHttpFile, parseScenarioGraph, toArazzo, toHttpFile } from '@swaft/shared';
-import { dumpWorkspace, hydrateWorkspace, sourceExtension } from './projection';
+import { dumpWorkspace, hydrateWorkspace, scanWorkspaceForSecrets, sourceExtension } from './projection';
 import { entityBaseName, shortId } from './naming';
 
 /** Hybrid on-disk names (D2) for the fixture entities, so path assertions track the real scheme. */
@@ -726,5 +726,76 @@ describe('WorkspaceProjection', () => {
     expect(sourceExtension('capability', null)).toBe('js');
     expect(sourceExtension('render', 'mermaid')).toBe('mmd');
     expect(sourceExtension('document', 'weird')).toBe('txt');
+  });
+});
+
+describe('scanWorkspaceForSecrets (open-standards §3.4)', () => {
+  const TOKEN = 'ghp_1234567890ABCDEFGHIJ';
+
+  it('flags a literal secret in an api request but ignores an existing Seebo formula', async () => {
+    const a = await buildSampleWorkspace(); // tpl-api already carries a secret(...) formula, not a literal
+    await ins(a, 'templates', {
+      id: 'tpl-leak',
+      folder_id: '',
+      project_id: 'proj-1',
+      name: 'Leaky',
+      type: 'api',
+      subtype: 'json',
+      source: JSON.stringify({
+        method: 'GET',
+        url: 'https://api.test',
+        headers: { Authorization: TOKEN },
+      }),
+      has_draft: 1,
+    });
+
+    const findings = await scanWorkspaceForSecrets(a);
+    expect(findings.some((f) => f.path.includes('leaky'))).toBe(true);
+    expect(findings.some((f) => f.path.includes('get-user'))).toBe(false);
+  });
+
+  it('does not flag an environment variable already labeled secret (§3.3)', async () => {
+    const a = await freshAdapter();
+    await a.initialize({
+      name: 'WS',
+      storageMode: 'git',
+      executionMode: 'sandbox',
+      deviceId: 'd',
+      now: isoNow(),
+    });
+    await ins(a, 'environments', {
+      id: 'e1',
+      name: 'Prod',
+      description: null,
+      owner_kind: 'workspace',
+      owner_id: null,
+      vars: JSON.stringify({ TOKEN }),
+      secret_vars: JSON.stringify(['TOKEN']),
+    });
+
+    expect(await scanWorkspaceForSecrets(a)).toEqual([]);
+  });
+
+  it('flags the same variable value when not labeled secret', async () => {
+    const a = await freshAdapter();
+    await a.initialize({
+      name: 'WS',
+      storageMode: 'git',
+      executionMode: 'sandbox',
+      deviceId: 'd',
+      now: isoNow(),
+    });
+    await ins(a, 'environments', {
+      id: 'e1',
+      name: 'Prod',
+      description: null,
+      owner_kind: 'workspace',
+      owner_id: null,
+      vars: JSON.stringify({ TOKEN }),
+      secret_vars: '[]',
+    });
+
+    const findings = await scanWorkspaceForSecrets(a);
+    expect(findings.some((f) => f.path.startsWith('environments/'))).toBe(true);
   });
 });

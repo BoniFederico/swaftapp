@@ -71,7 +71,12 @@ export const dialogCreateTargetRequestSchema = z
 // --- Git storage mode ops ---------------------------------------------------
 
 export const gitCommitRequestSchema = z
-  .object({ message: z.string().trim().min(1).max(1000) })
+  .object({
+    message: z.string().trim().min(1).max(1000),
+    /** Proceed despite a prior `SECRETS_FOUND` warning (open-standards §3.4) — the client re-sends
+     *  the same commit with this set after the user confirms through the warning dialog. */
+    force: z.boolean().optional(),
+  })
   .strict();
 export const gitCheckoutRequestSchema = z
   .object({ branch: z.string().trim().min(1).max(255) })

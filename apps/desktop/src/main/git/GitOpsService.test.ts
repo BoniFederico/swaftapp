@@ -110,6 +110,58 @@ async function insProject(a: LocalAdapter, id: string, name: string): Promise<vo
   );
 }
 
+async function insApiTemplate(a: LocalAdapter, id: string, name: string, source: string): Promise<void> {
+  const now = '2024-01-01T00:00:00.000Z';
+  const row: Record<string, SqlParam> = {
+    id,
+    folder_id: '',
+    project_id: null,
+    name,
+    type: 'api',
+    subtype: 'json',
+    source,
+    has_draft: 1,
+    created_at: now,
+    updated_at: now,
+    updated_by_device_id: 'dev',
+    revision: 1,
+    deleted_at: null,
+  };
+  const cols = Object.keys(row);
+  await a.run(
+    `INSERT INTO templates (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
+    cols.map((c) => row[c]),
+  );
+}
+
+async function insEnvironment(
+  a: LocalAdapter,
+  id: string,
+  vars: Record<string, string>,
+  secretVars: string[],
+): Promise<void> {
+  const now = '2024-01-01T00:00:00.000Z';
+  const row: Record<string, SqlParam> = {
+    id,
+    name: 'Prod',
+    description: null,
+    owner_kind: 'workspace',
+    owner_id: null,
+    vars: JSON.stringify(vars),
+    secret_vars: JSON.stringify(secretVars),
+    created_at: now,
+    updated_at: now,
+    updated_by_device_id: 'dev',
+    revision: 1,
+    deleted_at: null,
+  };
+  const cols = Object.keys(row);
+  await a.run(
+    `INSERT INTO environments (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
+    cols.map((c) => row[c]),
+  );
+}
+
 async function setup() {
   const fs = new MemoryDirFs();
   const git = new FakeGit(fs);
@@ -215,6 +267,51 @@ describe('GitOpsService', () => {
     await ws.close();
     const ops = new GitOpsService(ws, git);
     await expect(ops.status()).rejects.toMatchObject({ code: 'GIT_WORKSPACE_REQUIRED' });
+  });
+});
+
+describe('GitOpsService.commit — pre-commit secret scan (open-standards §3.4)', () => {
+  const TOKEN = 'ghp_1234567890ABCDEFGHIJ';
+
+  it('refuses to commit an api request carrying a literal secret token', async () => {
+    const { git, ws, ops } = await setup();
+    await insApiTemplate(
+      ws.requireAdapter(),
+      't1',
+      'Call',
+      JSON.stringify({ method: 'GET', url: 'https://api.test', headers: { Authorization: TOKEN } }),
+    );
+
+    await expect(ops.commit('add call')).rejects.toMatchObject({ code: 'SECRETS_FOUND' });
+    expect(git.calls).not.toContain('commit:add call'); // refused before the commit ran
+  });
+
+  it('commits anyway when force is set, despite the same finding', async () => {
+    const { git, ws, ops } = await setup();
+    await insApiTemplate(
+      ws.requireAdapter(),
+      't1',
+      'Call',
+      JSON.stringify({ method: 'GET', url: 'https://api.test', headers: { Authorization: TOKEN } }),
+    );
+
+    await ops.commit('add call', true);
+    expect(git.calls).toContain('commit:add call');
+  });
+
+  it('does not flag an environment variable already labeled secret (§3.3)', async () => {
+    const { git, ws, ops } = await setup();
+    await insEnvironment(ws.requireAdapter(), 'e1', { TOKEN }, ['TOKEN']);
+
+    await ops.commit('add env');
+    expect(git.calls).toContain('commit:add env');
+  });
+
+  it('flags a config-labeled variable holding the same kind of value', async () => {
+    const { ws, ops } = await setup();
+    await insEnvironment(ws.requireAdapter(), 'e1', { TOKEN }, []); // not labeled secret
+
+    await expect(ops.commit('add env')).rejects.toMatchObject({ code: 'SECRETS_FOUND' });
   });
 });
 

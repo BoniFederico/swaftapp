@@ -5,11 +5,13 @@ import {
   fromHttpFile,
   parseFrontMatter,
   parseScenarioGraph,
+  scanForSecrets,
   serializeScenarioGraph,
   toArazzo,
   toFrontMatter,
   toHttpFile,
   type HttpRequestModel,
+  type SecretFinding,
   type StorageMode,
 } from '@swaft/shared';
 import { AppError } from '../../errors';
@@ -18,7 +20,7 @@ import { SCHEMA_VERSION } from '../../storage/schema';
 import { parseJsonOr } from '../../util/json';
 import type { LocalAdapter } from '../LocalAdapter';
 import { canonicalJson } from './canonical-json';
-import type { DirFs } from './dir-fs';
+import { MemoryDirFs, type DirFs } from './dir-fs';
 import { entityBaseName, shortId } from './naming';
 
 /**
@@ -184,6 +186,49 @@ export async function hydrateWorkspace(
   await hydrateSettings(adapter, fs, ctx);
   for (const entity of FLAT_ENTITIES) await hydrateFlat(adapter, fs, entity, ctx);
   await hydrateTemplates(adapter, fs, ctx);
+}
+
+/** A probable-secret finding in one on-disk file (open-standards §3.4). */
+export interface WorkspaceSecretFinding {
+  /** File path the finding is in, relative to the workspace root. */
+  path: string;
+  findings: SecretFinding[];
+}
+
+const SCANNABLE_PATH = /^(?:templates\/[^/]+\/request\.http|folders\/.+\.json)$/;
+
+/**
+ * Scan the files {@link dumpWorkspace} would write for probable secret literals — a pre-commit gate
+ * (git.commit) that never touches the real filesystem: it dumps into a throwaway {@link MemoryDirFs}
+ * and scans that. Limited to files where a literal secret is plausible and meaningful to flag: api
+ * request bodies (`request.http`, headers/auth/body) and folder-propagated policy (`headers`/`auth`).
+ * Environment variables are scanned too, but a variable already labeled `secret` (§3.3) is an
+ * acknowledged risk and excluded — re-flagging it would just be noise the user already dismissed.
+ * Documents/scenarios/capabilities are not scanned: free-form text triggers far more false positives
+ * (long ids, hashes, base64) with no correspondingly higher chance of a real secret.
+ */
+export async function scanWorkspaceForSecrets(adapter: LocalAdapter): Promise<WorkspaceSecretFinding[]> {
+  const fs = new MemoryDirFs();
+  await dumpWorkspace(adapter, fs);
+  const out: WorkspaceSecretFinding[] = [];
+  for (const [path, content] of fs.snapshot()) {
+    let text: string;
+    if (/^environments\/.+\.json$/.test(path)) {
+      const env = parseJsonOr<{ vars?: Record<string, string>; secretVars?: string[] }>(content, {});
+      const secret = new Set(env.secretVars ?? []);
+      const configVars = Object.fromEntries(
+        Object.entries(env.vars ?? {}).filter(([k]) => !secret.has(k)),
+      );
+      text = JSON.stringify(configVars);
+    } else if (SCANNABLE_PATH.test(path)) {
+      text = content;
+    } else {
+      continue;
+    }
+    const findings = scanForSecrets(text);
+    if (findings.length > 0) out.push({ path, findings });
+  }
+  return out;
 }
 
 // --- Manifest (workspace_meta) ---------------------------------------------

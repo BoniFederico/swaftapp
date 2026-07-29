@@ -4347,6 +4347,15 @@ body {
   background: color-mix(in srgb, #d1495b 12%, transparent);
   border: 1px solid color-mix(in srgb, #d1495b 40%, var(--border));
 }
+/* Pre-commit secret-scan findings, listed in the SECRETS_FOUND confirm dialog. */
+.git-secrets-list {
+  margin: 0;
+  padding-left: var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  max-height: 200px;
+  overflow-y: auto;
+}
 .git-panel__empty {
   padding: var(--space-2);
   font-size: var(--fs-sm);

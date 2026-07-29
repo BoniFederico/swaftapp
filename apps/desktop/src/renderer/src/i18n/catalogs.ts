@@ -58,6 +58,10 @@ export const en = {
   'git.push': 'Push',
   'git.discard': 'Discard',
   'git.discardConfirm': 'Discard all uncommitted changes? This cannot be undone.',
+  'git.secretsFoundTitle': 'Possible secrets found',
+  'git.secretsFoundMessage':
+    'These look like literal secret values rather than a secret(...) reference — committing them writes the value into shared Git history:',
+  'git.commitAnyway': 'Commit anyway',
   'git.error': 'Git operation failed.',
   'git.reload': 'Reload',
   'git.conflict': 'Merge conflicts detected. Resolve them in your Git tool, then Reload.',
@@ -695,6 +699,10 @@ export const it: Partial<Record<TranslationKey, string>> = {
   'git.push': 'Push',
   'git.discard': 'Annulla',
   'git.discardConfirm': 'Annullare tutte le modifiche non committate? Operazione irreversibile.',
+  'git.secretsFoundTitle': 'Possibili secret trovati',
+  'git.secretsFoundMessage':
+    'Questi sembrano valori secret letterali invece di un riferimento secret(...) — committarli scrive il valore nella cronologia Git condivisa:',
+  'git.commitAnyway': 'Committa comunque',
   'git.error': 'Operazione Git fallita.',
   'git.reload': 'Ricarica',
   'git.conflict': 'Conflitti di merge rilevati. Risolvili nel tuo strumento Git, poi premi Ricarica.',

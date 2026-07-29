@@ -305,21 +305,38 @@ no security value beyond what item 1 already delivers. Revisit only if a concret
 
 ### 3.4 Pre-write secret scan + `secretRef` migration
 
-`scanForSecrets`/`hasSecretLiteral` ([`secret-scan.ts`](packages/shared/src/secret-scan.ts)) exist and
-are unit-tested but are **not called from anywhere in `apps/desktop/src/main`**.
+**Items 1-2 done.** `scanForSecrets` ([`secret-scan.ts`](packages/shared/src/secret-scan.ts)) is now
+wired into `git.commit` as a **warn-and-confirm** gate (decided over hard-refuse: an entropy heuristic
+has real false-positive risk, and a git commit is the one point that durably captures a literal secret
+into shared history — a local/folder save is not gated the same way, per the plan's own "weaker stakes"
+framing).
 
-**To do:**
-1. Wire the scan into the write path before a folder/git workspace is persisted — likely in
-   `dumpWorkspace` ([`projection.ts:119-124`](apps/desktop/src/main/workspace/projection/projection.ts))
-   or at `git.commit` time ([`GitOpsService.ts`](apps/desktop/src/main/git/GitOpsService.ts)) — flagging
-   probable secret literals (high-entropy strings, literal `Authorization:` header values) before they
-   reach a committed file, pointing the user at `secret(...)`.
-2. Decide UX: hard refuse vs. warn-and-confirm. A local (non-git) folder workspace has weaker stakes
-   than a `git commit`, so the gate might only need to be strict on the git commit path.
-3. A one-click "convert `secretRef` → `secret('NAME')`" action (folder/auth editor UI) — the legacy
-   `auth.secretRef` path already resolves through the keychain identically to the new capability
-   ([`HttpService.ts`](apps/desktop/src/main/http/HttpService.ts)), so this is a UI convenience, not a
-   behavior change.
+- **`scanWorkspaceForSecrets(adapter)`** (new,
+  [`projection.ts`](apps/desktop/src/main/workspace/projection/projection.ts)) dumps the workspace into
+  a throwaway `MemoryDirFs` (never touches the real filesystem) and scans exactly the files that would
+  be written: api `request.http` bodies, `folders/*.json` (propagated headers/auth), and
+  `environments/*.json` `vars` — **excluding** any variable already labeled `secret` (§3.3), since a
+  labeled variable is an acknowledged risk and re-flagging it would just be noise. Documents/scenarios/
+  capabilities are not scanned (free-form text → far more false positives, no higher real-secret odds).
+- **`GitOpsService.commit(message, force = false)`**
+  ([`GitOpsService.ts`](apps/desktop/src/main/git/GitOpsService.ts)) runs the scan first (before
+  `ws.save()`, so a refusal never touches disk); with findings and no `force`, throws
+  `AppError('SECRETS_FOUND', 'validation', ..., { findings })` — `details` carries only `SecretFinding`s
+  (`kind` + a redacted `hint`, never a full value), matching the wire contract's own "details MUST NOT
+  contain secrets" rule. `force: z.boolean().optional()` added to `gitCommitRequestSchema` (`ops.ts`) —
+  a new pattern in this codebase (no prior op had a force/confirm-through field).
+- **UI:** [`GitStatusButton.tsx`](apps/desktop/src/renderer/src/git/GitStatusButton.tsx) intercepts a
+  `SECRETS_FOUND` error (instead of routing it to the generic error toast), lists the findings in a
+  `ConfirmDialog`, and on confirm re-sends the same commit with `force: true`.
+- Covered by `GitOpsService.test.ts` (refuse / force-through / secret-labeled-var exclusion),
+  `projection.test.ts` (`scanWorkspaceForSecrets` unit cases), and `GitStatusButton.test.tsx` (the full
+  refuse → dialog → confirm → retry round trip).
+
+**Item 3 (one-click `secretRef` → `secret('NAME')` migration action) — deferred, not done.** Pure UI
+convenience per the plan's own framing (the legacy `auth.secretRef` keychain path keeps resolving
+unchanged in [`HttpService.ts`](apps/desktop/src/main/http/HttpService.ts) either way) — and today
+`secretRef` has **no UI at all** (not shown/editable in `AuthEditor.tsx`), so this would start from
+scratch rather than adding a button next to an existing field. Revisit as its own pass.
 
 ### 3.5 Local-only data under a git-ignored `/.swaft/` cache directory
 

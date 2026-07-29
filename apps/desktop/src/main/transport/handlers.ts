@@ -162,7 +162,10 @@ export const handlers: Record<OpName, Handler> = {
   // Git storage mode
   'git.status': () => svc(async () => ({ status: await getGitOpsService().status() })),
   'git.commit': (p) =>
-    svc(async () => ({ status: await getGitOpsService().commit((p as GitCommitRequest).message) })),
+    svc(async () => {
+      const r = p as GitCommitRequest;
+      return { status: await getGitOpsService().commit(r.message, r.force ?? false) };
+    }),
   'git.push': () => svc(async () => ({ status: await getGitOpsService().push() })),
   'git.pull': () => svc(async () => ({ status: await getGitOpsService().pull() })),
   'git.fetch': () => svc(async () => ({ status: await getGitOpsService().fetch() })),
