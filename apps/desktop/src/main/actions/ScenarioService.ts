@@ -41,6 +41,12 @@ export interface ScenarioServiceDeps {
 
 type ScenarioCtx = NonNullable<SeeboRenderContext['scenario']>;
 
+/** One attempt at an attended block: it either succeeds, fails outright, or needs more input. */
+type Attempt =
+  | { kind: 'success'; output: BlockOutput }
+  | { kind: 'pending'; requirements: RequirementDto[] }
+  | { kind: 'error'; message: string };
+
 /** In-memory state of a run in progress (the main process is long-lived, so runs live across ops). */
 interface RunState {
   run: ScenarioRunDto;
@@ -405,8 +411,8 @@ export class ScenarioService extends RepoBase {
     if (type === 'api') {
       const { source } = await this.deps.releases.resolveSource(refId);
       const request = parseRequest(source);
-      let values = { ...(await this.deps.render.getInputState(refId)), ...overrides };
-      for (;;) {
+      const initial = { ...(await this.deps.render.getInputState(refId)), ...overrides };
+      return this.runAttempts(state, node, 'api', initial, async (values) => {
         try {
           const res = await this.deps.apiRun.send(refId, request, values, {
             scenario: ctx,
@@ -415,52 +421,42 @@ export class ScenarioService extends RepoBase {
           const json = parseJsonOr<unknown>(res.response.body, undefined);
           const sent = res.request ?? request;
           return {
-            kind: 'api',
-            ok: res.response.status < 400,
-            output: json ?? res.response.body,
-            method: sent.method,
-            url: sent.url,
-            status: res.response.status,
-            statusText: res.response.statusText,
-            headers: res.response.headers,
-            body: res.response.body,
-            json,
-            durationMs: res.response.durationMs,
-            error: res.response.status >= 400 ? `HTTP ${res.response.status}` : null,
+            kind: 'success',
+            output: {
+              kind: 'api',
+              ok: res.response.status < 400,
+              output: json ?? res.response.body,
+              method: sent.method,
+              url: sent.url,
+              status: res.response.status,
+              statusText: res.response.statusText,
+              headers: res.response.headers,
+              body: res.response.body,
+              json,
+              durationMs: res.response.durationMs,
+              error: res.response.status >= 400 ? `HTTP ${res.response.status}` : null,
+            },
           };
         } catch (e) {
           const pending = inputRequired(e);
-          if (!pending) return failOutput(errMsg(e), 'api');
-          const { filled, remaining } = this.applyRemembered(state, pending);
-          if (Object.keys(filled).length > 0) values = { ...values, ...filled };
-          if (remaining.length === 0) continue;
-          if (state.mode === 'batch') return failOutput('Missing inputs (unattended run).', 'api');
-          const provided = await this.pauseForInput(state, node.id, remaining);
-          if (provided === 'cancelled') return 'cancelled';
-          values = { ...values, ...provided };
+          return pending ? { kind: 'pending', requirements: pending } : { kind: 'error', message: errMsg(e) };
         }
-      }
+      });
     }
 
     if (type === 'document') {
-      let values = { ...(await this.deps.render.getInputState(refId)), ...overrides };
-      for (;;) {
+      const initial = { ...(await this.deps.render.getInputState(refId)), ...overrides };
+      return this.runAttempts(state, node, 'document', initial, async (values) => {
         const result = await this.deps.render.render(refId, values, { scenario: ctx });
         if (result.status === 'failed') {
           const message = result.diagnostics.map((d) => d.message).join('; ') || 'Render failed.';
-          return failOutput(message, 'document');
+          return { kind: 'error', message };
         }
         if (result.status === 'completed') {
-          return { kind: 'document', ok: true, output: result.output, error: null };
+          return { kind: 'success', output: { kind: 'document', ok: true, output: result.output, error: null } };
         }
-        const { filled, remaining } = this.applyRemembered(state, result.pending);
-        if (Object.keys(filled).length > 0) values = { ...values, ...filled };
-        if (remaining.length === 0) continue;
-        if (state.mode === 'batch') return failOutput('Missing inputs (unattended run).', 'document');
-        const provided = await this.pauseForInput(state, node.id, remaining);
-        if (provided === 'cancelled') return 'cancelled';
-        values = { ...values, ...provided };
-      }
+        return { kind: 'pending', requirements: result.pending };
+      });
     }
 
     if (type === 'capability' || type === 'action') {
@@ -535,6 +531,34 @@ export class ScenarioService extends RepoBase {
         resolve(v);
       };
     });
+  }
+
+  /**
+   * Drive an attended block (api or document) to completion: run `attempt` with the current values;
+   * on `pending`, fill what remembered inputs already resolve and retry, pause for the rest (fail
+   * instead, in batch mode), then retry with the provided values. Shared by both block types so the
+   * remember/pause loop is written once.
+   */
+  private async runAttempts(
+    state: RunState,
+    node: ScenarioNode,
+    blockKind: 'api' | 'document',
+    initialValues: Record<string, unknown>,
+    attempt: (values: Record<string, unknown>) => Promise<Attempt>,
+  ): Promise<BlockOutput | 'cancelled'> {
+    let values = initialValues;
+    for (;;) {
+      const res = await attempt(values);
+      if (res.kind === 'error') return failOutput(res.message, blockKind);
+      if (res.kind === 'success') return res.output;
+      const { filled, remaining } = this.applyRemembered(state, res.requirements);
+      if (Object.keys(filled).length > 0) values = { ...values, ...filled };
+      if (remaining.length === 0) continue;
+      if (state.mode === 'batch') return failOutput('Missing inputs (unattended run).', blockKind);
+      const provided = await this.pauseForInput(state, node.id, remaining);
+      if (provided === 'cancelled') return 'cancelled';
+      values = { ...values, ...provided };
+    }
   }
 
   /** Split a block's pending requirements into ones a remembered value already resolves vs. not. */
