@@ -1,7 +1,15 @@
 import type { AuthPlacement, HttpAuth } from '@swaft/shared';
 import { SeeboField } from '../editor/SeeboField';
 import { useI18n } from '../i18n/I18nProvider';
-import { Select } from '../ui';
+import { Button, Select } from '../ui';
+
+/** The field a resolved `secret('NAME')` would land in for each auth kind (`HttpService.applyAuth`'s
+ *  own priority: the plain field wins over `secretRef`, so only these three kinds ever consult it). */
+const LEGACY_SECRET_TARGET: Partial<Record<HttpAuth['kind'], 'token' | 'password' | 'value'>> = {
+  bearer: 'token',
+  basic: 'password',
+  apikey: 'value',
+};
 
 /**
  * Authentication editor shared by the API view (request auth, with `inherit` from the folder chain)
@@ -23,6 +31,24 @@ export function AuthEditor({
 }) {
   const { t } = useI18n();
   const set = (patch: Partial<HttpAuth>) => onChange({ ...auth, ...patch });
+
+  // §3.4 item 3: a one-click migration off the legacy `auth.secretRef` keychain path (still resolved
+  // as a fallback by HttpService, but never shown/editable here) onto a `${ secret('NAME') }` formula
+  // in the field that actually wins at request time.
+  const legacyTargetKey = LEGACY_SECRET_TARGET[auth.kind];
+  // A ref containing a `'` can't be embedded in a single-quoted secret('...') call without breaking
+  // the formula — secretRef has no charset restriction, so this is a real (if rare) possibility.
+  // Fall back to remove-only rather than ever writing a broken formula.
+  const legacyCanMigrate = !!legacyTargetKey && !auth[legacyTargetKey] && !auth.secretRef?.includes("'");
+  function migrateLegacySecretRef() {
+    const { secretRef, ...rest } = auth;
+    if (!secretRef) return;
+    onChange(
+      legacyCanMigrate && legacyTargetKey
+        ? { ...rest, [legacyTargetKey]: `\${ secret('${secretRef}') }` }
+        : rest,
+    );
+  }
 
   const kindLabel = (kind: HttpAuth['kind']): string =>
     kind === 'none'
@@ -71,6 +97,20 @@ export function AuthEditor({
           { value: 'apikey', label: t('auth.apikey') },
         ]}
       />
+
+      {auth.secretRef && (
+        <div className="auth-editor__legacy-secret" role="note">
+          <p className="field-hint">
+            {t(
+              legacyCanMigrate ? 'auth.legacySecretRef.migrateHint' : 'auth.legacySecretRef.unusedHint',
+              { ref: auth.secretRef },
+            )}
+          </p>
+          <Button variant="ghost" onClick={migrateLegacySecretRef}>
+            {t(legacyCanMigrate ? 'auth.legacySecretRef.migrate' : 'auth.legacySecretRef.remove')}
+          </Button>
+        </div>
+      )}
 
       {auth.kind === 'inherit' && (
         <div className="auth-editor__preview">

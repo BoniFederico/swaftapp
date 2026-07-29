@@ -8,8 +8,8 @@
 > **Goal (unchanged):** make Swaft store and exchange its data using **open, plain-file standards** —
 > the folder of files is the source of truth, API requests are `.http` files, while keeping Seebo
 > formulas and Swaft's richer features, and offering guided import/export to the wider ecosystem
-> (Postman, Bruno, OpenAPI, cURL, HAR). Scenarios-as-Arazzo and documents-as-front-matter were designed
-> but **not yet wired in** — see §3.
+> (Postman, Bruno, OpenAPI, cURL, HAR). Scenarios-as-Arazzo (§1.7) and documents-as-front-matter (§1.8)
+> are now wired into the projection.
 
 The load-bearing architectural principle held throughout: **the canonical *runtime* model is
 unchanged.** An API request is still a `HttpRequestModel` ([`ops.ts`](packages/shared/src/ops.ts)) held
@@ -35,8 +35,8 @@ usable from the renderer or main:
 | Postman v2.1 | [`postman.ts`](packages/shared/src/postman.ts) | `fromPostman` / `toPostman` (verbatim) | Conversion (variabilize vs. verbatim) is externalized to `ExportService`, not the codec. |
 | Bruno | [`bruno.ts`](packages/shared/src/bruno.ts) | `toBruno` / `fromBruno` | File-per-request `.bru` DSL + `bruno.json`; brace-depth-aware block scanner. |
 | HAR 1.2 | [`har.ts`](packages/shared/src/har.ts) | **export only** | `toHar(entries)`; wired to a UI action (API view → History → "Export HAR"). |
-| Arazzo 1.0 | [`arazzo.ts`](packages/shared/src/arazzo.ts) | `toArazzo` / `fromArazzo` | **Codec exists and is unit-tested, but is NOT wired into the projection or any UI** — see §3.1. |
-| Front matter | [`front-matter.ts`](packages/shared/src/front-matter.ts) | `toFrontMatter` / `parseFrontMatter` | Dependency-free YAML-ish front matter. **NOT wired into the projection** — see §3.2. |
+| Arazzo 1.0 | [`arazzo.ts`](packages/shared/src/arazzo.ts) | `toArazzo` / `fromArazzo` | Wired into the projection (`scenario` templates, `FORMAT_VERSION` 3) and into a per-scenario Export/Import UI — see §1.7/§3.1. |
+| Front matter | [`front-matter.ts`](packages/shared/src/front-matter.ts) | `toFrontMatter` / `parseFrontMatter` | Dependency-free YAML-ish front matter. Wired into the projection (`document` templates, `FORMAT_VERSION` 4) — see §1.8/§3.2. |
 | Seebo conversion | [`seebo-convert.ts`](packages/shared/src/seebo-convert.ts) | `variabilizeSeebo`, `bracesToSeebo` | `env`/`secret`/bare `${ }` ⇄ `{{ }}`; used by `ExportService` at export time only (on-disk form always keeps Seebo verbatim). |
 | Secret scan | [`secret-scan.ts`](packages/shared/src/secret-scan.ts) | `scanForSecrets`, `hasSecretLiteral` | Detector exists and is unit-tested. **NOT wired into any write/commit path yet** — see §3.4. |
 | Neutral collection model | [`collection.ts`](packages/shared/src/collection.ts) | `ImportedCollection`, `ImportedRequest`, `ImportedEnvironment` | The shared shape all import adapters produce and `ImportService` consumes. |
@@ -76,9 +76,10 @@ editor and Seebo formula resolution are untouched.
   in the Working Tree's Import/Export menu.
 - **Local-only data** (history, run logs, input state, selections) was already excluded from the
   projection (🔵 tables, [`projection.ts`](apps/desktop/src/main/workspace/projection/projection.ts)
-  doc comment) — it simply isn't persisted for folder/git workspaces today. A dedicated git-ignored
-  `/.swaft/` cache directory for this data was **not built** (see §3.5) — not needed yet since nothing
-  currently needs to persist it there.
+  doc comment). A dedicated git-ignored `/.swaft/` cache directory for it is now built — see §3.5,
+  done: [`local-cache.ts`](apps/desktop/src/main/workspace/projection/local-cache.ts) serializes all
+  8 `LOCAL_ONLY_TABLES` to `/.swaft/local-cache.json`, read on open / written on save, for folder and
+  git workspaces.
 
 ### 1.4 Published, machine-checkable format (Workstream "Phase 0" — done)
 
@@ -113,11 +114,12 @@ loudly.
   `forwardRef` ([`WorkingTree.tsx`](apps/desktop/src/renderer/src/workspace/WorkingTree.tsx),
   `WorkingTreeHandle`) so the top bar drives it imperatively while the dialogs/state stay owned by the
   tree (shared with the per-node menus).
-- **Not built:** the **environments multi-select at export time** and the **"personal environment"
-  opt-in/flag** described in the original plan's §6.3 — today `ExportService` exports whichever
-  environments the scope implies, with no picker and no personal/shared distinction in the dialog.
-  Also not built: **round-trip identity preservation** (a Bruno `meta.swaftId` marker so a re-import
-  updates in place instead of creating new entities) — every import today creates fresh ids.
+- **Environments multi-select + personal flag (§6.3) — done, see §3.6.** `ExportDialog` now offers a
+  checkbox list of every environment (defaulting to the active one), with a Personal/Workspace
+  ownership badge next to each so a shared export can't silently include a personal one unnoticed.
+- **Round-trip identity preservation (§3.7) — done.** Bruno exports carry a `meta.swaftId` marker;
+  re-importing into an existing project/folder updates that template in place instead of creating a
+  duplicate. Postman/`.http` still always create fresh ids (no extension slot for one), as scoped.
 
 ### 1.6 Secrets (Workstream 6, partial — see §3.3/§3.4 for what's left)
 
@@ -135,6 +137,38 @@ loudly.
   **one-click `secretRef` → `secret('NAME')` migration action** (§3.4) — the legacy `auth.secretRef` →
   keychain path still works unchanged as a fallback
   ([`HttpService.ts`](apps/desktop/src/main/http/HttpService.ts)), it's just not offered a conversion UI.
+
+### 1.7 Scenario templates stored as Arazzo (Workstream 4 — done, incl. UI)
+
+`FORMAT_VERSION = 3` ([`projection.ts:35`](apps/desktop/src/main/workspace/projection/projection.ts)):
+a `scenario` template's on-disk body is `templates/<slug>.<id>/scenario.arazzo.yaml` (via
+`toArazzo`/`fromArazzo`), an Arazzo 1.0 workflow document. Everything Arazzo has no native concept for —
+non-HTTP nodes, decision branches, breakpoints, canvas positions — lives under `x-swaft` extensions, so
+nothing Swaft-specific needed its own JSON schema. v1/v2 workspaces (a scenario graph in `source.json`)
+still hydrate; the next save upgrades them to v3. The canvas, execution engine and Seebo formula
+resolution are untouched — only the on-disk form changed.
+
+**UI (§3.1 item 4):** the scenario row's context menu in the Working Tree offers "Export scenario as
+Arazzo…" (saves the current graph as a standalone `.arazzo.yaml`) and "Import Arazzo…" (replaces the
+graph in place from a pasted/dropped Arazzo document, via
+[`ImportArazzoDialog.tsx`](apps/desktop/src/renderer/src/workspace/ImportArazzoDialog.tsx)). Full detail
+in §3.1.
+
+### 1.8 Document templates get a YAML front-matter header (Workstream 5, projection done — see §3.2)
+
+`FORMAT_VERSION = 4` ([`projection.ts:35`](apps/desktop/src/main/workspace/projection/projection.ts)):
+a `document` template's `source.<ext>` body is prepended with a `---`-delimited front-matter header
+(`swaftId`, `name`, `type`, `subtype`, `tags` — tag **names**, resolved from `tags` at dump time, not
+ids) via `toFrontMatter`. `template.json` remains the sole source of truth for those fields; the header
+is a **write-only mirror** for portability (a document opened directly in Jekyll/Hugo/Obsidian/any
+front-matter-aware tool is self-describing) — `hydrateTemplates` parses it with `parseFrontMatter` and
+keeps only the body, discarding the parsed meta. Front matter is only added for `type === 'document'`;
+api/scenario/capability/action keep their existing dedicated body forms untouched. Reading is
+version-tolerant rather than version-gated: a pre-v4 file with no (or a malformed) header just yields an
+empty header and the whole file as body — `parseFrontMatter`'s existing tolerant-parse behavior, no new
+branching needed. Covered by `projection.test.ts` (front-matter header assertion on the existing
+`tpl-doc` fixture, a dedicated pre-v4 back-compat case) — no new JSON schema needed (the header lives
+inside the body file, not a separate structured file).
 
 ---
 
@@ -162,101 +196,248 @@ be byte-identical to the runtime JSON), then UI.
 
 ### 3.1 Scenarios stored as Arazzo (was Workstream 4)
 
-The `toArazzo`/`fromArazzo` codec exists and is unit-tested
-([`arazzo.ts`](packages/shared/src/arazzo.ts), `arazzo.test.ts`) but scenario templates still write
-`source.json` verbatim — `sourceExtension('scenario', …)` still returns `'json'`
-([`projection.ts:497`](apps/desktop/src/main/workspace/projection/projection.ts)).
+**Items 1-3 done.** `dumpTemplates`/`hydrateTemplates`
+([`projection.ts:242-410`](apps/desktop/src/main/workspace/projection/projection.ts)) now branch on
+`type === 'scenario'` the same way `type === 'api'` already branches: `dumpTemplates` writes
+`scenario.arazzo.yaml` via `toArazzo`; `hydrateTemplates` reads it back via `fromArazzo` when present,
+else falls back to the legacy `source.json` sidecar (v1/v2 back-compat, mirroring how api templates fall
+back to `source.json`). `FORMAT_VERSION` is now **3** (documented in `FORMAT.md` §1/§4/§5); no new JSON
+schema was needed — every Swaft-only piece (action/capability/delay nodes, decision branches,
+breakpoints, canvas layout) lives under `x-swaft` extensions inside the YAML document itself, not a
+separate file. A gap was found and fixed while wiring this up: the `breakpoint` field (added by the
+block-breakpoints feature) was on `ScenarioNode` but never round-tripped by `toStep`/`fromArazzo` in
+`arazzo.ts` — fixed, covered by a new case in `arazzo.test.ts`. Domain-level round-trip coverage (incl.
+a legacy `source.json` back-compat case) is in `projection.test.ts` (`canonicalScenarioSource`,
+`N.tplScenario`), following the `canonicalApiSource` pattern already there.
 
-**To do:**
-1. In `dumpTemplates`/`hydrateTemplates` ([`projection.ts:242-385`](apps/desktop/src/main/workspace/projection/projection.ts)),
-   branch on `type === 'scenario'` the same way `type === 'api'` already branches: write
-   `scenario.arazzo.yaml` via `toArazzo`, put Swaft-only pieces (action/capability/delay nodes, canvas
-   layout) under `x-swaft-*` extensions; `hydrateTemplates` reads `scenario.arazzo.yaml` back via
-   `fromArazzo` when present, else falls back to `source.json` (v1/back-compat, mirroring how api
-   templates fall back to `source.json` today).
-2. Bump `FORMAT_VERSION` to 3 and document the migration in `FORMAT.md` + the new schema
-   (`apps/desktop/src/main/workspace/projection/schemas/scenario.schema.json` for the parts not
-   expressible in Arazzo itself, if any remain outside `x-swaft`).
-3. A domain-level round-trip test in `projection.test.ts`, following the `canonicalApiSource` pattern
-   already there (the `.yaml` form won't be byte-identical to the runtime `ScenarioGraph` JSON, so
-   compare the rehydrated graph, not raw bytes).
-4. UI: an "Export scenario as Arazzo" / "Import Arazzo" action with a guided-conflict-resolution dialog
-   (mirrors `ExportDialog`/`ImportDialog`) for scenarios that use Swaft-only constructs — same
-   fidelity-report pattern as the existing collection export/import.
+**Item 4 done.** Per-scenario "Export scenario as Arazzo…" / "Import Arazzo…" actions live on the
+scenario row's context menu in the Working Tree
+([`WorkingTree.tsx`](apps/desktop/src/renderer/src/workspace/WorkingTree.tsx), `templateMenu`,
+`exportScenarioArazzo`/`importScenarioArazzo`). Unlike the collection Export/Import (scope + format
+picker over many api templates), this is a single-scenario, single-format action, so it reuses the
+existing generic `template.get`/`template.updateSource` ops instead of adding new ones — no new op,
+service, or schema. Parsing/serialization happen in the renderer with the shared pure codecs
+(`toArazzo`/`fromArazzo`/`parseScenarioGraph`/`serializeScenarioGraph` from `@swaft/shared`, dynamic
+`import('js-yaml')` for YAML dump/parse — the same `parseSpec` JSON-or-YAML helper the OpenAPI import
+path already uses), mirroring how `ImportDialog` parses OpenAPI/Postman client-side and only
+materializes via an op.
+- **Export** — `template.get` to read the current source, `parseScenarioGraph` + `toArazzo` + a YAML
+  dump, saved via the existing `file.saveText` op. No dialog: a single scenario has no scope/format
+  choice to make.
+- **Import** — [`ImportArazzoDialog.tsx`](apps/desktop/src/renderer/src/workspace/ImportArazzoDialog.tsx)
+  accepts a pasted/dropped Arazzo document (YAML or JSON), parses it with `fromArazzo`, previews the
+  node/edge count, and — mirroring the collection import/export **fidelity-report** pattern rather than
+  an interactive per-step remapping UI — lists any step whose `x-swaft` template `ref` doesn't resolve
+  to a template id in this workspace (e.g. an Arazzo doc authored elsewhere, or hand-edited). Unresolved
+  refs are reported, not blocked: confirming still replaces the scenario's graph in place via
+  `template.updateSource`, importing the dangling ref as-is so it can be rewired on the canvas.
+  Covered by `ImportArazzoDialog.test.tsx` (parse/preview/unresolved-ref report) and an end-to-end case
+  in `tree.test.tsx` (menu → dialog → `template.updateSource` → persisted graph).
 
 ### 3.2 Documents stored as Markdown/native + YAML front matter (was Workstream 5)
 
-The `front-matter.ts` codec exists and is unit-tested but document templates still write a plain
-`source.<ext>` sidecar with a separate `template.json` for metadata.
-
-**To do:**
-1. In `dumpTemplates`, for `type === 'document'`, prepend a front-matter block (id, name, subtype, tags)
-   to the body via `toFrontMatter` instead of writing a bare `source.<ext>` + separate `template.json`
-   fields; `hydrateTemplates` parses it back via `parseFrontMatter` (defensive: a missing/malformed
-   block degrades to treating the whole file as body content, same tolerance the projection already
-   applies to other JSON reads).
-2. Front matter only for `document` types; api/scenario/capability/action keep their dedicated forms.
-3. Round-trip test + `FORMAT.md`/schema update, same shape as §3.1.
+**Done.** `dumpTemplates`/`hydrateTemplates`
+([`projection.ts:265-424`](apps/desktop/src/main/workspace/projection/projection.ts)) prepend a
+front-matter block (`swaftId`, `name`, `type`, `subtype`, `tags`-as-names) to a `document` template's
+`source.<ext>` via `toFrontMatter`; `hydrateTemplates` parses it back via `parseFrontMatter` and keeps
+only the body (`template.json` stays the source of truth for those fields — the header is a
+write-only, external-tool-portability mirror, not a second copy that could drift and win on read).
+`FORMAT_VERSION` is now **4** (documented in `FORMAT.md` §1/§4/§5); no new JSON schema needed (the
+header lives inside the existing body file). Reading is tolerant rather than version-gated: a pre-v4
+file with no header (or a hand-edited malformed one) degrades to treating the whole file as body,
+`parseFrontMatter`'s existing behavior — no branching needed in `hydrateTemplates` beyond gating on
+`type === 'document'`. api/scenario/capability/action are unaffected, per the original scope. Covered
+by `projection.test.ts` (front-matter assertion on the `tpl-doc` fixture, a dedicated pre-v4
+no-header back-compat case). See §1.8 for the full write-up.
 
 ### 3.3 Config/secret split for environment variables + dotenv form
 
-Environments today store `vars` as an untyped `string → string` map
-([`EnvironmentService.ts`](apps/desktop/src/main/workspace/EnvironmentService.ts)) and are dumped as
-plain JSON (`environments/<slug>.<id>.json`, `environment.schema.json`). The plan called for:
+**Item 1 done** (per the plan's own fallback: "if deprioritized, at least add the per-variable
+`config`/`secret` label" — item 2, below, was deprioritized; item 1 was not).
 
-1. **Per-variable label** (`config` vs `secret`) in the data model, UI
-   ([`EnvironmentsSettings.tsx`](apps/desktop/src/renderer/src/settings/sections/EnvironmentsSettings.tsx))
-   and schema — mirrors Postman's `default`/`secret` variable types. A variable marked `secret` should
-   not be exportable as a literal value (route it through the `${ secret('NAME') }` capability instead,
-   or export as a placeholder — same rule already applied to keychain secrets in `ExportService`).
-2. **Environments as `.env` (dotenv) files on disk** instead of JSON — the plan's `environments/<name>.env`
-   form (§3 of the old plan). This is a projection change (new codec) plus an `environment.schema.json`
-   revision (or its retirement in favor of a documented dotenv grammar in `FORMAT.md`).
-3. Decide whether this is worth the churn now — the JSON form already works and is validated; the
-   dotenv form is mostly a portability/readability nicety for hand-editing. If deprioritized, at least
-   add the per-variable `config`/`secret` label (item 1), which has real security value.
+- **Schema:** `environments.secret_vars TEXT NOT NULL DEFAULT '[]'` (a JSON array of the keys in `vars`
+  labeled "secret" rather than "config"), `SCHEMA_VERSION` 25→26
+  ([`schema.ts`](apps/desktop/src/main/storage/schema.ts): DDL + forward migration). **Advisory only**
+  — mirrors Postman's `default`/`secret` variable types, gates UI display and (once export exists —
+  see §3.6, not yet built) export; `env('KEY')` resolution
+  ([`EnvironmentService.resolve`](apps/desktop/src/main/workspace/EnvironmentService.ts)) is unchanged
+  and kind-agnostic, exactly like a keychain `secret(...)` value is only ever a reference, never
+  re-derived from a label.
+- **Service:** `EnvironmentService.update()` accepts `secretVars?: string[]`, always filtered against
+  the live `vars` keys (on every `vars` and/or `secretVars` write) so renaming/removing a variable can
+  never leave a stale secret label pointing at nothing.
+- **Wire format:** `envUpdateRequestSchema`/`EnvironmentDto` in `ops.ts` carry `secretVars`; the
+  projection's `environments` `FLAT_ENTITIES` entry and `environment.schema.json` both gained the
+  field. Back-compat: an environment file written before this (no `secretVars` key at all, not `null`)
+  hydrates the key as `[]` — a new `jsonDefaults` hook on `FlatEntity`/`domainToRow`
+  ([`projection.ts`](apps/desktop/src/main/workspace/projection/projection.ts)) distinguishes "key
+  absent → default" from "key present as `null` → stays `null`" (needed here because `secret_vars` is
+  `NOT NULL`, unlike the already-nullable `vars`).
+- **UI:** `KeyValueEditor` gained optional `secretKeys`/`onToggleSecret` props (only used by
+  `EnvironmentsSettings`, a no-op everywhere else it's reused — request params/headers have no such
+  concept) — a per-row lock-icon toggle, and the value input renders as `type="password"` once a row
+  is marked secret.
+- **Three gaps found and fixed while wiring this up** (all pre-existing, exposed by adding this
+  column): (a) the v18 migration step referenced the *live* `ENVIRONMENTS_DDL` constant instead of a
+  frozen historical snapshot, so mutating that constant for v26 silently broke `ALTER TABLE ... ADD
+  COLUMN` on a fresh v1→v26 migration (`duplicate column name`) — fixed by inlining the v18-era DDL,
+  matching how every other migration step already treats its DDL as frozen; (b) `domainToRow` would
+  hydrate a literal SQL `NULL` into a `NOT NULL` column (or a wrong `0` into a `NOT NULL` `bool` column)
+  for a domain field entirely absent from an old file, as opposed to present-and-`null` — generalized a
+  `jsonDefaults`→**`defaults`** hook on `FlatEntity`/`domainToRow`
+  ([`projection.ts`](apps/desktop/src/main/workspace/projection/projection.ts)) covering `json`, `bool`
+  and plain columns alike; (c) applying (b) more broadly surfaced the *same* bug already latent for
+  `folders.headers`/`actions`/`notes` (added at v21/v24, well after folders existed — a pre-existing
+  file predating one of them would hit `NOT NULL constraint failed` on hydrate) and for
+  `workspace_settings.batcher_enabled` (added at v22 — an old `settings.json` would silently hydrate the
+  batcher *disabled* instead of its intended default-enabled) — both now covered by `defaults` entries
+  too (`proxy`/`auth` stay undefaulted; they're genuinely nullable, so an absent key correctly hydrates
+  as `null`, not `{}`).
+- Covered by `Environment.test.ts` (label round-trip + pruning + kind-agnostic `resolve()`),
+  `schema.test.ts` (fresh-schema + migration pair, the v24/v25 pattern), `migration.test.ts` (full
+  v1→current path, which is what caught gap (a)), `projection.test.ts` (missing-key back-compat cases
+  for environments/folders/settings, which caught gaps (b) and (c)), and `EnvironmentsSettings.test.tsx`
+  (new — the renderer had no test file
+  for this section before).
+
+**Item 2 (dotenv on-disk form) — done.** `FORMAT_VERSION` 4→5
+([`projection.ts`](apps/desktop/src/main/workspace/projection/projection.ts)): every
+`environments/<slug>.<id>.json` gets a companion `environments/<slug>.<id>.env` — a plain `KEY=value`
+mirror for tools that read dotenv directly. **Write-only**, matching the front-matter precedent from
+§3.2: the JSON stays the sole source of truth, the `.env` is regenerated on every save and never read
+back on hydrate (`hydrateFlat` already only globs `*.json`, so this needed no hydrate change at all).
+Secret-labeled vars (item 1) are never written to it — left out entirely, only named in a trailing
+`# secret-labeled (omitted): ...` comment — so the file carries no more risk than the JSON it mirrors,
+and needs no change to the §3.4 secret scan (same values, already covered there). Values needing it
+are double-quoted (whitespace/`#`/quotes/newlines escaped); a renamed or deleted environment's stale
+`.env` is cleaned up the same way `dumpFlat` already does for `.json` files.
+Covered by a new `projection.test.ts` block: content + secret exclusion + quoting + stale-file cleanup
++ confirmation that hydrate ignores it entirely (a hand-edited `.env` with a different value has zero
+effect on the rehydrated `vars`).
 
 ### 3.4 Pre-write secret scan + `secretRef` migration
 
-`scanForSecrets`/`hasSecretLiteral` ([`secret-scan.ts`](packages/shared/src/secret-scan.ts)) exist and
-are unit-tested but are **not called from anywhere in `apps/desktop/src/main`**.
+**Items 1-2 done.** `scanForSecrets` ([`secret-scan.ts`](packages/shared/src/secret-scan.ts)) is now
+wired into `git.commit` as a **warn-and-confirm** gate (decided over hard-refuse: an entropy heuristic
+has real false-positive risk, and a git commit is the one point that durably captures a literal secret
+into shared history — a local/folder save is not gated the same way, per the plan's own "weaker stakes"
+framing).
 
-**To do:**
-1. Wire the scan into the write path before a folder/git workspace is persisted — likely in
-   `dumpWorkspace` ([`projection.ts:119-124`](apps/desktop/src/main/workspace/projection/projection.ts))
-   or at `git.commit` time ([`GitOpsService.ts`](apps/desktop/src/main/git/GitOpsService.ts)) — flagging
-   probable secret literals (high-entropy strings, literal `Authorization:` header values) before they
-   reach a committed file, pointing the user at `secret(...)`.
-2. Decide UX: hard refuse vs. warn-and-confirm. A local (non-git) folder workspace has weaker stakes
-   than a `git commit`, so the gate might only need to be strict on the git commit path.
-3. A one-click "convert `secretRef` → `secret('NAME')`" action (folder/auth editor UI) — the legacy
-   `auth.secretRef` path already resolves through the keychain identically to the new capability
-   ([`HttpService.ts`](apps/desktop/src/main/http/HttpService.ts)), so this is a UI convenience, not a
-   behavior change.
+- **`scanWorkspaceForSecrets(adapter)`** (new,
+  [`projection.ts`](apps/desktop/src/main/workspace/projection/projection.ts)) dumps the workspace into
+  a throwaway `MemoryDirFs` (never touches the real filesystem) and scans exactly the files that would
+  be written: api `request.http` bodies, `folders/*.json` (propagated headers/auth), and
+  `environments/*.json` `vars` — **excluding** any variable already labeled `secret` (§3.3), since a
+  labeled variable is an acknowledged risk and re-flagging it would just be noise. Documents/scenarios/
+  capabilities are not scanned (free-form text → far more false positives, no higher real-secret odds).
+- **`GitOpsService.commit(message, force = false)`**
+  ([`GitOpsService.ts`](apps/desktop/src/main/git/GitOpsService.ts)) runs the scan first (before
+  `ws.save()`, so a refusal never touches disk); with findings and no `force`, throws
+  `AppError('SECRETS_FOUND', 'validation', ..., { findings })` — `details` carries only `SecretFinding`s
+  (`kind` + a redacted `hint`, never a full value), matching the wire contract's own "details MUST NOT
+  contain secrets" rule. `force: z.boolean().optional()` added to `gitCommitRequestSchema` (`ops.ts`) —
+  a new pattern in this codebase (no prior op had a force/confirm-through field).
+- **UI:** [`GitStatusButton.tsx`](apps/desktop/src/renderer/src/git/GitStatusButton.tsx) intercepts a
+  `SECRETS_FOUND` error (instead of routing it to the generic error toast), lists the findings in a
+  `ConfirmDialog`, and on confirm re-sends the same commit with `force: true`.
+- Covered by `GitOpsService.test.ts` (refuse / force-through / secret-labeled-var exclusion),
+  `projection.test.ts` (`scanWorkspaceForSecrets` unit cases), and `GitStatusButton.test.tsx` (the full
+  refuse → dialog → confirm → retry round trip).
 
-### 3.5 Local-only data under a git-ignored `/.swaft/` cache directory
+**Item 3 (one-click `secretRef` → `secret('NAME')` migration action) — done.**
+[`AuthEditor.tsx`](apps/desktop/src/renderer/src/document/AuthEditor.tsx) shows a banner whenever
+`auth.secretRef` is set (a state no UI could ever produce, but reachable by hand-editing JSON or a
+pre-this-work workspace): `HttpService.applyAuth`'s own priority is "the plain field wins, `secretRef`
+is only a fallback for bearer/basic/apikey" (`token ?? secret`, `password ?? secret`, `value ?? secret`)
+— so the banner's action depends on whether that field is actually empty:
+- **Field empty (secretRef is live):** "Migrate to secret(...)" — sets the field to
+  `${ secret('<ref>') }` and drops `secretRef` in one `onChange`, in the same object-patch pattern every
+  other field already uses (no new save path; the existing whole-request `template.updateSource` picks
+  it up).
+- **Field already set (secretRef is dead) or kind has no target (`none`/`inherit`):** "Remove unused
+  reference" — just drops `secretRef`, no value overwritten.
 
-Not built. Today, local-only tables (request/run history, receipts, input state, selections) simply
-aren't projected to files for folder/git workspaces — they live only in the in-memory SQLite cache and
-are lost across a close/reopen of a folder or git workspace (this was already true before this work;
-it is called out here because the original plan assumed a persistent local cache directory that was
-never implemented). If this data should survive a reopen, add a `/.swaft/` directory (git-ignored, like
-`.gitignore` already reserves) holding a serialized cache of the 🔵 local-only tables, read on open and
-written on save, alongside (not instead of) the versioned projection tree.
+`secret('NAME')` and `secretRef` are confirmed the same addressing scheme (both a flat key into
+`SecretService`'s store), so migration is a literal string substitution — no re-derivation needed.
+Covered by a new `AuthEditor.test.tsx` (no banner without a `secretRef`; migrate path for
+bearer/basic/apikey; remove-only path when the target field is occupied or the kind has none).
 
-### 3.6 Export dialog: environment multi-select + personal/shared flag
+### 3.5 Local-only data under a git-ignored `/.swaft/` cache directory — done
 
-Noted in §1.5 as not built. `ExportDialog`/`ExportService` don't yet let the user pick which
-environments to bundle with a collection export, and don't distinguish workspace-scoped from
-user-scoped ("personal") environments. Add a multi-select to `ExportDialog.tsx`, default to the active
-environment, and flag personal ones so a shared export can't silently leak them.
+[`local-cache.ts`](apps/desktop/src/main/workspace/projection/local-cache.ts) adds `dumpLocalCache`/
+`hydrateLocalCache`, serializing all 8 [`LOCAL_ONLY_TABLES`](apps/desktop/src/main/storage/schema.ts)
+(`local_input_state`, `release_selection`, `api_history`, `api_action_runs`, `receipts`,
+`environment_selection`, `scenario_runs`, `scenario_run_steps`) to a single
+`/.swaft/local-cache.json`, alongside (not instead of) the versioned projection tree. `.gitignore`
+already reserved `/.swaft/` in both `FolderPersistence`/`GitPersistence` (§1.3), so the cache file is
+written to disk but never tracked/committed.
 
-### 3.7 Round-trip identity for Bruno exports
+Wired into [`FolderPersistence.ts`](apps/desktop/src/main/workspace/persistence/FolderPersistence.ts)
+and [`GitPersistence.ts`](apps/desktop/src/main/workspace/persistence/GitPersistence.ts) only (not the
+single-file `.swaft` container mode, which keeps the local-only tables in its own SQLite file
+already): `open()` calls `hydrateLocalCache` right after `hydrateWorkspace` succeeds; `save()` calls
+`dumpLocalCache` right after `dumpWorkspace`. A missing or corrupt cache file is treated as "nothing
+to restore" — this data was always best-effort/local, so it must never block opening or saving a
+workspace.
 
-`toBruno`/`fromBruno` don't yet carry a `meta.swaftId` field, so re-importing a previously-exported
-Bruno collection creates new entities rather than updating in place. Add the id to the `.bru` `meta`
-block on export and match on it during import (Postman v2.1 has no equivalent extension slot, so this
-stays Bruno-only, as originally scoped).
+Covered by [`local-cache.test.ts`](apps/desktop/src/main/workspace/projection/local-cache.test.ts)
+(round-trip across several tables, missing-file no-op, corrupt-JSON tolerance, empty-cache shape) and
+new cases in `FolderPersistence.test.ts`/`GitPersistence.test.ts` (save → reopen round-trip, absent
+cache on an older workspace, and — on the real-git suite — that `.swaft/local-cache.json` lands on
+disk but stays untracked by `git ls-files`).
+
+### 3.6 Export dialog: environment multi-select + personal/shared flag — done
+
+`ExportDialog.tsx` gained a checkbox list under the format/conversion pickers, one row per environment
+(name + the existing `OwnerBadge` Personal/Workspace label reused from `EnvironmentPicker.tsx`),
+default-checked to the workspace's active environment (`useEnvironmentsOptional()` — the `Optional`
+variant so the dialog degrades to "no environments" instead of crashing outside an
+`EnvironmentProvider`, e.g. in isolated tests). Selected ids go out as `environmentIds` on
+`collection.export` (`collectionExportRequestSchema`, `ops.ts`).
+
+`ExportService.export()` takes a fourth `environmentIds` param, fetches each via
+`EnvironmentService.get`, filters out `secretVars`-labeled keys (never emit a literal secret into a
+shared file, mirroring the invariant already documented on `ImportedEnvironment` — "environment values
+are plain config, never secrets"), and reports how many were redacted. Silently skips an
+unknown/deleted id rather than failing the whole export.
+
+Per-format bundling (open-standards question, resolved: Postman + Bruno only):
+- **Postman** — a companion `<name>.postman_environment.json` file per selected environment
+  (`toPostmanEnvironment`, `postman.ts`), Postman's own environment-file format.
+- **Bruno** — a `environments/<name>.bru` file per selected environment inside the collection
+  directory (`toBruno` now takes an optional `environments` array; `bruno.ts`), Bruno's native
+  environment block (`vars { key: value }`).
+- **`.http`** — no native single-file environment concept; a selected environment is silently *not*
+  bundled, and the fidelity report says so explicitly (`N environment(s) were not bundled — .http
+  export has no environment file.`) rather than pretending to include it.
+
+Covered by new cases in `ExportService.test.ts` (Postman/Bruno env file content, secret redaction,
+`.http` limitation reported, unknown-id skip), `postman.test.ts`/`bruno.test.ts` (codec-level env file
+shape), and `ExportDialog.test.tsx` (default-to-active-environment, personal badge shown, toggling
+changes the `collection.export` payload).
+
+### 3.7 Round-trip identity for Bruno exports — done
+
+`ImportedRequest` (`packages/shared/src/collection.ts`) gained an optional `swaftId?: string`
+(mirrored by `importedRequestDtoSchema`, `ops.ts`). `ExportService` stamps each exported request with
+its own template id; `toBruno` writes it as a `swaftId` line in the `.bru` `meta { }` block (`bruno.ts`
+— `dict()`/`parseDict()` already tolerated an extra key, so this was additive); `fromBruno` reads it
+back. Postman/`.http` never set it (no extension slot), exactly as originally scoped.
+
+`ImportService.importCollection` now checks each request's `swaftId` before creating anything: if it
+still names a **live** template in this workspace (`TemplateService.getTemplate`), that template's
+`source` is updated in place (`updateSource`) instead of a duplicate being created; any other id
+(foreign workspace, stale, deleted) is ignored and falls through to a normal create — a stale id is
+never reused for an unrelated new entity. `ImportResult`/`ImportResultDto` gained an `updated` counter
+alongside `requests`, so callers can tell "created" from "updated in place" apart.
+
+Covered by `bruno.test.ts` (meta round-trip, absent when no id), `ImportService.test.ts` (update path,
+unknown-id fallback), and an `ExportService.test.ts` end-to-end case (export a project as Bruno,
+`fromBruno` + re-`importCollection` into the same project, assert one template updated and no
+duplicate). The renderer's import target picker still only offers "new project" (§1.5's noted gap),
+so the update-in-place path is exercised whenever a collection is re-imported into an **existing**
+project/folder — a scenario the backend now supports correctly even though today's UI doesn't yet
+drive it end-to-end.
 
 ---
 
@@ -274,8 +455,8 @@ stays Bruno-only, as originally scoped).
 - **dotenv (`.env`)** — `KEY=value` files; `.env` (committed config) vs `.env.local` (git-ignored
   secrets) is the standard split (not yet adopted for Swaft environments — §3.3).
 - **CommonMark** — the standardized Markdown spec.
-- **YAML front matter** — a `---`-delimited metadata block at the top of a text file; not yet adopted
-  for Swaft documents — §3.2.
+- **YAML front matter** — a `---`-delimited metadata block at the top of a text file; adopted for
+  Swaft `document` templates — §1.8/§3.2.
 - **JSON Schema (draft-07)** — used to publish/validate Swaft's own on-disk file shapes (§1.4).
 - **OPC / Zip container** — the "documented zip of open files" pattern behind `.docx`/`.xlsx`/`.epub`;
   the model for `.swaft` (§1.3).

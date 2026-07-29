@@ -8,6 +8,7 @@ import type {
   WorkspaceSummary,
 } from '@swaft/shared';
 import { AppError } from '../errors';
+import { scanWorkspaceForSecrets } from '../workspace/projection/projection';
 import type { WorkspaceService } from '../workspace/WorkspaceService';
 import type { GitService } from './GitService';
 
@@ -157,7 +158,25 @@ export class GitOpsService {
     return this.status();
   }
 
-  async commit(message: string): Promise<GitStatusDto> {
+  /**
+   * Commit every change. Refuses (unless `force`) when the workspace's own files would contain a
+   * probable secret literal (open-standards §3.4) — `AppError('SECRETS_FOUND', ...)` carries the
+   * findings (redacted hints only, never a full value) for the renderer's confirm-and-retry dialog.
+   * Local (non-git) folder saves are not gated the same way — a git commit is the one point that
+   * durably captures a literal secret into shared history, so that's where the stakes justify a gate.
+   */
+  async commit(message: string, force = false): Promise<GitStatusDto> {
+    if (!force) {
+      const findings = await scanWorkspaceForSecrets(this.ws.requireAdapter());
+      if (findings.length > 0) {
+        throw new AppError(
+          'SECRETS_FOUND',
+          'validation',
+          'Some files look like they contain a literal secret value instead of a secret(...) reference.',
+          { findings },
+        );
+      }
+    }
     // Flush in-memory edits to the working tree first, so the commit captures the current state.
     await this.ws.save();
     await this.git.commitAll(this.dir(), message);

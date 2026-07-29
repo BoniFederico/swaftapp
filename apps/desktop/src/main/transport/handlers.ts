@@ -162,7 +162,10 @@ export const handlers: Record<OpName, Handler> = {
   // Git storage mode
   'git.status': () => svc(async () => ({ status: await getGitOpsService().status() })),
   'git.commit': (p) =>
-    svc(async () => ({ status: await getGitOpsService().commit((p as GitCommitRequest).message) })),
+    svc(async () => {
+      const r = p as GitCommitRequest;
+      return { status: await getGitOpsService().commit(r.message, r.force ?? false) };
+    }),
   'git.push': () => svc(async () => ({ status: await getGitOpsService().push() })),
   'git.pull': () => svc(async () => ({ status: await getGitOpsService().pull() })),
   'git.fetch': () => svc(async () => ({ status: await getGitOpsService().fetch() })),
@@ -454,6 +457,7 @@ export const handlers: Record<OpName, Handler> = {
           name: r.name,
           description: r.description,
           vars: r.vars,
+          secretVars: r.secretVars,
         }),
       };
     }),
@@ -533,7 +537,7 @@ export const handlers: Record<OpName, Handler> = {
   'collection.export': (p) =>
     svc(async () => {
       const r = p as CollectionExportRequest;
-      return getExportService().export(r.scope, r.format, r.conversion);
+      return getExportService().export(r.scope, r.format, r.conversion, r.environmentIds ?? []);
     }),
   // Package the open workspace into a portable `.swaft` zip container (D1), optionally encrypted.
   'container.export': (p) =>

@@ -24,11 +24,13 @@ settings.json                           # workspace settings (execution mode, bl
 projects/<slug>.<shortId>.json          # one file per project
 folders/<slug>.<shortId>.json           # one file per folder (name, parent, propagated headers/proxy/auth/actions, notes)
 tags/<slug>.<shortId>.json              # one file per tag
-environments/<slug>.<shortId>.json      # one file per environment (config vars; secrets are never stored here)
+environments/<slug>.<shortId>.json      # one file per environment (vars + which keys are labeled secret; literal secret values are never stored here)
+environments/<slug>.<shortId>.env       # write-only dotenv mirror of the same vars, minus secret-labeled ones; regenerated on save, never read back
 changelog/<slug>.<shortId>.json         # one file per changelog entry
 templates/<slug>.<shortId>/             # one directory per template
     template.json                       # metadata: id, name, type, subtype, folder/project, tags, hasDraft, (api only) `api` block
     request.http                        # api templates: method/url/headers/body + Seebo, info as `#` comments
+    scenario.arazzo.yaml                # scenario templates: an Arazzo 1.0 workflow document, Swaft-only bits under `x-swaft`
     source.<ext>                        # other template types: verbatim editable body (e.g. .md, .js, .yaml)
     releases/v<version>.<shortId>.json  # published release snapshots
 .gitignore  .gitattributes              # keep local caches / OS cruft out; normalize line endings to LF
@@ -89,6 +91,17 @@ depends on the template `type`:
   api-key-in-header, basic) is rendered as the actual header; parts `.http` cannot carry — structured
   auth (api-key-in-**query**, `inherit`, `secretRef`) and pre/post **actions** — live in the
   `template.json` `api` block.
+- **`scenario`** → **`scenario.arazzo.yaml`**, an [Arazzo 1.0](https://spec.openapis.org/arazzo/latest.html)
+  workflow document: the graph's nodes become `steps`, edges become `onSuccess`/`onFailure` `goto`s. An
+  `api`-typed node gets a best-effort native `operationId` hint. Everything Arazzo has no native concept
+  for — non-HTTP nodes (action/capability/delay), decision branches, breakpoints, Seebo conditions,
+  canvas positions — lives under **`x-swaft`** extensions on the workflow/step, so the round-trip is
+  lossless while the document stays a valid Arazzo file another tool can partially read.
+- **`document`** → **`source.<ext>`** with a **YAML front-matter** header prepended
+  (`swaftId`/`name`/`type`/`subtype`/`tags`, the [Jekyll/Hugo/Obsidian](https://jekyllrb.com/docs/front-matter/)
+  convention) — the file is self-describing when opened directly by another tool. `template.json` stays
+  the source of truth for those fields; the header is a write-only mirror, tolerantly stripped back out
+  on hydrate (a file with no, or a malformed, header just has an empty header — the whole file is body).
 - **all other types** → **`source.<ext>`**, the editable body written verbatim with a type-appropriate
   extension (`.md`, `.html`, `.js`, `.yaml`, …). The extension is cosmetic; content is byte-for-byte.
 
@@ -101,14 +114,32 @@ portable `.http` that any REST client runs unchanged. A formula-bearing file is 
 (Postman / Bruno / `.http`), where you choose whether to translate `env('X') → {{X}}`, snapshot values,
 etc. Secrets are never materialized to files.
 
+Export can optionally bundle one or more **environments** alongside the requests: Postman gets a
+companion `<name>.postman_environment.json` per environment, Bruno gets `environments/<name>.bru`
+(its native `vars { }` block); `.http` has no single-file environment concept, so a selection there is
+skipped and called out in the export's fidelity report instead. Either way, a variable labeled
+**secret** (see [Environments](guide/environments.md#config-vs-secret-label)) is always left out of the
+exported file — never a literal value, just its name in a comment (see the `environments/*.json`
+entry in [§1](#1-directory-layout) for the `secretVars` label itself).
+
+A **Bruno** export also stamps each request's own template id as `meta.swaftId` in the `.bru` file.
+Re-importing that same file back into an existing project/folder recognizes the id and updates the
+matching template's request in place instead of creating a duplicate. Postman/`.http` have no slot for
+this and always import as fresh entities.
+
 ---
 
 ## 5. Versioning
 
 `workspace.json` carries two integers:
 
-- **`formatVersion`** — the on-disk file *shapes*. Current: **2** (api templates as `request.http` +
-  `api` block; v1 stored an api `source.json` and still loads, upgraded on the next save).
+- **`formatVersion`** — the on-disk file *shapes*. Current: **5** (each environment gets a companion,
+  write-only `.env` dotenv mirror — §3.3; v4 added the document YAML front-matter header on
+  `source.<ext>`; v3 added scenario templates as `scenario.arazzo.yaml`; v2 added api templates as
+  `request.http` + `api` block; earlier versions stored api/scenario sources as `source.json` and still
+  load, upgraded on the next save). Front matter and the `.env` mirror are both read tolerantly (or not
+  read at all) regardless of `formatVersion` — an older document file with no header just parses as a
+  header-less body, and a missing/hand-edited `.env` file is never consulted on hydrate.
 - **`schemaVersion`** — the working-store schema. Opening a workspace whose `schemaVersion` is newer
   than the app supports is refused (`SCHEMA_TOO_NEW`) rather than risking a lossy downgrade.
 
@@ -118,7 +149,16 @@ etc. Secrets are never materialized to files.
   (git/history provide this; committing it would only add churn). Soft-deleted rows are omitted, so a
   delete surfaces as a file removal.
 - **`storage_mode` / `device_id`** — environment-supplied, not versioned.
-- **local-only data** — request/run history, receipts, input state, selections — never versioned.
+- **local-only data** — request/run history, receipts, input state, selections — never versioned (never
+  committed, never shared), but not *lost* either: see `/.swaft/` below.
+
+### The `/.swaft/` local cache (git-ignored)
+
+Folder and Git workspaces keep the local-only data above in a single `/.swaft/local-cache.json` file,
+written on save and read back on open, so it survives a close/reopen instead of only living in the
+in-memory store for that session. `.gitignore`/`.gitattributes` already reserve `/.swaft/` for exactly
+this — it is never tracked, never diffed, never part of what you commit or share. A missing or
+unreadable cache is treated as "nothing to restore", never an error.
 
 ---
 

@@ -3965,6 +3965,16 @@ body {
   border-radius: var(--radius-sm);
   background: var(--surface);
 }
+.auth-editor__legacy-secret {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--warning-border, var(--border));
+  border-radius: var(--radius-sm);
+  background: var(--warning-surface, var(--surface));
+}
 .cm-host--dark .cm-sb-delim,
 .cm-host--dark .cm-sb-kw {
   color: #c678dd;
@@ -4347,6 +4357,15 @@ body {
   background: color-mix(in srgb, #d1495b 12%, transparent);
   border: 1px solid color-mix(in srgb, #d1495b 40%, var(--border));
 }
+/* Pre-commit secret-scan findings, listed in the SECRETS_FOUND confirm dialog. */
+.git-secrets-list {
+  margin: 0;
+  padding-left: var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  max-height: 200px;
+  overflow-y: auto;
+}
 .git-panel__empty {
   padding: var(--space-2);
   font-size: var(--fs-sm);
@@ -4539,6 +4558,16 @@ body {
 .env-vars__delcol {
   flex: 0 0 auto;
   width: calc(24px + 2 * var(--space-1));
+}
+/* Head-row spacer matching the per-row secret-toggle button column (environment variables only). */
+.env-vars__secretcol {
+  flex: 0 0 auto;
+  width: calc(24px + 2 * var(--space-1));
+}
+/* The secret-toggle lock icon reads as "on" (colored, full opacity) once a variable is marked secret. */
+.env-vars__row .ui-icon-btn[data-active='true'] {
+  color: var(--primary);
+  opacity: 1;
 }
 /* A grid cell hosting a SeeboField (formula-highlighted value): borderless, like the plain inputs. */
 .env-vars__seebo {

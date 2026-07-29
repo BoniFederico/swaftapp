@@ -2,6 +2,7 @@ import { AppError } from '../../errors';
 import type { DbBackend } from '../../storage/db-backend';
 import { LocalAdapter } from '../LocalAdapter';
 import { NodeDirFs, type DirFs } from '../projection/dir-fs';
+import { dumpLocalCache, hydrateLocalCache } from '../projection/local-cache';
 import { dumpWorkspace, hydrateWorkspace } from '../projection/projection';
 import type {
   CreateParams,
@@ -89,6 +90,7 @@ export class FolderPersistence implements WorkspacePersistence {
         now: this.now(),
         storageMode: this.kind,
       });
+      await hydrateLocalCache(adapter, fs);
       return { adapter, encrypted: false };
     } catch (err) {
       await adapter.close().catch(() => undefined);
@@ -98,6 +100,8 @@ export class FolderPersistence implements WorkspacePersistence {
   }
 
   async save(adapter: LocalAdapter, location: string): Promise<void> {
-    await dumpWorkspace(adapter, this.fs(location));
+    const fs = this.fs(location);
+    await dumpWorkspace(adapter, fs);
+    await dumpLocalCache(adapter, fs);
   }
 }

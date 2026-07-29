@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { ok, type GitStatusDto, type ResultEnvelope } from '@swaft/shared';
+import { makeError, ok, type GitStatusDto, type ResultEnvelope } from '@swaft/shared';
 import { AppProviders } from '../AppProviders';
 import { ApiClient } from '../api-client/client';
 import type { Transport } from '../api-client/transport/types';
@@ -167,6 +167,60 @@ describe('GitStatusButton', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Git' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Reload' }));
     await waitFor(() => expect(calls.some((c) => c.op === 'git.reload')).toBe(true));
+  });
+
+  it('shows a confirm dialog on a SECRETS_FOUND refusal, then commits with force on confirm', async () => {
+    const calls: { op: string; payload: unknown }[] = [];
+    let status = { ...DIRTY };
+    const client = new ApiClient({
+      call(op, payload): Promise<ResultEnvelope<unknown>> {
+        calls.push({ op, payload });
+        if (op === 'git.status' || op === 'git.reload') return Promise.resolve(ok({ status }));
+        if (op === 'git.available') return Promise.resolve(ok({ available: true, version: 'v' }));
+        if (op === 'workspace.current') return Promise.resolve(ok({ workspace: null }));
+        if (op === 'workspace.recent') return Promise.resolve(ok({ items: [] }));
+        if (op === 'git.commit') {
+          const force = (payload as { force?: boolean }).force ?? false;
+          if (!force) {
+            return Promise.resolve(
+              makeError('SECRETS_FOUND', 'validation', 'Probable secret literal(s) found.', {
+                findings: [
+                  { path: 'templates/call.t1/request.http', findings: [{ kind: 'known-token', hint: 'ghp…IJ' }] },
+                ],
+              }),
+            );
+          }
+          status = { ...CLEAN, remoteUrl: status.remoteUrl };
+          return Promise.resolve(ok({ status }));
+        }
+        return Promise.resolve(ok({}));
+      },
+    });
+    render(
+      <AppProviders>
+        <WorkspaceProvider client={client}>
+          <GitStatusButton client={client} />
+        </WorkspaceProvider>
+      </AppProviders>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Git' }));
+    fireEvent.change(screen.getByLabelText('Commit message'), { target: { value: 'add call' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Commit' }));
+
+    expect(await screen.findByText('Possible secrets found')).toBeInTheDocument();
+    expect(screen.getByText(/known-token/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Commit anyway' }));
+
+    await waitFor(() =>
+      expect(calls.filter((c) => c.op === 'git.commit')).toHaveLength(2),
+    );
+    expect(calls.filter((c) => c.op === 'git.commit')[1]?.payload).toEqual({
+      message: 'add call',
+      force: true,
+    });
+    await waitFor(() => expect(screen.getByText('Working tree clean.')).toBeInTheDocument());
   });
 
   it('warns on conflicts and blocks committing', async () => {

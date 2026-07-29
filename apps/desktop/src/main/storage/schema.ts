@@ -11,7 +11,7 @@
  * reshaped to flat collections) + workspace settings + restrictions.
  */
 
-export const SCHEMA_VERSION = 25;
+export const SCHEMA_VERSION = 26;
 
 /** Sync-metadata columns present on every 🟢 synchronized entity. */
 export const SYNC_META_COLUMNS = [
@@ -162,8 +162,12 @@ const TEMPLATE_TAGS_DDL = `CREATE TABLE template_tags (
 
 // Environments: 🟢 synchronized named variable sets. `owner_kind` scopes each environment to the
 // current user (personal), the workspace (shared), or a specific project; `owner_id` carries the
-// username / null / project id respectively. `vars` is a JSON object (string → string) — plain
-// (non-secret) values, read by the `env(...)` Seebo data capability.
+// username / null / project id respectively. `vars` is a JSON object (string → string), read by the
+// `env(...)` Seebo data capability regardless of kind. v26 adds `secret_vars` (a JSON array of the
+// keys in `vars` labeled "secret" rather than "config") — a label only, purely advisory for UI/export;
+// resolution of `env(...)` is unchanged, secret-labeled vars still resolve their literal value like
+// any other (the same way a keychain `secret(...)` value is only ever a reference, never re-derived
+// from this label).
 const ENVIRONMENTS_DDL = `CREATE TABLE environments (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -171,6 +175,7 @@ const ENVIRONMENTS_DDL = `CREATE TABLE environments (
   owner_kind TEXT NOT NULL,
   owner_id TEXT,
   vars TEXT NOT NULL DEFAULT '{}',
+  secret_vars TEXT NOT NULL DEFAULT '[]',
   ${SYNC_META_DDL}
 );`;
 
@@ -442,8 +447,18 @@ export const MIGRATIONS: { to: number; sql: string }[] = [
     to: 18,
     // v18 adds environments (named variable sets, read by the `env(...)` capability) + the local-only
     // active-environment selection.
+    // NOTE: frozen snapshot — the v18-era environments table had no `secret_vars` (added by the
+    // `to: 26` step), so it is inlined here rather than referencing the current ENVIRONMENTS_DDL.
     sql: `
-      ${ENVIRONMENTS_DDL}
+      CREATE TABLE environments (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        owner_kind TEXT NOT NULL,
+        owner_id TEXT,
+        vars TEXT NOT NULL DEFAULT '{}',
+        ${SYNC_META_DDL}
+      );
       ${ENVIRONMENT_SELECTION_DDL}
     `,
   },
@@ -507,5 +522,11 @@ export const MIGRATIONS: { to: number; sql: string }[] = [
     to: 25,
     // v25 adds the scenario workflow run history (local-only): a run + its per-node steps.
     sql: `${SCENARIO_RUNS_DDL}\n${SCENARIO_RUN_STEPS_DDL}`,
+  },
+  {
+    to: 26,
+    // v26 labels individual environment variables as "config" or "secret" (a JSON array of the
+    // secret-labeled keys) — advisory only, gates export/UI, not `env(...)` resolution.
+    sql: `ALTER TABLE environments ADD COLUMN secret_vars TEXT NOT NULL DEFAULT '[]';`,
   },
 ];

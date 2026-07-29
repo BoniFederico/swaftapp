@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -126,6 +126,30 @@ describe('GitPersistence (in-memory)', () => {
       code: 'WORKSPACE_NOT_FOUND',
     });
   });
+
+  it('carries 🔵 local-only tables across save → open via the git-ignored /.swaft/ cache (§3.5)', async () => {
+    const { fs, persistence } = make();
+    const created = await persistence.create({
+      name: 'Repo WS',
+      executionMode: 'sandbox',
+      deviceId: 'dev-1',
+      now: '2024-01-01T00:00:00.000Z',
+      location: '/repo',
+    });
+    await created.adapter.run(
+      `INSERT INTO api_history (id, template_id, method, url, status, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+      ['h1', 'tpl-1', 'GET', 'https://example.test', 200, '2024-01-01T00:00:00.000Z'],
+    );
+    await persistence.save(created.adapter, '/repo');
+    await created.adapter.close();
+
+    expect(fs.snapshot().has('.swaft/local-cache.json')).toBe(true);
+
+    const reopened = await persistence.open({ location: '/repo' });
+    const history = await reopened.adapter.all('SELECT template_id, method, url, status FROM api_history');
+    expect(history).toEqual([{ template_id: 'tpl-1', method: 'GET', url: 'https://example.test', status: 200 }]);
+    await reopened.adapter.close();
+  });
 });
 
 // --- Integration through the real git binary + real filesystem --------------
@@ -176,6 +200,9 @@ describe.skipIf(!gitAvailable)('GitPersistence (real git)', () => {
     expect(tracked).toMatch(/workspace\.json/);
     // Hybrid naming (D2): `<slug>.<shortId>.json` — id `p1`, name "Infra" → `infra.p1.json`.
     expect(tracked).toMatch(/projects\/infra\.p1\.json/);
+    // §3.5: the local-only cache is written to disk but stays git-ignored, never tracked.
+    expect(existsSync(join(dir, '.swaft/local-cache.json'))).toBe(true);
+    expect(tracked).not.toMatch(/\.swaft/);
 
     const reopened = await persistence.open({ location: dir });
     expect((await reopened.adapter.getMeta())?.name).toBe('On Disk');

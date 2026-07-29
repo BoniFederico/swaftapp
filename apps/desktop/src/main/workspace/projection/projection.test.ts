@@ -5,8 +5,8 @@ import { InProcessDbBackend } from '../../storage/db-backend';
 import { LocalAdapter } from '../LocalAdapter';
 import { canonicalJson } from './canonical-json';
 import { MemoryDirFs } from './dir-fs';
-import { fromHttpFile, toHttpFile } from '@swaft/shared';
-import { dumpWorkspace, hydrateWorkspace, sourceExtension } from './projection';
+import { fromArazzo, fromHttpFile, parseScenarioGraph, toArazzo, toHttpFile } from '@swaft/shared';
+import { dumpWorkspace, hydrateWorkspace, scanWorkspaceForSecrets, sourceExtension } from './projection';
 import { entityBaseName, shortId } from './naming';
 
 /** Hybrid on-disk names (D2) for the fixture entities, so path assertions track the real scheme. */
@@ -16,6 +16,7 @@ const N = {
   tplDoc: `templates/${entityBaseName('Release notes', 'tpl-doc')}`,
   tplCap: `templates/${entityBaseName('slugify', 'tpl-cap')}`,
   tplApi: `templates/${entityBaseName('Get user', 'tpl-api')}`,
+  tplScenario: `templates/${entityBaseName('Login flow', 'tpl-scn')}`,
   tagDead: `tags/${entityBaseName('gone', 'tag-dead')}.json`,
   relV1: `v1.${shortId('rel-1')}.json`,
 };
@@ -37,6 +38,16 @@ function canonicalApiSource(source: string): string {
   if (model.auth) out.auth = model.auth;
   if (Array.isArray(model.actions) && model.actions.length > 0) out.actions = model.actions;
   return JSON.stringify(out);
+}
+
+/**
+ * Mirror the projection's scenario round-trip (source → Arazzo YAML → source) so the snapshot compares
+ * scenarios at the **domain** level: the Arazzo form normalizes edge ids and drops nothing meaningful,
+ * but isn't byte-identical to the original graph JSON.
+ */
+function canonicalScenarioSource(source: string): string {
+  const { graph } = parseScenarioGraph(source);
+  return JSON.stringify(fromArazzo(toArazzo('t', graph)).graph);
 }
 
 /** A monotonic clock so inserted rows get distinct, deterministic timestamps. */
@@ -185,6 +196,45 @@ async function buildSampleWorkspace(): Promise<LocalAdapter> {
     has_draft: 1,
   });
 
+  // scenario (Arazzo-backed graph JSON source), with a decision, a delay and a breakpoint
+  await ins(a, 'templates', {
+    id: 'tpl-scn',
+    folder_id: '',
+    project_id: 'proj-1',
+    name: 'Login flow',
+    type: 'scenario',
+    subtype: null,
+    source: JSON.stringify({
+      version: 1,
+      nodes: [
+        { id: 'start', kind: 'start', position: { x: 80, y: 140 } },
+        {
+          id: 'n1',
+          kind: 'template',
+          templateType: 'api',
+          ref: 'tpl-api',
+          alias: 'login',
+          version: 'draft',
+          breakpoint: true,
+          position: { x: 240, y: 140 },
+        },
+        {
+          id: 'n2',
+          kind: 'decision',
+          condition: "${ previous('login').status == 200 }",
+          position: { x: 460, y: 140 },
+        },
+        { id: 'n3', kind: 'delay', ms: 1500, position: { x: 680, y: 80 } },
+      ],
+      edges: [
+        { id: 'e0', from: 'start', to: 'n1' },
+        { id: 'e1', from: 'n1', to: 'n2' },
+        { id: 'e2', from: 'n2', to: 'n3', branch: 'true' },
+      ],
+    }),
+    has_draft: 0,
+  });
+
   // capability (js), plus a soft-deleted template that must vanish from the files
   await ins(a, 'templates', {
     id: 'tpl-cap',
@@ -261,6 +311,7 @@ async function snapshot(a: LocalAdapter): Promise<Domain> {
       ['has_draft'],
     );
     if (picked.type === 'api') picked.source = canonicalApiSource(String(picked.source));
+    if (picked.type === 'scenario') picked.source = canonicalScenarioSource(String(picked.source));
     templates.push({
       ...picked,
       tags: tagRows.map((r) => r.tag_id),
@@ -341,6 +392,82 @@ describe('WorkspaceProjection', () => {
     expect(JSON.parse(row!.source)).toEqual({ method: 'GET', url: 'https://legacy/x' });
   });
 
+  it('hydrates a v1/v2 scenario template written as source.json by an older Swaft (back-compat)', async () => {
+    const legacyGraph = {
+      version: 1,
+      nodes: [
+        { id: 'start', kind: 'start', position: { x: 0, y: 0 } },
+        { id: 'n1', kind: 'delay', ms: 500, position: { x: 100, y: 0 } },
+      ],
+      edges: [{ id: 'e0', from: 'start', to: 'n1' }],
+    };
+    const fs = new MemoryDirFs();
+    await fs.writeFile(
+      'workspace.json',
+      JSON.stringify({ formatVersion: 2, schemaVersion: 2, name: 'Old', executionMode: 'sandbox' }),
+    );
+    await fs.writeFile(
+      'projects/p.json',
+      JSON.stringify({ id: 'p', name: 'P', color: null, description: null }),
+    );
+    await fs.writeFile(
+      'templates/old-scenario/template.json',
+      JSON.stringify({
+        id: 'old-scenario',
+        folderId: '',
+        projectId: 'p',
+        name: 'Legacy flow',
+        type: 'scenario',
+        subtype: null,
+        hasDraft: true,
+        tags: [],
+      }),
+    );
+    await fs.writeFile('templates/old-scenario/source.json', JSON.stringify(legacyGraph));
+
+    const b = await freshAdapter();
+    await b.createSchema();
+    await hydrateWorkspace(b, fs, { deviceId: 'd', now: isoNow(), storageMode: 'git' });
+
+    const row = await b.get<{ source: string }>(
+      "SELECT source FROM templates WHERE id = 'old-scenario'",
+    );
+    expect(JSON.parse(row!.source)).toEqual(legacyGraph);
+  });
+
+  it('hydrates a pre-v4 document with no front-matter header (back-compat)', async () => {
+    const fs = new MemoryDirFs();
+    await fs.writeFile(
+      'workspace.json',
+      JSON.stringify({ formatVersion: 3, schemaVersion: 2, name: 'Old', executionMode: 'sandbox' }),
+    );
+    await fs.writeFile(
+      'projects/p.json',
+      JSON.stringify({ id: 'p', name: 'P', color: null, description: null }),
+    );
+    await fs.writeFile(
+      'templates/old-doc/template.json',
+      JSON.stringify({
+        id: 'old-doc',
+        folderId: '',
+        projectId: 'p',
+        name: 'Legacy doc',
+        type: 'document',
+        subtype: 'markdown',
+        hasDraft: true,
+        tags: [],
+      }),
+    );
+    await fs.writeFile('templates/old-doc/source.md', '# Plain body, no header\n');
+
+    const b = await freshAdapter();
+    await b.createSchema();
+    await hydrateWorkspace(b, fs, { deviceId: 'd', now: isoNow(), storageMode: 'git' });
+
+    const row = await b.get<{ source: string }>("SELECT source FROM templates WHERE id = 'old-doc'");
+    expect(row!.source).toBe('# Plain body, no header\n');
+  });
+
   it('lays out readable files: manifest, source sidecars, embedded tags, nested releases', async () => {
     const a = await buildSampleWorkspace();
     const fs = new MemoryDirFs();
@@ -364,9 +491,17 @@ describe('WorkspaceProjection', () => {
     expect(paths.some((p) => p.startsWith('templates/obsolete.'))).toBe(false);
     expect(paths).not.toContain(N.tagDead);
 
-    // The markdown source file holds the exact draft, unescaped.
+    // The markdown source file carries a YAML front-matter header (external-tool portability) ahead
+    // of the exact draft body, unescaped.
     expect(files.get(`${N.tplDoc}/source.md`)).toBe(
-      '# Release {{version}}\n\n- item one\n- item two\n',
+      '---\n' +
+        'swaftId: tpl-doc\n' +
+        'name: Release notes\n' +
+        'type: document\n' +
+        'subtype: markdown\n' +
+        'tags: [ops, public]\n' +
+        '---\n' +
+        '# Release {{version}}\n\n- item one\n- item two\n',
     );
 
     // template.json embeds tag ids and omits the source (which lives in the sidecar).
@@ -383,6 +518,15 @@ describe('WorkspaceProjection', () => {
     expect(apiTpl).not.toHaveProperty('source');
     expect(apiTpl.api.auth).toEqual({ kind: 'bearer', token: "${ secret('T') }" });
     expect(apiTpl.api.actions).toEqual([{ ref: 'log', trigger: 'pre' }]);
+
+    // scenario templates are a readable Arazzo 1.0 workflow document, not a JSON `source.*`.
+    expect(paths).toContain(`${N.tplScenario}/scenario.arazzo.yaml`);
+    expect(paths).not.toContain(`${N.tplScenario}/source.json`);
+    const arazzoYaml = files.get(`${N.tplScenario}/scenario.arazzo.yaml`)!;
+    expect(arazzoYaml).toContain('arazzo: 1.0.0');
+    expect(arazzoYaml).toContain('x-swaft');
+    // Swaft-only constructs (decision branches, delay, breakpoint) round-trip under x-swaft.
+    expect(arazzoYaml).toContain('breakpoint: true');
 
     // Manifest carries versions + identity, never storage mode / device id.
     const manifest = JSON.parse(files.get('workspace.json')!);
@@ -476,6 +620,88 @@ describe('WorkspaceProjection', () => {
     expect(proj?.name).toBe('Legacy');
   });
 
+  it('hydrates an environment file written before `secretVars` existed (back-compat)', async () => {
+    const fs = new MemoryDirFs();
+    await fs.writeFile(
+      'workspace.json',
+      JSON.stringify({ formatVersion: 4, schemaVersion: 25, name: 'Old', executionMode: 'sandbox' }),
+    );
+    await fs.writeFile(
+      'environments/staging.env1.json',
+      JSON.stringify({
+        id: 'env1',
+        name: 'Staging',
+        description: null,
+        ownerKind: 'workspace',
+        ownerId: null,
+        vars: { API_URL: 'https://x' },
+      }),
+    );
+
+    const b = await freshAdapter();
+    await b.createSchema();
+    await hydrateWorkspace(b, fs, { deviceId: 'd', now: isoNow(), storageMode: 'git' });
+    const row = await b.get<{ secret_vars: string }>(
+      "SELECT secret_vars FROM environments WHERE id = 'env1'",
+    );
+    expect(JSON.parse(row!.secret_vars)).toEqual([]);
+  });
+
+  it('hydrates a folder file written before headers/actions/notes existed (back-compat)', async () => {
+    const fs = new MemoryDirFs();
+    await fs.writeFile(
+      'workspace.json',
+      JSON.stringify({ formatVersion: 4, schemaVersion: 20, name: 'Old', executionMode: 'sandbox' }),
+    );
+    await fs.writeFile(
+      'projects/p.json',
+      JSON.stringify({ id: 'p', name: 'P', color: null, description: null }),
+    );
+    // A folder as it stood before v21 (no headers/proxy/auth/actions/notes at all).
+    await fs.writeFile(
+      'folders/old.f1.json',
+      JSON.stringify({ id: 'f1', name: 'Old', projectId: 'p', parentFolderId: null }),
+    );
+
+    const b = await freshAdapter();
+    await b.createSchema();
+    await hydrateWorkspace(b, fs, { deviceId: 'd', now: isoNow(), storageMode: 'git' });
+    const row = await b.get<{ headers: string; proxy: string | null; actions: string; notes: string }>(
+      "SELECT headers, proxy, actions, notes FROM folders WHERE id = 'f1'",
+    );
+    expect(JSON.parse(row!.headers)).toEqual({});
+    expect(row!.proxy).toBeNull(); // genuinely nullable — absent still hydrates as null, not '{}'
+    expect(JSON.parse(row!.actions)).toEqual([]);
+    expect(row!.notes).toBe('');
+  });
+
+  it('hydrates settings.json written before `batcherEnabled` existed, defaulting to enabled', async () => {
+    const fs = new MemoryDirFs();
+    await fs.writeFile(
+      'workspace.json',
+      JSON.stringify({ formatVersion: 4, schemaVersion: 21, name: 'Old', executionMode: 'sandbox' }),
+    );
+    // Settings as they stood before v22 (no batcherEnabled at all).
+    await fs.writeFile(
+      'settings.json',
+      JSON.stringify({
+        id: 'settings',
+        executionMode: 'sandbox',
+        proxyUrl: null,
+        blockedDomains: [],
+        enforcedHeaders: {},
+      }),
+    );
+
+    const b = await freshAdapter();
+    await b.createSchema();
+    await hydrateWorkspace(b, fs, { deviceId: 'd', now: isoNow(), storageMode: 'git' });
+    const row = await b.get<{ batcher_enabled: number }>(
+      `SELECT batcher_enabled FROM workspace_settings WHERE id = 'settings'`,
+    );
+    expect(row!.batcher_enabled).toBe(1);
+  });
+
   it('rejects a folder with no manifest and a workspace from a newer schema', async () => {
     const empty = new MemoryDirFs();
     const b = await freshAdapter();
@@ -500,5 +726,207 @@ describe('WorkspaceProjection', () => {
     expect(sourceExtension('capability', null)).toBe('js');
     expect(sourceExtension('render', 'mermaid')).toBe('mmd');
     expect(sourceExtension('document', 'weird')).toBe('txt');
+  });
+});
+
+describe('scanWorkspaceForSecrets (open-standards §3.4)', () => {
+  const TOKEN = 'ghp_1234567890ABCDEFGHIJ';
+
+  it('flags a literal secret in an api request but ignores an existing Seebo formula', async () => {
+    const a = await buildSampleWorkspace(); // tpl-api already carries a secret(...) formula, not a literal
+    await ins(a, 'templates', {
+      id: 'tpl-leak',
+      folder_id: '',
+      project_id: 'proj-1',
+      name: 'Leaky',
+      type: 'api',
+      subtype: 'json',
+      source: JSON.stringify({
+        method: 'GET',
+        url: 'https://api.test',
+        headers: { Authorization: TOKEN },
+      }),
+      has_draft: 1,
+    });
+
+    const findings = await scanWorkspaceForSecrets(a);
+    expect(findings.some((f) => f.path.includes('leaky'))).toBe(true);
+    expect(findings.some((f) => f.path.includes('get-user'))).toBe(false);
+  });
+
+  it('does not flag an environment variable already labeled secret (§3.3)', async () => {
+    const a = await freshAdapter();
+    await a.initialize({
+      name: 'WS',
+      storageMode: 'git',
+      executionMode: 'sandbox',
+      deviceId: 'd',
+      now: isoNow(),
+    });
+    await ins(a, 'environments', {
+      id: 'e1',
+      name: 'Prod',
+      description: null,
+      owner_kind: 'workspace',
+      owner_id: null,
+      vars: JSON.stringify({ TOKEN }),
+      secret_vars: JSON.stringify(['TOKEN']),
+    });
+
+    expect(await scanWorkspaceForSecrets(a)).toEqual([]);
+  });
+
+  it('flags the same variable value when not labeled secret', async () => {
+    const a = await freshAdapter();
+    await a.initialize({
+      name: 'WS',
+      storageMode: 'git',
+      executionMode: 'sandbox',
+      deviceId: 'd',
+      now: isoNow(),
+    });
+    await ins(a, 'environments', {
+      id: 'e1',
+      name: 'Prod',
+      description: null,
+      owner_kind: 'workspace',
+      owner_id: null,
+      vars: JSON.stringify({ TOKEN }),
+      secret_vars: '[]',
+    });
+
+    const findings = await scanWorkspaceForSecrets(a);
+    expect(findings.some((f) => f.path.startsWith('environments/'))).toBe(true);
+  });
+});
+
+describe('environments dotenv mirror (open-standards §3.3 item 2)', () => {
+  it('writes a companion .env file alongside the .json, config vars only', async () => {
+    const a = await buildSampleWorkspace();
+    const fs = new MemoryDirFs();
+    await dumpWorkspace(a, fs);
+
+    const envFile = `environments/${entityBaseName('staging', 'env-1')}.env`;
+    const content = fs.snapshot().get(envFile);
+    expect(content).toBeDefined();
+    expect(content).toContain('baseUrl=https://staging.acme.test');
+    expect(content).toContain('tenant=acme');
+    expect(content).toContain('# Swaft environment "staging"');
+  });
+
+  it('omits secret-labeled vars from the file, listing them by name in a comment instead', async () => {
+    const a = await freshAdapter();
+    await a.initialize({ name: 'WS', storageMode: 'git', executionMode: 'sandbox', deviceId: 'd', now: isoNow() });
+    await ins(a, 'environments', {
+      id: 'e1',
+      name: 'Prod',
+      description: null,
+      owner_kind: 'workspace',
+      owner_id: null,
+      vars: JSON.stringify({ BASE: 'https://api.test', TOKEN: 'shh-secret-value' }),
+      secret_vars: JSON.stringify(['TOKEN']),
+    });
+
+    const fs = new MemoryDirFs();
+    await dumpWorkspace(a, fs);
+    const content = fs.snapshot().get(`environments/${entityBaseName('Prod', 'e1')}.env`)!;
+    expect(content).toContain('BASE=https://api.test');
+    expect(content).not.toContain('shh-secret-value');
+    expect(content).toContain('# secret-labeled (omitted): TOKEN');
+  });
+
+  it('quotes a value containing whitespace or special characters', async () => {
+    const a = await freshAdapter();
+    await a.initialize({ name: 'WS', storageMode: 'git', executionMode: 'sandbox', deviceId: 'd', now: isoNow() });
+    await ins(a, 'environments', {
+      id: 'e1',
+      name: 'Prod',
+      description: null,
+      owner_kind: 'workspace',
+      owner_id: null,
+      vars: JSON.stringify({ GREETING: 'hello world', SIMPLE: 'ok' }),
+      secret_vars: '[]',
+    });
+
+    const fs = new MemoryDirFs();
+    await dumpWorkspace(a, fs);
+    const content = fs.snapshot().get(`environments/${entityBaseName('Prod', 'e1')}.env`)!;
+    expect(content).toContain('GREETING="hello world"');
+    expect(content).toContain('SIMPLE=ok');
+  });
+
+  it('escapes an embedded carriage return, not just newline, in a quoted value', async () => {
+    const a = await freshAdapter();
+    await a.initialize({ name: 'WS', storageMode: 'git', executionMode: 'sandbox', deviceId: 'd', now: isoNow() });
+    await ins(a, 'environments', {
+      id: 'e1',
+      name: 'Prod',
+      description: null,
+      owner_kind: 'workspace',
+      owner_id: null,
+      vars: JSON.stringify({ CRLF: 'line1\r\nline2' }),
+      secret_vars: '[]',
+    });
+
+    const fs = new MemoryDirFs();
+    await dumpWorkspace(a, fs);
+    const content = fs.snapshot().get(`environments/${entityBaseName('Prod', 'e1')}.env`)!;
+    // A raw \r or \n left in the file would corrupt the line-based dotenv format.
+    expect(content).toContain('CRLF="line1\\r\\nline2"');
+    expect(content).not.toMatch(/CRLF="line1\r\nline2"/);
+  });
+
+  it('removes a stale .env file when the environment is renamed or deleted', async () => {
+    const a = await freshAdapter();
+    await a.initialize({ name: 'WS', storageMode: 'git', executionMode: 'sandbox', deviceId: 'd', now: isoNow() });
+    await ins(a, 'environments', {
+      id: 'e1',
+      name: 'Prod',
+      description: null,
+      owner_kind: 'workspace',
+      owner_id: null,
+      vars: '{}',
+      secret_vars: '[]',
+    });
+    const fs = new MemoryDirFs();
+    await dumpWorkspace(a, fs);
+    expect(fs.snapshot().has(`environments/${entityBaseName('Prod', 'e1')}.env`)).toBe(true);
+
+    await a.run('UPDATE environments SET name = ? WHERE id = ?', ['Production', 'e1']);
+    await dumpWorkspace(a, fs);
+    expect(fs.snapshot().has(`environments/${entityBaseName('Prod', 'e1')}.env`)).toBe(false);
+    expect(fs.snapshot().has(`environments/${entityBaseName('Production', 'e1')}.env`)).toBe(true);
+
+    await softDelete(a, 'environments', 'e1');
+    await dumpWorkspace(a, fs);
+    expect(fs.snapshot().has(`environments/${entityBaseName('Production', 'e1')}.env`)).toBe(false);
+  });
+
+  it('is never read back on hydrate — the .json file stays the sole source of truth', async () => {
+    const fs = new MemoryDirFs();
+    await fs.writeFile(
+      'workspace.json',
+      JSON.stringify({ formatVersion: 5, schemaVersion: 26, name: 'Old', executionMode: 'sandbox' }),
+    );
+    await fs.writeFile(
+      'environments/prod.e1.json',
+      JSON.stringify({
+        id: 'e1',
+        name: 'Prod',
+        description: null,
+        ownerKind: 'workspace',
+        ownerId: null,
+        vars: { BASE: 'https://real.test' },
+        secretVars: [],
+      }),
+    );
+    // A hand-edited .env with a different value — must be ignored, not merged or preferred.
+    await fs.writeFile('environments/prod.e1.env', 'BASE=https://hand-edited.test\n');
+
+    const b = await freshAdapter();
+    await b.createSchema();
+    await hydrateWorkspace(b, fs, { deviceId: 'd', now: isoNow(), storageMode: 'git' });
+    const row = await b.get<{ vars: string }>("SELECT vars FROM environments WHERE id = 'e1'");
+    expect(JSON.parse(row!.vars)).toEqual({ BASE: 'https://real.test' });
   });
 });

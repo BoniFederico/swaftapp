@@ -1,4 +1,4 @@
-import type { ImportedCollection, ImportedRequest } from './collection';
+import type { ImportedCollection, ImportedEnvironment, ImportedRequest } from './collection';
 import type { HttpAuth, HttpMethod, HttpRequestModel } from './ops';
 import { bracesToSeebo } from './seebo-convert';
 
@@ -66,7 +66,7 @@ function parseDict(body: string): Record<string, string> {
 
 // --- import ------------------------------------------------------------------
 
-function parseBru(content: string): { name: string; request: HttpRequestModel } | null {
+function parseBru(content: string): { name: string; request: HttpRequestModel; swaftId?: string } | null {
   const blocks = scanBlocks(content);
   const meta = blocks.find((b) => b.name === 'meta');
   const methodBlock = blocks.find((b) => HTTP_METHODS.has(b.name));
@@ -115,7 +115,8 @@ function parseBru(content: string): { name: string; request: HttpRequestModel } 
   }
 
   const name = bruName(meta?.body) ?? method;
-  return { name, request };
+  const swaftId = meta ? parseDict(meta.body).swaftId : undefined;
+  return { name, request, ...(swaftId ? { swaftId } : {}) };
 }
 
 function bruName(metaBody: string | undefined): string | undefined {
@@ -140,7 +141,12 @@ export function fromBruno(files: BrunoFile[]): ImportedCollection {
     const parsed = parseBru(f.content);
     if (!parsed) continue;
     const segs = f.path.split('/').slice(0, -1).filter((s) => s !== '' && s !== '.');
-    requests.push({ name: parsed.name, folderPath: segs, request: parsed.request });
+    requests.push({
+      name: parsed.name,
+      folderPath: segs,
+      request: parsed.request,
+      ...(parsed.swaftId ? { swaftId: parsed.swaftId } : {}),
+    });
   }
   return { name, requests, environments: [] };
 }
@@ -178,6 +184,7 @@ function toBru(req: ImportedRequest, seq: number): string {
     ['name', req.name],
     ['type', 'http'],
     ['seq', String(seq)],
+    ...(req.swaftId ? ([['swaftId', req.swaftId]] as [string, string][]) : []),
   ])}${DL}}${DL}`;
   out += `${DL}${method} {${DL}${dict([
     ['url', r.url],
@@ -199,8 +206,25 @@ function safeFile(name: string): string {
   return name.replace(/[\\/:*?"<>|]+/g, '-').trim() || 'request';
 }
 
-/** Export a collection as Bruno files (`bruno.json` + one `.bru` per request). */
-export function toBruno(collection: { name: string; requests: ImportedRequest[] }): BrunoFile[] {
+/** Export a Swaft environment as a Bruno `environments/<name>.bru` file (a `vars { key: value }` block). */
+function toBruEnvironment(env: ImportedEnvironment): BrunoFile {
+  // The `vars { }` block is a plain one-line-per-entry dict (like headers/meta elsewhere in this
+  // file) with no escaping convention: a raw newline would spill onto its own (colon-less, silently
+  // dropped) line, and could exceed a client's brace-depth block scanner if it also contained braces.
+  // Collapse any embedded line breaks rather than risk desyncing the block.
+  const vars = Object.entries(env.vars).map(([k, v]) => [k, v.replace(/\r\n|\r|\n/g, ' ')] as [string, string]);
+  return {
+    path: `environments/${safeFile(env.name)}.bru`,
+    content: `vars {${DL}${dict(vars)}${DL}}${DL}`,
+  };
+}
+
+/** Export a collection as Bruno files (`bruno.json` + one `.bru` per request + one per environment). */
+export function toBruno(collection: {
+  name: string;
+  requests: ImportedRequest[];
+  environments?: ImportedEnvironment[];
+}): BrunoFile[] {
   const files: BrunoFile[] = [
     {
       path: 'bruno.json',
@@ -215,5 +239,6 @@ export function toBruno(collection: { name: string; requests: ImportedRequest[] 
     const path = `${dir ? `${dir}/` : ''}${safeFile(req.name)}.bru`;
     files.push({ path, content: toBru(req, seq) });
   }
+  for (const env of collection.environments ?? []) files.push(toBruEnvironment(env));
   return files;
 }

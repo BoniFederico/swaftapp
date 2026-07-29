@@ -101,4 +101,88 @@ describe('ImportService.importCollection', () => {
     const health = after.templates.find((t) => t.name === 'health')!;
     expect(health.folderId).toBe(folderId);
   });
+
+  describe('round-trip identity via swaftId (open-standards §3.7)', () => {
+    it('updates an existing template in place instead of duplicating it', async () => {
+      const { importer, org, templates } = await setup();
+      const first = await importer.importCollection(collection, { kind: 'new-project' });
+      const tree = await org.getTree();
+      const getPetId = tree.templates.find((t) => t.name === 'getPet')!.id;
+
+      const reimport: ImportedCollection = {
+        name: 'Pet Store',
+        requests: [
+          {
+            name: 'getPet',
+            folderPath: ['Pets'],
+            request: { method: 'GET', url: "${ env('BASE_URL') }/pets/${ id }/v2" },
+            swaftId: getPetId,
+          },
+        ],
+        environments: [],
+      };
+      const result = await importer.importCollection(reimport, {
+        kind: 'project',
+        projectId: first.projectId,
+      });
+
+      expect(result).toMatchObject({ requests: 0, updated: 1 });
+      const after = await templates.getTemplate(getPetId);
+      expect(JSON.parse(after!.source).url).toBe("${ env('BASE_URL') }/pets/${ id }/v2");
+      const afterTree = await org.getTree();
+      expect(afterTree.templates.filter((t) => t.name === 'getPet')).toHaveLength(1); // no duplicate
+    });
+
+    it('falls back to creating a new template when the swaftId is unknown (foreign/stale/deleted)', async () => {
+      const { importer } = await setup();
+      const reimport: ImportedCollection = {
+        name: 'Pet Store',
+        requests: [
+          {
+            name: 'orphan',
+            folderPath: [],
+            request: { method: 'GET', url: 'https://example.test' },
+            swaftId: 'does-not-exist',
+          },
+        ],
+        environments: [],
+      };
+      const result = await importer.importCollection(reimport, { kind: 'new-project' });
+      expect(result).toMatchObject({ requests: 1, updated: 0 });
+    });
+
+    it('never overwrites a non-api template even if a crafted swaftId names it', async () => {
+      const { importer, org, templates } = await setup();
+      const first = await importer.importCollection(collection, { kind: 'new-project' });
+      const tree = await org.getTree();
+      const projectId = first.projectId;
+      const treeAfterCreate = await templates.createTemplate({
+        name: 'Some notes',
+        type: 'document',
+        projectId,
+        source: '# original notes',
+      });
+      const noteId = treeAfterCreate.templates.find((t) => t.name === 'Some notes')!.id;
+      void tree;
+
+      const reimport: ImportedCollection = {
+        name: 'Pet Store',
+        requests: [
+          {
+            name: 'hijack',
+            folderPath: [],
+            request: { method: 'GET', url: 'https://evil.test' },
+            swaftId: noteId, // a .bru file could claim any id by hand
+          },
+        ],
+        environments: [],
+      };
+      const result = await importer.importCollection(reimport, { kind: 'project', projectId });
+
+      expect(result).toMatchObject({ requests: 1, updated: 0 }); // created new, did not "update" the doc
+      const note = await templates.getTemplate(noteId);
+      expect(note!.type).toBe('document');
+      expect(note!.source).toBe('# original notes'); // untouched
+    });
+  });
 });

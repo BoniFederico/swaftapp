@@ -90,10 +90,31 @@ Swaft shells out to the **`git` binary installed on your machine**, so it reuses
 keys and credential helpers — there is nothing extra to configure. Make sure `git` is on your
 `PATH`.
 
+### Pre-commit secret check
+
+Before a **Commit** actually writes anything, Swaft scans the files it's about to write (API request
+bodies, folder-propagated headers/auth, environment variables) for text that looks like a literal
+secret — a bearer token, a well-known API key format, or a high-entropy string. A variable already
+labeled **secret** (see [Environments](environments.md#config-vs-secret-label)) is skipped; it's an
+acknowledged risk, not a surprise.
+
+If something is found, the commit is refused and you see exactly what was flagged (a redacted hint,
+never the full value) with the option to **commit anyway** if it's a false positive. Nothing is
+written to disk until you either fix it or confirm through. This check only runs on `git.commit` — a
+local/folder save is not gated the same way.
+
 {: .tip }
 > Because a Git workspace is just files, you can also edit history, resolve conflicts, or set up CI
 > using your normal Git tooling outside Swaft. Reopen the workspace (or use **Reload**) to pick up
 > external changes.
+
+## Local-only data survives a reopen
+
+Request/run history, action receipts, unsent input values and your release/environment selection are
+**local-only** — never committed, never shared, never part of the workspace file another person
+opens. For a folder or Git workspace they're kept in a small `.swaft/` cache directory next to your
+files (already `.gitignore`d, so it never shows up as a change to commit), written on save and read
+back on open — so closing and reopening the workspace no longer loses that history.
 
 ## Opening an existing workspace
 

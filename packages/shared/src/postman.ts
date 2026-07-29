@@ -1,4 +1,4 @@
-import type { ImportedCollection, ImportedRequest } from './collection';
+import type { ImportedCollection, ImportedEnvironment, ImportedRequest } from './collection';
 import type { HttpAuth, HttpMethod, HttpRequestModel } from './ops';
 import { variabilizeSeebo } from './seebo-convert';
 
@@ -221,5 +221,15 @@ export function toPostman(collection: { name: string; requests: ImportedRequest[
   return {
     info: { name: collection.name, schema: POSTMAN_SCHEMA },
     item: root.item,
+  };
+}
+
+/** Export a Swaft environment to a standalone Postman Environment document (a plain object), the
+ *  companion file Postman itself uses to bundle variables alongside a collection. */
+export function toPostmanEnvironment(env: ImportedEnvironment): Obj {
+  return {
+    name: env.name,
+    values: Object.entries(env.vars).map(([key, value]) => ({ key, value, enabled: true })),
+    _postman_variable_scope: 'environment',
   };
 }

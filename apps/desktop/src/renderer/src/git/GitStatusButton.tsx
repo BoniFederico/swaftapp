@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import type { GitStatusDto } from '@swaft/shared';
 import { ApiError, type ApiClient } from '../api-client/client';
 import { useI18n } from '../i18n/I18nProvider';
-import { Button, GitBranchIcon, Select, TextField, useToast } from '../ui';
+import { Button, ConfirmDialog, GitBranchIcon, Select, TextField, useToast } from '../ui';
 import { usePopover } from '../ui/usePopover';
 import { notifyTreeChanged } from '../workspace/treeBus';
 import { useWorkspace } from '../workspace/WorkspaceProvider';
@@ -29,6 +29,7 @@ export function GitStatusButton({ client }: { client: ApiClient }) {
   const [publishUrl, setPublishUrl] = useState('');
   const [showPublish, setShowPublish] = useState(false);
   const [diffFile, setDiffFile] = useState<{ path: string; label?: string } | null>(null);
+  const [secretsWarning, setSecretsWarning] = useState<string[] | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -68,10 +69,35 @@ export function GitStatusButton({ client }: { client: ApiClient }) {
     }
   }
 
-  async function commit() {
+  /** Commit; on a `SECRETS_FOUND` refusal, show the findings and let the user confirm-through
+   *  (`force`) instead of routing the error to the generic toast via {@link op}. */
+  async function doCommit(force: boolean) {
     const msg = message.trim();
     if (!msg) return;
-    if (await op(() => client.call('git.commit', { message: msg }))) setMessage('');
+    setBusy(true);
+    try {
+      const res = await client.call('git.commit', { message: msg, ...(force ? { force: true } : {}) });
+      setStatus(res.status);
+      setMessage('');
+    } catch (err) {
+      if (!force && err instanceof ApiError && err.swaft.code === 'SECRETS_FOUND') {
+        const findings = (err.swaft.details?.findings ?? []) as {
+          path: string;
+          findings: { kind: string; hint: string }[];
+        }[];
+        setSecretsWarning(
+          findings.flatMap((f) => f.findings.map((x) => `${f.path}: ${x.kind} (${x.hint})`)),
+        );
+      } else {
+        toast.show(err instanceof ApiError ? err.swaft.message : t('git.error'), 'error');
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function commit() {
+    await doCommit(false);
   }
 
   async function createBranch() {
@@ -275,6 +301,22 @@ export function GitStatusButton({ client }: { client: ApiClient }) {
         path={diffFile?.path ?? null}
         label={diffFile?.label}
         onClose={() => setDiffFile(null)}
+      />
+      <ConfirmDialog
+        open={secretsWarning !== null}
+        title={t('git.secretsFoundTitle')}
+        message={
+          <div className="col" style={{ gap: 'var(--space-2)' }}>
+            <p>{t('git.secretsFoundMessage')}</p>
+            <ul className="git-secrets-list">
+              {secretsWarning?.map((line) => <li key={line}>{line}</li>)}
+            </ul>
+          </div>
+        }
+        confirmLabel={t('git.commitAnyway')}
+        cancelLabel={t('name.cancel')}
+        onConfirm={() => void doCommit(true)}
+        onClose={() => setSecretsWarning(null)}
       />
     </>
   );

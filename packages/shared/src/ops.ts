@@ -71,7 +71,12 @@ export const dialogCreateTargetRequestSchema = z
 // --- Git storage mode ops ---------------------------------------------------
 
 export const gitCommitRequestSchema = z
-  .object({ message: z.string().trim().min(1).max(1000) })
+  .object({
+    message: z.string().trim().min(1).max(1000),
+    /** Proceed despite a prior `SECRETS_FOUND` warning (open-standards §3.4) — the client re-sends
+     *  the same commit with this set after the user confirms through the warning dialog. */
+    force: z.boolean().optional(),
+  })
   .strict();
 export const gitCheckoutRequestSchema = z
   .object({ branch: z.string().trim().min(1).max(255) })
@@ -350,6 +355,8 @@ export const importedRequestDtoSchema = z
     folderPath: z.array(z.string().max(200)).max(32),
     request: httpRequestSchema,
     description: z.string().max(100_000).optional(),
+    /** Originating Swaft template id, round-tripped via Bruno's `meta.swaftId` (open-standards §3.7). */
+    swaftId: z.string().max(200).optional(),
   })
   .strict();
 export const importedEnvironmentDtoSchema = z
@@ -385,6 +392,8 @@ export const collectionExportRequestSchema = z
     scope: exportScopeSchema,
     format: z.enum(['postman', 'http', 'bruno']),
     conversion: z.enum(['verbatim', 'variabilize']),
+    /** Environments to bundle with the export (open-standards §3.6); none when omitted/empty. */
+    environmentIds: z.array(z.string().min(1)).max(64).optional(),
   })
   .strict();
 const exportFileSchema = z
@@ -454,6 +463,9 @@ const envVarKeySchema = z
   .max(128)
   .regex(/^[A-Za-z_][A-Za-z0-9_.-]*$/, 'Use letters, digits, _ . - (must start with a letter or _).');
 const envVarsSchema = z.record(envVarKeySchema, z.string().max(8192));
+/** Keys of `vars` labeled "secret" rather than "config" (mirrors Postman's default/secret variable
+ *  types) — advisory: gates export/UI display, never `env(...)` resolution, which is kind-agnostic. */
+const envSecretVarsSchema = z.array(envVarKeySchema).max(256);
 
 export const envCreateRequestSchema = z
   .object({
@@ -469,6 +481,7 @@ export const envUpdateRequestSchema = z
     name: entityNameSchema.optional(),
     description: z.string().trim().max(2000).nullable().optional(),
     vars: envVarsSchema.optional(),
+    secretVars: envSecretVarsSchema.optional(),
   })
   .strict();
 
@@ -1178,6 +1191,9 @@ export interface EnvironmentSummaryDto {
 /** A single environment with its variables (settings editor + the `env(...)` capability source). */
 export interface EnvironmentDto extends EnvironmentSummaryDto {
   vars: Record<string, string>;
+  /** Keys of `vars` labeled "secret" rather than "config" — advisory (export/UI display), never
+   *  gates `env(...)` resolution, which reads any variable's value regardless of this label. */
+  secretVars: string[];
 }
 
 export type EnvCreateRequest = z.infer<typeof envCreateRequestSchema>;
@@ -1473,6 +1489,8 @@ export interface ImportResultDto {
   projectId: string;
   folders: number;
   requests: number;
+  /** Existing templates matched by `swaftId` and updated in place, not counted in `requests` (§3.7). */
+  updated: number;
   environments: number;
 }
 export interface CollectionImportResponse {

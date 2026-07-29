@@ -45,6 +45,56 @@ describe('toBruno', () => {
   });
 });
 
+describe('toBruno — environments (open-standards §3.6)', () => {
+  it('emits an environments/<name>.bru file per bundled environment', () => {
+    const files = toBruno({
+      name: 'Shop',
+      requests,
+      environments: [{ name: 'Staging', vars: { BASE: 'https://staging.example.test' } }],
+    });
+    const envFile = files.find((f) => f.path === 'environments/Staging.bru');
+    expect(envFile).toBeDefined();
+    expect(envFile!.content).toContain('vars {');
+    expect(envFile!.content).toContain('BASE: https://staging.example.test');
+  });
+
+  it('omits the environments directory entirely when none are bundled', () => {
+    const files = toBruno({ name: 'Shop', requests });
+    expect(files.some((f) => f.path.startsWith('environments/'))).toBe(false);
+  });
+
+  it('collapses an embedded newline in a var value instead of desyncing the vars block', () => {
+    const files = toBruno({
+      name: 'Shop',
+      requests,
+      environments: [{ name: 'Staging', vars: { NOTE: 'line one\nline two' } }],
+    });
+    const envFile = files.find((f) => f.path === 'environments/Staging.bru')!;
+    expect(envFile.content).toContain('NOTE: line one line two');
+    // Exactly one meta/vars-style block — a stray newline would otherwise add a bogus extra line.
+    expect(envFile.content.match(/vars \{/g)).toHaveLength(1);
+  });
+});
+
+describe('meta.swaftId round-trip (open-standards §3.7)', () => {
+  it('writes swaftId into the meta block and reads it back on import', () => {
+    const withId: ImportedRequest[] = [{ ...requests[0], swaftId: 'tpl-123' }];
+    const files = toBruno({ name: 'Shop', requests: withId });
+    const bru = files.find((f) => f.path.endsWith('Get order.bru'))!.content;
+    expect(bru).toContain('swaftId: tpl-123');
+
+    const col = fromBruno(files);
+    expect(col.requests[0].swaftId).toBe('tpl-123');
+  });
+
+  it('omits swaftId when the request has none, and import leaves it undefined', () => {
+    const files = toBruno({ name: 'Shop', requests: [requests[0]] });
+    const bru = files.find((f) => f.path.endsWith('Get order.bru'))!.content;
+    expect(bru).not.toContain('swaftId');
+    expect(fromBruno(files).requests[0].swaftId).toBeUndefined();
+  });
+});
+
 describe('fromBruno', () => {
   it('round-trips structure and fields (verbatim), reading folder path from the file path', () => {
     const files = toBruno({ name: 'Shop', requests });

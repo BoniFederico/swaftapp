@@ -75,6 +75,32 @@ describe('.swaft schema classification', () => {
     db.close();
   });
 
+  it('fresh environments table carries the v26 `secret_vars` column, defaulting to an empty array', async () => {
+    const db = await openSqliteDb();
+    db.exec(SCHEMA_DDL);
+    const cols = db.all<Row>(`PRAGMA table_info(environments)`).map((r) => String(r.name));
+    expect(cols).toContain('secret_vars');
+    db.close();
+  });
+
+  it('the v26 migration adds environments `secret_vars` to an existing (pre-v26) file, defaulting to []', async () => {
+    const db = await openSqliteDb();
+    // An environments table as it stood before v26 (no `secret_vars` column).
+    db.exec(
+      `CREATE TABLE environments (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, owner_kind TEXT NOT NULL, owner_id TEXT, vars TEXT NOT NULL DEFAULT '{}');`,
+    );
+    const step = MIGRATIONS.find((m) => m.to === 26);
+    expect(step, 'a migration to v26 must exist').toBeDefined();
+    db.exec(step!.sql);
+
+    db.run(
+      `INSERT INTO environments (id, name, owner_kind, vars) VALUES ('e1', 'Legacy', 'workspace', '{}')`,
+    );
+    const row = db.get<Row>(`SELECT secret_vars FROM environments WHERE id = 'e1'`);
+    expect(row?.secret_vars).toBe('[]');
+    db.close();
+  });
+
   it('stores no secrets table (🟠 secure-local lives in the OS keychain, never in .swaft)', async () => {
     const db = await openSqliteDb();
     db.exec(SCHEMA_DDL);

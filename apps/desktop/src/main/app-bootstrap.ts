@@ -266,7 +266,7 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
   setScenarioService(scenarioService);
   setEnvironmentService(environments);
   setImportService(new ImportService({ organization, templates, environments }));
-  setExportService(new ExportService({ organization, templates }));
+  setExportService(new ExportService({ organization, templates, environments }));
   setContainerService(
     new ContainerService({
       workspace: workspaceService,
