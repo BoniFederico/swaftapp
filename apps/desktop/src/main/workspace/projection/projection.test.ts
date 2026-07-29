@@ -799,3 +799,113 @@ describe('scanWorkspaceForSecrets (open-standards §3.4)', () => {
     expect(findings.some((f) => f.path.startsWith('environments/'))).toBe(true);
   });
 });
+
+describe('environments dotenv mirror (open-standards §3.3 item 2)', () => {
+  it('writes a companion .env file alongside the .json, config vars only', async () => {
+    const a = await buildSampleWorkspace();
+    const fs = new MemoryDirFs();
+    await dumpWorkspace(a, fs);
+
+    const envFile = `environments/${entityBaseName('staging', 'env-1')}.env`;
+    const content = fs.snapshot().get(envFile);
+    expect(content).toBeDefined();
+    expect(content).toContain('baseUrl=https://staging.acme.test');
+    expect(content).toContain('tenant=acme');
+    expect(content).toContain('# Swaft environment "staging"');
+  });
+
+  it('omits secret-labeled vars from the file, listing them by name in a comment instead', async () => {
+    const a = await freshAdapter();
+    await a.initialize({ name: 'WS', storageMode: 'git', executionMode: 'sandbox', deviceId: 'd', now: isoNow() });
+    await ins(a, 'environments', {
+      id: 'e1',
+      name: 'Prod',
+      description: null,
+      owner_kind: 'workspace',
+      owner_id: null,
+      vars: JSON.stringify({ BASE: 'https://api.test', TOKEN: 'shh-secret-value' }),
+      secret_vars: JSON.stringify(['TOKEN']),
+    });
+
+    const fs = new MemoryDirFs();
+    await dumpWorkspace(a, fs);
+    const content = fs.snapshot().get(`environments/${entityBaseName('Prod', 'e1')}.env`)!;
+    expect(content).toContain('BASE=https://api.test');
+    expect(content).not.toContain('shh-secret-value');
+    expect(content).toContain('# secret-labeled (omitted): TOKEN');
+  });
+
+  it('quotes a value containing whitespace or special characters', async () => {
+    const a = await freshAdapter();
+    await a.initialize({ name: 'WS', storageMode: 'git', executionMode: 'sandbox', deviceId: 'd', now: isoNow() });
+    await ins(a, 'environments', {
+      id: 'e1',
+      name: 'Prod',
+      description: null,
+      owner_kind: 'workspace',
+      owner_id: null,
+      vars: JSON.stringify({ GREETING: 'hello world', SIMPLE: 'ok' }),
+      secret_vars: '[]',
+    });
+
+    const fs = new MemoryDirFs();
+    await dumpWorkspace(a, fs);
+    const content = fs.snapshot().get(`environments/${entityBaseName('Prod', 'e1')}.env`)!;
+    expect(content).toContain('GREETING="hello world"');
+    expect(content).toContain('SIMPLE=ok');
+  });
+
+  it('removes a stale .env file when the environment is renamed or deleted', async () => {
+    const a = await freshAdapter();
+    await a.initialize({ name: 'WS', storageMode: 'git', executionMode: 'sandbox', deviceId: 'd', now: isoNow() });
+    await ins(a, 'environments', {
+      id: 'e1',
+      name: 'Prod',
+      description: null,
+      owner_kind: 'workspace',
+      owner_id: null,
+      vars: '{}',
+      secret_vars: '[]',
+    });
+    const fs = new MemoryDirFs();
+    await dumpWorkspace(a, fs);
+    expect(fs.snapshot().has(`environments/${entityBaseName('Prod', 'e1')}.env`)).toBe(true);
+
+    await a.run('UPDATE environments SET name = ? WHERE id = ?', ['Production', 'e1']);
+    await dumpWorkspace(a, fs);
+    expect(fs.snapshot().has(`environments/${entityBaseName('Prod', 'e1')}.env`)).toBe(false);
+    expect(fs.snapshot().has(`environments/${entityBaseName('Production', 'e1')}.env`)).toBe(true);
+
+    await softDelete(a, 'environments', 'e1');
+    await dumpWorkspace(a, fs);
+    expect(fs.snapshot().has(`environments/${entityBaseName('Production', 'e1')}.env`)).toBe(false);
+  });
+
+  it('is never read back on hydrate — the .json file stays the sole source of truth', async () => {
+    const fs = new MemoryDirFs();
+    await fs.writeFile(
+      'workspace.json',
+      JSON.stringify({ formatVersion: 5, schemaVersion: 26, name: 'Old', executionMode: 'sandbox' }),
+    );
+    await fs.writeFile(
+      'environments/prod.e1.json',
+      JSON.stringify({
+        id: 'e1',
+        name: 'Prod',
+        description: null,
+        ownerKind: 'workspace',
+        ownerId: null,
+        vars: { BASE: 'https://real.test' },
+        secretVars: [],
+      }),
+    );
+    // A hand-edited .env with a different value — must be ignored, not merged or preferred.
+    await fs.writeFile('environments/prod.e1.env', 'BASE=https://hand-edited.test\n');
+
+    const b = await freshAdapter();
+    await b.createSchema();
+    await hydrateWorkspace(b, fs, { deviceId: 'd', now: isoNow(), storageMode: 'git' });
+    const row = await b.get<{ vars: string }>("SELECT vars FROM environments WHERE id = 'e1'");
+    expect(JSON.parse(row!.vars)).toEqual({ BASE: 'https://real.test' });
+  });
+});

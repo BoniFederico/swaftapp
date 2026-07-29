@@ -39,9 +39,9 @@ function validatorFor(path: string): ValidateFunction | null {
   if (path.startsWith('projects/')) return V.project!;
   if (path.startsWith('folders/')) return V.folder!;
   if (path.startsWith('tags/')) return V.tag!;
-  if (path.startsWith('environments/')) return V.environment!;
+  if (path.startsWith('environments/') && path.endsWith('.json')) return V.environment!;
   if (path.startsWith('changelog/')) return V.changelog!;
-  return null; // request.http, source.*, code.js — non-JSON bodies
+  return null; // request.http, source.*, code.js, environments/*.env — non-JSON bodies
 }
 
 let tick = 0;

@@ -25,6 +25,7 @@ projects/<slug>.<shortId>.json          # one file per project
 folders/<slug>.<shortId>.json           # one file per folder (name, parent, propagated headers/proxy/auth/actions, notes)
 tags/<slug>.<shortId>.json              # one file per tag
 environments/<slug>.<shortId>.json      # one file per environment (vars + which keys are labeled secret; literal secret values are never stored here)
+environments/<slug>.<shortId>.env       # write-only dotenv mirror of the same vars, minus secret-labeled ones; regenerated on save, never read back
 changelog/<slug>.<shortId>.json         # one file per changelog entry
 templates/<slug>.<shortId>/             # one directory per template
     template.json                       # metadata: id, name, type, subtype, folder/project, tags, hasDraft, (api only) `api` block

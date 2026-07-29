@@ -55,8 +55,14 @@ import { entityBaseName, shortId } from './naming';
  *  (id/name/type/subtype/tags, open-standards plan §8 / C2) prepended, so the file is self-describing
  *  when opened directly by another tool. `template.json` stays the source of truth; the header is a
  *  write-only mirror, tolerantly stripped back out on hydrate. Older files with no header still open
- *  unchanged (front matter is optional, not version-gated on read). */
-export const FORMAT_VERSION = 4;
+ *  unchanged (front matter is optional, not version-gated on read).
+ *  v5: each `environments/<slug>.<id>.json` gets a companion `environments/<slug>.<id>.env` dotenv
+ *  file (open-standards plan §3.3 item 2) — a hand-editable, portable mirror for tools that read plain
+ *  `KEY=value` files. The JSON file stays the sole source of truth; the `.env` is regenerated on every
+ *  save and never read back on hydrate (so hand edits to it are silently overwritten, same tradeoff as
+ *  the front-matter header). Secret-labeled vars (§3.3 item 1) are never written to it — only listed by
+ *  name in a trailing comment — so it carries no more risk than the JSON it mirrors. */
+export const FORMAT_VERSION = 5;
 
 const MANIFEST_FILE = 'workspace.json';
 const SETTINGS_FILE = 'settings.json';
@@ -170,7 +176,47 @@ export async function dumpWorkspace(adapter: LocalAdapter, fs: DirFs): Promise<v
   await dumpManifest(adapter, fs);
   await dumpSettings(adapter, fs);
   for (const entity of FLAT_ENTITIES) await dumpFlat(adapter, fs, entity);
+  await dumpEnvironmentDotenv(adapter, fs);
   await dumpTemplates(adapter, fs);
+}
+
+/** Quote a dotenv value when it needs it (whitespace, `#`, quotes, or a newline), escaping `\` and `"`. */
+function dotenvValue(v: string): string {
+  if (!/[\s#"'\\]/.test(v)) return v;
+  return `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`;
+}
+
+/**
+ * Write a `environments/<slug>.<id>.env` companion per environment (open-standards §3.3 item 2) — a
+ * hand-editable, portable dotenv mirror of the JSON file's `vars`. Write-only: never read back on
+ * hydrate, so the JSON stays the single source of truth. Secret-labeled vars (§3.3 item 1) are left
+ * out of the file entirely (only named in a trailing comment), matching the export redaction already
+ * applied to Postman/Bruno bundles (§3.6) — a `.env` file is exactly the kind of thing that gets
+ * committed or copied around, so it must never carry a literal secret value.
+ */
+async function dumpEnvironmentDotenv(adapter: LocalAdapter, fs: DirFs): Promise<void> {
+  const rows = await adapter.all<Record<string, SqlParam>>(
+    'SELECT * FROM environments WHERE deleted_at IS NULL',
+  );
+  const kept = new Set<string>();
+  for (const row of rows) {
+    const file = `${entityBaseName(String(row.name ?? ''), String(row.id))}.env`;
+    kept.add(file);
+    const vars = parseJsonOr<Record<string, string>>(String(row.vars ?? '{}'), {});
+    const secret = new Set(parseJsonOr<string[]>(String(row.secret_vars ?? '[]'), []));
+    const lines = [
+      `# Swaft environment "${row.name}" (${row.owner_kind}) — generated from the .json file, not read back on open.`,
+      ...Object.entries(vars)
+        .filter(([k]) => !secret.has(k))
+        .map(([k, v]) => `${k}=${dotenvValue(v)}`),
+    ];
+    const secretKeys = Object.keys(vars).filter((k) => secret.has(k));
+    if (secretKeys.length > 0) lines.push(`# secret-labeled (omitted): ${secretKeys.join(', ')}`);
+    await fs.writeFile(`environments/${file}`, `${lines.join('\n')}\n`);
+  }
+  for (const name of await fs.list('environments')) {
+    if (name.endsWith('.env') && !kept.has(name)) await fs.remove(`environments/${name}`);
+  }
 }
 
 /**
