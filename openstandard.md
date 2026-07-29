@@ -8,9 +8,8 @@
 > **Goal (unchanged):** make Swaft store and exchange its data using **open, plain-file standards** —
 > the folder of files is the source of truth, API requests are `.http` files, while keeping Seebo
 > formulas and Swaft's richer features, and offering guided import/export to the wider ecosystem
-> (Postman, Bruno, OpenAPI, cURL, HAR). Scenarios-as-Arazzo is now wired end to end — projection +
-> per-scenario Export/Import UI (§1.7). Documents-as-front-matter was designed but **not yet wired
-> in** — see §3.2.
+> (Postman, Bruno, OpenAPI, cURL, HAR). Scenarios-as-Arazzo (§1.7) and documents-as-front-matter (§1.8)
+> are now wired into the projection.
 
 The load-bearing architectural principle held throughout: **the canonical *runtime* model is
 unchanged.** An API request is still a `HttpRequestModel` ([`ops.ts`](packages/shared/src/ops.ts)) held
@@ -37,7 +36,7 @@ usable from the renderer or main:
 | Bruno | [`bruno.ts`](packages/shared/src/bruno.ts) | `toBruno` / `fromBruno` | File-per-request `.bru` DSL + `bruno.json`; brace-depth-aware block scanner. |
 | HAR 1.2 | [`har.ts`](packages/shared/src/har.ts) | **export only** | `toHar(entries)`; wired to a UI action (API view → History → "Export HAR"). |
 | Arazzo 1.0 | [`arazzo.ts`](packages/shared/src/arazzo.ts) | `toArazzo` / `fromArazzo` | Wired into the projection (`scenario` templates, `FORMAT_VERSION` 3) and into a per-scenario Export/Import UI — see §1.7/§3.1. |
-| Front matter | [`front-matter.ts`](packages/shared/src/front-matter.ts) | `toFrontMatter` / `parseFrontMatter` | Dependency-free YAML-ish front matter. **NOT wired into the projection** — see §3.2. |
+| Front matter | [`front-matter.ts`](packages/shared/src/front-matter.ts) | `toFrontMatter` / `parseFrontMatter` | Dependency-free YAML-ish front matter. Wired into the projection (`document` templates, `FORMAT_VERSION` 4) — see §1.8/§3.2. |
 | Seebo conversion | [`seebo-convert.ts`](packages/shared/src/seebo-convert.ts) | `variabilizeSeebo`, `bracesToSeebo` | `env`/`secret`/bare `${ }` ⇄ `{{ }}`; used by `ExportService` at export time only (on-disk form always keeps Seebo verbatim). |
 | Secret scan | [`secret-scan.ts`](packages/shared/src/secret-scan.ts) | `scanForSecrets`, `hasSecretLiteral` | Detector exists and is unit-tested. **NOT wired into any write/commit path yet** — see §3.4. |
 | Neutral collection model | [`collection.ts`](packages/shared/src/collection.ts) | `ImportedCollection`, `ImportedRequest`, `ImportedEnvironment` | The shared shape all import adapters produce and `ImportService` consumes. |
@@ -153,6 +152,22 @@ graph in place from a pasted/dropped Arazzo document, via
 [`ImportArazzoDialog.tsx`](apps/desktop/src/renderer/src/workspace/ImportArazzoDialog.tsx)). Full detail
 in §3.1.
 
+### 1.8 Document templates get a YAML front-matter header (Workstream 5, projection done — see §3.2)
+
+`FORMAT_VERSION = 4` ([`projection.ts:35`](apps/desktop/src/main/workspace/projection/projection.ts)):
+a `document` template's `source.<ext>` body is prepended with a `---`-delimited front-matter header
+(`swaftId`, `name`, `type`, `subtype`, `tags` — tag **names**, resolved from `tags` at dump time, not
+ids) via `toFrontMatter`. `template.json` remains the sole source of truth for those fields; the header
+is a **write-only mirror** for portability (a document opened directly in Jekyll/Hugo/Obsidian/any
+front-matter-aware tool is self-describing) — `hydrateTemplates` parses it with `parseFrontMatter` and
+keeps only the body, discarding the parsed meta. Front matter is only added for `type === 'document'`;
+api/scenario/capability/action keep their existing dedicated body forms untouched. Reading is
+version-tolerant rather than version-gated: a pre-v4 file with no (or a malformed) header just yields an
+empty header and the whole file as body — `parseFrontMatter`'s existing tolerant-parse behavior, no new
+branching needed. Covered by `projection.test.ts` (front-matter header assertion on the existing
+`tpl-doc` fixture, a dedicated pre-v4 back-compat case) — no new JSON schema needed (the header lives
+inside the body file, not a separate structured file).
+
 ---
 
 ## 2. Cross-cutting facts that still hold
@@ -219,17 +234,19 @@ materializes via an op.
 
 ### 3.2 Documents stored as Markdown/native + YAML front matter (was Workstream 5)
 
-The `front-matter.ts` codec exists and is unit-tested but document templates still write a plain
-`source.<ext>` sidecar with a separate `template.json` for metadata.
-
-**To do:**
-1. In `dumpTemplates`, for `type === 'document'`, prepend a front-matter block (id, name, subtype, tags)
-   to the body via `toFrontMatter` instead of writing a bare `source.<ext>` + separate `template.json`
-   fields; `hydrateTemplates` parses it back via `parseFrontMatter` (defensive: a missing/malformed
-   block degrades to treating the whole file as body content, same tolerance the projection already
-   applies to other JSON reads).
-2. Front matter only for `document` types; api/scenario/capability/action keep their dedicated forms.
-3. Round-trip test + `FORMAT.md`/schema update, same shape as §3.1.
+**Done.** `dumpTemplates`/`hydrateTemplates`
+([`projection.ts:265-424`](apps/desktop/src/main/workspace/projection/projection.ts)) prepend a
+front-matter block (`swaftId`, `name`, `type`, `subtype`, `tags`-as-names) to a `document` template's
+`source.<ext>` via `toFrontMatter`; `hydrateTemplates` parses it back via `parseFrontMatter` and keeps
+only the body (`template.json` stays the source of truth for those fields — the header is a
+write-only, external-tool-portability mirror, not a second copy that could drift and win on read).
+`FORMAT_VERSION` is now **4** (documented in `FORMAT.md` §1/§4/§5); no new JSON schema needed (the
+header lives inside the existing body file). Reading is tolerant rather than version-gated: a pre-v4
+file with no header (or a hand-edited malformed one) degrades to treating the whole file as body,
+`parseFrontMatter`'s existing behavior — no branching needed in `hydrateTemplates` beyond gating on
+`type === 'document'`. api/scenario/capability/action are unaffected, per the original scope. Covered
+by `projection.test.ts` (front-matter assertion on the `tpl-doc` fixture, a dedicated pre-v4
+no-header back-compat case). See §1.8 for the full write-up.
 
 ### 3.3 Config/secret split for environment variables + dotenv form
 
@@ -307,8 +324,8 @@ stays Bruno-only, as originally scoped).
 - **dotenv (`.env`)** — `KEY=value` files; `.env` (committed config) vs `.env.local` (git-ignored
   secrets) is the standard split (not yet adopted for Swaft environments — §3.3).
 - **CommonMark** — the standardized Markdown spec.
-- **YAML front matter** — a `---`-delimited metadata block at the top of a text file; not yet adopted
-  for Swaft documents — §3.2.
+- **YAML front matter** — a `---`-delimited metadata block at the top of a text file; adopted for
+  Swaft `document` templates — §1.8/§3.2.
 - **JSON Schema (draft-07)** — used to publish/validate Swaft's own on-disk file shapes (§1.4).
 - **OPC / Zip container** — the "documented zip of open files" pattern behind `.docx`/`.xlsx`/`.epub`;
   the model for `.swaft` (§1.3).

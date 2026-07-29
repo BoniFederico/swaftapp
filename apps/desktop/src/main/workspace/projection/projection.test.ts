@@ -435,6 +435,39 @@ describe('WorkspaceProjection', () => {
     expect(JSON.parse(row!.source)).toEqual(legacyGraph);
   });
 
+  it('hydrates a pre-v4 document with no front-matter header (back-compat)', async () => {
+    const fs = new MemoryDirFs();
+    await fs.writeFile(
+      'workspace.json',
+      JSON.stringify({ formatVersion: 3, schemaVersion: 2, name: 'Old', executionMode: 'sandbox' }),
+    );
+    await fs.writeFile(
+      'projects/p.json',
+      JSON.stringify({ id: 'p', name: 'P', color: null, description: null }),
+    );
+    await fs.writeFile(
+      'templates/old-doc/template.json',
+      JSON.stringify({
+        id: 'old-doc',
+        folderId: '',
+        projectId: 'p',
+        name: 'Legacy doc',
+        type: 'document',
+        subtype: 'markdown',
+        hasDraft: true,
+        tags: [],
+      }),
+    );
+    await fs.writeFile('templates/old-doc/source.md', '# Plain body, no header\n');
+
+    const b = await freshAdapter();
+    await b.createSchema();
+    await hydrateWorkspace(b, fs, { deviceId: 'd', now: isoNow(), storageMode: 'git' });
+
+    const row = await b.get<{ source: string }>("SELECT source FROM templates WHERE id = 'old-doc'");
+    expect(row!.source).toBe('# Plain body, no header\n');
+  });
+
   it('lays out readable files: manifest, source sidecars, embedded tags, nested releases', async () => {
     const a = await buildSampleWorkspace();
     const fs = new MemoryDirFs();
@@ -458,9 +491,17 @@ describe('WorkspaceProjection', () => {
     expect(paths.some((p) => p.startsWith('templates/obsolete.'))).toBe(false);
     expect(paths).not.toContain(N.tagDead);
 
-    // The markdown source file holds the exact draft, unescaped.
+    // The markdown source file carries a YAML front-matter header (external-tool portability) ahead
+    // of the exact draft body, unescaped.
     expect(files.get(`${N.tplDoc}/source.md`)).toBe(
-      '# Release {{version}}\n\n- item one\n- item two\n',
+      '---\n' +
+        'swaftId: tpl-doc\n' +
+        'name: Release notes\n' +
+        'type: document\n' +
+        'subtype: markdown\n' +
+        'tags: [ops, public]\n' +
+        '---\n' +
+        '# Release {{version}}\n\n- item one\n- item two\n',
     );
 
     // template.json embeds tag ids and omits the source (which lives in the sidecar).

@@ -96,6 +96,11 @@ depends on the template `type`:
   for — non-HTTP nodes (action/capability/delay), decision branches, breakpoints, Seebo conditions,
   canvas positions — lives under **`x-swaft`** extensions on the workflow/step, so the round-trip is
   lossless while the document stays a valid Arazzo file another tool can partially read.
+- **`document`** → **`source.<ext>`** with a **YAML front-matter** header prepended
+  (`swaftId`/`name`/`type`/`subtype`/`tags`, the [Jekyll/Hugo/Obsidian](https://jekyllrb.com/docs/front-matter/)
+  convention) — the file is self-describing when opened directly by another tool. `template.json` stays
+  the source of truth for those fields; the header is a write-only mirror, tolerantly stripped back out
+  on hydrate (a file with no, or a malformed, header just has an empty header — the whole file is body).
 - **all other types** → **`source.<ext>`**, the editable body written verbatim with a type-appropriate
   extension (`.md`, `.html`, `.js`, `.yaml`, …). The extension is cosmetic; content is byte-for-byte.
 
@@ -114,9 +119,11 @@ etc. Secrets are never materialized to files.
 
 `workspace.json` carries two integers:
 
-- **`formatVersion`** — the on-disk file *shapes*. Current: **3** (scenario templates as
-  `scenario.arazzo.yaml`; v2 added api templates as `request.http` + `api` block; earlier versions
-  stored api/scenario sources as `source.json` and still load, upgraded on the next save).
+- **`formatVersion`** — the on-disk file *shapes*. Current: **4** (document templates get a YAML
+  front-matter header on their `source.<ext>`; v3 added scenario templates as `scenario.arazzo.yaml`; v2
+  added api templates as `request.http` + `api` block; earlier versions stored api/scenario sources as
+  `source.json` and still load, upgraded on the next save). Front matter is read tolerantly regardless
+  of `formatVersion` — an older document file with no header just parses as a header-less body.
 - **`schemaVersion`** — the working-store schema. Opening a workspace whose `schemaVersion` is newer
   than the app supports is refused (`SCHEMA_TOO_NEW`) rather than risking a lossy downgrade.
 

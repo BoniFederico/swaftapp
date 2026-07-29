@@ -3,9 +3,11 @@ import { dump as dumpYaml, load as loadYaml } from 'js-yaml';
 import {
   fromArazzo,
   fromHttpFile,
+  parseFrontMatter,
   parseScenarioGraph,
   serializeScenarioGraph,
   toArazzo,
+  toFrontMatter,
   toHttpFile,
   type HttpRequestModel,
   type StorageMode,
@@ -46,8 +48,13 @@ import { entityBaseName, shortId } from './naming';
  *  §7 / D6) — an Arazzo 1.0 workflow document, with everything Arazzo has no native concept for
  *  (action/capability/delay nodes, decision branches, canvas layout) under `x-swaft` extensions. v1/v2
  *  workspaces (a scenario graph in `source.json`) still open — hydrate reads whichever form is
- *  present, and the next save rewrites to v3. */
-export const FORMAT_VERSION = 3;
+ *  present, and the next save rewrites to v3.
+ *  v4: `document` templates' `source.<ext>` body gets a YAML **front-matter** header
+ *  (id/name/type/subtype/tags, open-standards plan §8 / C2) prepended, so the file is self-describing
+ *  when opened directly by another tool. `template.json` stays the source of truth; the header is a
+ *  write-only mirror, tolerantly stripped back out on hydrate. Older files with no header still open
+ *  unchanged (front matter is optional, not version-gated on read). */
+export const FORMAT_VERSION = 4;
 
 const MANIFEST_FILE = 'workspace.json';
 const SETTINGS_FILE = 'settings.json';
@@ -266,6 +273,13 @@ async function dumpTemplates(adapter: LocalAdapter, fs: DirFs): Promise<void> {
   const templates = await adapter.all<Record<string, SqlParam>>(
     'SELECT * FROM templates WHERE deleted_at IS NULL',
   );
+  // Only needed for a document's front-matter `tags` (human-readable names, not ids); fetched once
+  // regardless of whether any document templates exist.
+  const tagNameById = new Map(
+    (
+      await adapter.all<{ id: string; name: string }>('SELECT id, name FROM tags WHERE deleted_at IS NULL')
+    ).map((r) => [r.id, r.name]),
+  );
   const kept = new Set<string>();
   for (const t of templates) {
     const id = String(t.id);
@@ -275,12 +289,19 @@ async function dumpTemplates(adapter: LocalAdapter, fs: DirFs): Promise<void> {
     kept.add(dirName);
     const dir = `templates/${dirName}`;
 
+    const tagRows = await adapter.all<{ tag_id: string }>(
+      'SELECT tag_id FROM template_tags WHERE template_id = ? AND deleted_at IS NULL ORDER BY tag_id',
+      [id],
+    );
+
     // Editable source → a readable sidecar. `api` templates use a standard **`request.http`** (open
     // format) plus an `api` block in `template.json` for the parts `.http` can't carry (structured
     // auth, pre/post actions); `scenario` templates use an **Arazzo 1.0** workflow document
-    // (`scenario.arazzo.yaml`), with Swaft-only constructs under `x-swaft` extensions; other types
-    // write a verbatim `source.<ext>` sidecar with a type-appropriate extension. Meaningful diffs
-    // either way.
+    // (`scenario.arazzo.yaml`), with Swaft-only constructs under `x-swaft` extensions; `document`
+    // templates get a YAML **front-matter** header (id/name/type/subtype/tags) prepended to the body,
+    // so the file is self-describing when opened directly by another tool (Jekyll/Hugo/Obsidian all
+    // read this convention); other types write a verbatim `source.<ext>` sidecar with a
+    // type-appropriate extension. Meaningful diffs either way.
     let bodyFile: string;
     let apiMeta: { auth?: unknown; actions?: unknown } | undefined;
     if (String(t.type) === 'api') {
@@ -299,14 +320,27 @@ async function dumpTemplates(adapter: LocalAdapter, fs: DirFs): Promise<void> {
     } else {
       const ext = sourceExtension(String(t.type), t.subtype == null ? null : String(t.subtype));
       bodyFile = `source.${ext}`;
-      await fs.writeFile(`${dir}/${bodyFile}`, String(t.source ?? ''));
+      const body = String(t.source ?? '');
+      if (String(t.type) === 'document') {
+        await fs.writeFile(
+          `${dir}/${bodyFile}`,
+          toFrontMatter(
+            {
+              swaftId: id,
+              name: String(t.name ?? ''),
+              type: 'document',
+              subtype: t.subtype == null ? undefined : String(t.subtype),
+              tags: tagRows.map((r) => tagNameById.get(r.tag_id) ?? r.tag_id),
+            },
+            body,
+          ),
+        );
+      } else {
+        await fs.writeFile(`${dir}/${bodyFile}`, body);
+      }
     }
     await removeOtherBodyFiles(fs, dir, bodyFile);
 
-    const tagRows = await adapter.all<{ tag_id: string }>(
-      'SELECT tag_id FROM template_tags WHERE template_id = ? AND deleted_at IS NULL ORDER BY tag_id',
-      [id],
-    );
     await fs.writeFile(
       `${dir}/template.json`,
       canonicalJson({
@@ -385,9 +419,14 @@ async function hydrateTemplates(
       }
       source = serializeScenarioGraph(fromArazzo(doc).graph);
     } else {
-      // v1/v2 (or non-scenario/api): read the verbatim `source.<ext>` sidecar.
+      // v1/v2/v3 (or non-scenario/api): read the verbatim `source.<ext>` sidecar. `document` bodies
+      // carry a front-matter header (v4) written for external-tool portability — `template.json` stays
+      // the source of truth for id/name/subtype/tags, so the parsed meta is discarded here and only
+      // the body is kept as `source`. Tolerant: a file with no (or a malformed) front-matter block —
+      // e.g. one written before v4 — degrades to treating the whole file as body content.
       const sourceName = entries.find((e) => e.startsWith('source.'));
-      source = sourceName ? ((await fs.readFile(`${dir}/${sourceName}`)) ?? '') : '';
+      const raw = sourceName ? ((await fs.readFile(`${dir}/${sourceName}`)) ?? '') : '';
+      source = String(t.type) === 'document' ? parseFrontMatter(raw).body : raw;
     }
 
     await insertRow(adapter, 'templates', {
