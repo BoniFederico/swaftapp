@@ -760,7 +760,7 @@ function stepFromRow(r: StepRow): ScenarioRunStepDto {
     url: r.url,
     httpStatus: r.http_status,
     message: r.message,
-    input: r.input ? parseJsonOr<unknown>(r.input, undefined) : null,
+    input: r.input,
     output: r.output,
     durationMs: r.duration_ms,
     createdAt: r.created_at,

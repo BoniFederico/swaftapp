@@ -1271,7 +1271,7 @@ export interface ScenarioRunStepDto {
   url: string | null;
   httpStatus: number | null;
   message: string | null;
-  input: unknown | null;
+  input: string | null;
   output: unknown;
   durationMs: number | null;
   createdAt: string;

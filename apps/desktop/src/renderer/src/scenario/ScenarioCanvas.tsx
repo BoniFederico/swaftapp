@@ -260,13 +260,12 @@ export function ScenarioCanvas({
     const { w, h } = nodeSize('template');
     let position: Point = { x: p.x - w / 2, y: p.y - h / 2 };
     if (snapEnabled) position = snapNodePosition('template', position);
-    const nodeId = newId('n');
     const node: ScenarioNode = {
-      id: nodeId,
+      id: newId('n'),
       kind: 'template',
       ref: tpl.id,
       templateType: tpl.type,
-      alias: `block_${nodeId.slice(-6)}`,
+      alias: '',
       position,
     };
     onChange({ ...graph, nodes: [...graph.nodes, node] });
