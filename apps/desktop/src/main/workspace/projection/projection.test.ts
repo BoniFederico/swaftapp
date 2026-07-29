@@ -5,7 +5,7 @@ import { InProcessDbBackend } from '../../storage/db-backend';
 import { LocalAdapter } from '../LocalAdapter';
 import { canonicalJson } from './canonical-json';
 import { MemoryDirFs } from './dir-fs';
-import { fromHttpFile, toHttpFile } from '@swaft/shared';
+import { fromArazzo, fromHttpFile, parseScenarioGraph, toArazzo, toHttpFile } from '@swaft/shared';
 import { dumpWorkspace, hydrateWorkspace, sourceExtension } from './projection';
 import { entityBaseName, shortId } from './naming';
 
@@ -16,6 +16,7 @@ const N = {
   tplDoc: `templates/${entityBaseName('Release notes', 'tpl-doc')}`,
   tplCap: `templates/${entityBaseName('slugify', 'tpl-cap')}`,
   tplApi: `templates/${entityBaseName('Get user', 'tpl-api')}`,
+  tplScenario: `templates/${entityBaseName('Login flow', 'tpl-scn')}`,
   tagDead: `tags/${entityBaseName('gone', 'tag-dead')}.json`,
   relV1: `v1.${shortId('rel-1')}.json`,
 };
@@ -37,6 +38,16 @@ function canonicalApiSource(source: string): string {
   if (model.auth) out.auth = model.auth;
   if (Array.isArray(model.actions) && model.actions.length > 0) out.actions = model.actions;
   return JSON.stringify(out);
+}
+
+/**
+ * Mirror the projection's scenario round-trip (source → Arazzo YAML → source) so the snapshot compares
+ * scenarios at the **domain** level: the Arazzo form normalizes edge ids and drops nothing meaningful,
+ * but isn't byte-identical to the original graph JSON.
+ */
+function canonicalScenarioSource(source: string): string {
+  const { graph } = parseScenarioGraph(source);
+  return JSON.stringify(fromArazzo(toArazzo('t', graph)).graph);
 }
 
 /** A monotonic clock so inserted rows get distinct, deterministic timestamps. */
@@ -185,6 +196,45 @@ async function buildSampleWorkspace(): Promise<LocalAdapter> {
     has_draft: 1,
   });
 
+  // scenario (Arazzo-backed graph JSON source), with a decision, a delay and a breakpoint
+  await ins(a, 'templates', {
+    id: 'tpl-scn',
+    folder_id: '',
+    project_id: 'proj-1',
+    name: 'Login flow',
+    type: 'scenario',
+    subtype: null,
+    source: JSON.stringify({
+      version: 1,
+      nodes: [
+        { id: 'start', kind: 'start', position: { x: 80, y: 140 } },
+        {
+          id: 'n1',
+          kind: 'template',
+          templateType: 'api',
+          ref: 'tpl-api',
+          alias: 'login',
+          version: 'draft',
+          breakpoint: true,
+          position: { x: 240, y: 140 },
+        },
+        {
+          id: 'n2',
+          kind: 'decision',
+          condition: "${ previous('login').status == 200 }",
+          position: { x: 460, y: 140 },
+        },
+        { id: 'n3', kind: 'delay', ms: 1500, position: { x: 680, y: 80 } },
+      ],
+      edges: [
+        { id: 'e0', from: 'start', to: 'n1' },
+        { id: 'e1', from: 'n1', to: 'n2' },
+        { id: 'e2', from: 'n2', to: 'n3', branch: 'true' },
+      ],
+    }),
+    has_draft: 0,
+  });
+
   // capability (js), plus a soft-deleted template that must vanish from the files
   await ins(a, 'templates', {
     id: 'tpl-cap',
@@ -261,6 +311,7 @@ async function snapshot(a: LocalAdapter): Promise<Domain> {
       ['has_draft'],
     );
     if (picked.type === 'api') picked.source = canonicalApiSource(String(picked.source));
+    if (picked.type === 'scenario') picked.source = canonicalScenarioSource(String(picked.source));
     templates.push({
       ...picked,
       tags: tagRows.map((r) => r.tag_id),
@@ -341,6 +392,49 @@ describe('WorkspaceProjection', () => {
     expect(JSON.parse(row!.source)).toEqual({ method: 'GET', url: 'https://legacy/x' });
   });
 
+  it('hydrates a v1/v2 scenario template written as source.json by an older Swaft (back-compat)', async () => {
+    const legacyGraph = {
+      version: 1,
+      nodes: [
+        { id: 'start', kind: 'start', position: { x: 0, y: 0 } },
+        { id: 'n1', kind: 'delay', ms: 500, position: { x: 100, y: 0 } },
+      ],
+      edges: [{ id: 'e0', from: 'start', to: 'n1' }],
+    };
+    const fs = new MemoryDirFs();
+    await fs.writeFile(
+      'workspace.json',
+      JSON.stringify({ formatVersion: 2, schemaVersion: 2, name: 'Old', executionMode: 'sandbox' }),
+    );
+    await fs.writeFile(
+      'projects/p.json',
+      JSON.stringify({ id: 'p', name: 'P', color: null, description: null }),
+    );
+    await fs.writeFile(
+      'templates/old-scenario/template.json',
+      JSON.stringify({
+        id: 'old-scenario',
+        folderId: '',
+        projectId: 'p',
+        name: 'Legacy flow',
+        type: 'scenario',
+        subtype: null,
+        hasDraft: true,
+        tags: [],
+      }),
+    );
+    await fs.writeFile('templates/old-scenario/source.json', JSON.stringify(legacyGraph));
+
+    const b = await freshAdapter();
+    await b.createSchema();
+    await hydrateWorkspace(b, fs, { deviceId: 'd', now: isoNow(), storageMode: 'git' });
+
+    const row = await b.get<{ source: string }>(
+      "SELECT source FROM templates WHERE id = 'old-scenario'",
+    );
+    expect(JSON.parse(row!.source)).toEqual(legacyGraph);
+  });
+
   it('lays out readable files: manifest, source sidecars, embedded tags, nested releases', async () => {
     const a = await buildSampleWorkspace();
     const fs = new MemoryDirFs();
@@ -383,6 +477,15 @@ describe('WorkspaceProjection', () => {
     expect(apiTpl).not.toHaveProperty('source');
     expect(apiTpl.api.auth).toEqual({ kind: 'bearer', token: "${ secret('T') }" });
     expect(apiTpl.api.actions).toEqual([{ ref: 'log', trigger: 'pre' }]);
+
+    // scenario templates are a readable Arazzo 1.0 workflow document, not a JSON `source.*`.
+    expect(paths).toContain(`${N.tplScenario}/scenario.arazzo.yaml`);
+    expect(paths).not.toContain(`${N.tplScenario}/source.json`);
+    const arazzoYaml = files.get(`${N.tplScenario}/scenario.arazzo.yaml`)!;
+    expect(arazzoYaml).toContain('arazzo: 1.0.0');
+    expect(arazzoYaml).toContain('x-swaft');
+    // Swaft-only constructs (decision branches, delay, breakpoint) round-trip under x-swaft.
+    expect(arazzoYaml).toContain('breakpoint: true');
 
     // Manifest carries versions + identity, never storage mode / device id.
     const manifest = JSON.parse(files.get('workspace.json')!);

@@ -56,6 +56,7 @@ function toStep(node: ScenarioNode, edges: ScenarioEdge[]): Obj {
     alias: node.alias,
     version: node.version,
     inputs: node.inputs,
+    breakpoint: node.breakpoint,
     condition: node.condition,
     ms: node.ms,
     position: node.position,
@@ -147,6 +148,7 @@ export function fromArazzo(doc: unknown): { name: string; graph: ScenarioGraph }
     if (str(x.alias)) node.alias = str(x.alias);
     if (str(x.version)) node.version = str(x.version);
     if (isObj(x.inputs)) node.inputs = x.inputs;
+    if (typeof x.breakpoint === 'boolean') node.breakpoint = x.breakpoint;
     if (str(x.condition)) node.condition = str(x.condition);
     if (typeof x.ms === 'number') node.ms = x.ms;
     if (str(x.label)) node.label = str(x.label);

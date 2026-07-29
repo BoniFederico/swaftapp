@@ -22,7 +22,14 @@ const graph: ScenarioGraph = {
       position: { x: 460, y: 140 },
     },
     { id: 'n3', kind: 'delay', ms: 2000, position: { x: 680, y: 80 } },
-    { id: 'n4', kind: 'template', templateType: 'action', ref: 'notify', position: { x: 680, y: 220 } },
+    {
+      id: 'n4',
+      kind: 'template',
+      templateType: 'action',
+      ref: 'notify',
+      breakpoint: true,
+      position: { x: 680, y: 220 },
+    },
   ],
   edges: [
     { id: 'e0', from: 'start', to: 'n1' },
@@ -71,6 +78,8 @@ describe('fromArazzo', () => {
     expect(n1).toMatchObject({ templateType: 'api', ref: 'login-req', alias: 'login', version: 'draft' });
     expect(back.nodes.find((n) => n.id === 'n2')!.condition).toBe("${ previous('login').status == 200 }");
     expect(back.nodes.find((n) => n.id === 'n3')!.ms).toBe(2000);
+    expect(back.nodes.find((n) => n.id === 'n4')!.breakpoint).toBe(true);
+    expect(back.nodes.find((n) => n.id === 'n1')!.breakpoint).toBeUndefined();
 
     // edges: same (from,to,branch) set, ignoring generated ids
     const key = (g: ScenarioGraph) =>

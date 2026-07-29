@@ -1,5 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import { fromHttpFile, toHttpFile, type HttpRequestModel, type StorageMode } from '@swaft/shared';
+import { dump as dumpYaml, load as loadYaml } from 'js-yaml';
+import {
+  fromArazzo,
+  fromHttpFile,
+  parseScenarioGraph,
+  serializeScenarioGraph,
+  toArazzo,
+  toHttpFile,
+  type HttpRequestModel,
+  type StorageMode,
+} from '@swaft/shared';
 import { AppError } from '../../errors';
 import type { SqlParam } from '../../storage/sqlite';
 import { SCHEMA_VERSION } from '../../storage/schema';
@@ -31,8 +41,13 @@ import { entityBaseName, shortId } from './naming';
  *  v2: `api` templates are stored as a readable `request.http` file (open-standards plan §5) plus an
  *  `api` block in `template.json` for the parts `.http` can't carry (structured auth, pre/post
  *  actions). v1 workspaces (an `api` source in `source.json`) still open — hydrate reads whichever
- *  form is present, and the next save rewrites to v2. */
-export const FORMAT_VERSION = 2;
+ *  form is present, and the next save rewrites to v2.
+ *  v3: `scenario` templates are stored as a readable `scenario.arazzo.yaml` file (open-standards plan
+ *  §7 / D6) — an Arazzo 1.0 workflow document, with everything Arazzo has no native concept for
+ *  (action/capability/delay nodes, decision branches, canvas layout) under `x-swaft` extensions. v1/v2
+ *  workspaces (a scenario graph in `source.json`) still open — hydrate reads whichever form is
+ *  present, and the next save rewrites to v3. */
+export const FORMAT_VERSION = 3;
 
 const MANIFEST_FILE = 'workspace.json';
 const SETTINGS_FILE = 'settings.json';
@@ -262,8 +277,10 @@ async function dumpTemplates(adapter: LocalAdapter, fs: DirFs): Promise<void> {
 
     // Editable source → a readable sidecar. `api` templates use a standard **`request.http`** (open
     // format) plus an `api` block in `template.json` for the parts `.http` can't carry (structured
-    // auth, pre/post actions); other types write a verbatim `source.<ext>` sidecar with a
-    // type-appropriate extension. Meaningful diffs either way.
+    // auth, pre/post actions); `scenario` templates use an **Arazzo 1.0** workflow document
+    // (`scenario.arazzo.yaml`), with Swaft-only constructs under `x-swaft` extensions; other types
+    // write a verbatim `source.<ext>` sidecar with a type-appropriate extension. Meaningful diffs
+    // either way.
     let bodyFile: string;
     let apiMeta: { auth?: unknown; actions?: unknown } | undefined;
     if (String(t.type) === 'api') {
@@ -274,6 +291,11 @@ async function dumpTemplates(adapter: LocalAdapter, fs: DirFs): Promise<void> {
       if (model.auth) meta.auth = model.auth;
       if (model.actions && model.actions.length > 0) meta.actions = model.actions;
       if (Object.keys(meta).length > 0) apiMeta = meta;
+    } else if (String(t.type) === 'scenario') {
+      const { graph } = parseScenarioGraph(String(t.source ?? ''));
+      bodyFile = 'scenario.arazzo.yaml';
+      const doc = toArazzo(String(t.name ?? ''), graph);
+      await fs.writeFile(`${dir}/${bodyFile}`, dumpYaml(doc, { noRefs: true, lineWidth: 100 }));
     } else {
       const ext = sourceExtension(String(t.type), t.subtype == null ? null : String(t.subtype));
       bodyFile = `source.${ext}`;
@@ -352,8 +374,18 @@ async function hydrateTemplates(
       if (api?.auth) (model as { auth?: unknown }).auth = api.auth;
       if (api?.actions) (model as { actions?: unknown }).actions = api.actions;
       source = JSON.stringify(model);
+    } else if (String(t.type) === 'scenario' && entries.includes('scenario.arazzo.yaml')) {
+      // v3 open format: reconstruct the scenario graph from the Arazzo workflow document.
+      const yamlText = (await fs.readFile(`${dir}/scenario.arazzo.yaml`)) ?? '';
+      let doc: unknown = null;
+      try {
+        doc = loadYaml(yamlText);
+      } catch {
+        doc = null;
+      }
+      source = serializeScenarioGraph(fromArazzo(doc).graph);
     } else {
-      // v1 (or non-api): read the verbatim `source.<ext>` sidecar.
+      // v1/v2 (or non-scenario/api): read the verbatim `source.<ext>` sidecar.
       const sourceName = entries.find((e) => e.startsWith('source.'));
       source = sourceName ? ((await fs.readFile(`${dir}/${sourceName}`)) ?? '') : '';
     }
@@ -461,12 +493,14 @@ async function removeStaleFiles(fs: DirFs, dir: string, kept: Set<string>): Prom
 }
 
 /**
- * Remove any body sidecar in `dir` other than `keep` — a `source.*` file or the api `request.http`.
- * Covers a subtype/extension change and a type change (e.g. api ⇄ document swaps the body file kind).
+ * Remove any body sidecar in `dir` other than `keep` — a `source.*` file, the api `request.http`, or
+ * the scenario `scenario.arazzo.yaml`. Covers a subtype/extension change and a type change (e.g.
+ * api ⇄ document swaps the body file kind).
  */
 async function removeOtherBodyFiles(fs: DirFs, dir: string, keep: string): Promise<void> {
   for (const name of await fs.list(dir)) {
-    const isBody = name.startsWith('source.') || name === 'request.http';
+    const isBody =
+      name.startsWith('source.') || name === 'request.http' || name === 'scenario.arazzo.yaml';
     if (isBody && name !== keep) await fs.remove(`${dir}/${name}`);
   }
 }

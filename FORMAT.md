@@ -29,6 +29,7 @@ changelog/<slug>.<shortId>.json         # one file per changelog entry
 templates/<slug>.<shortId>/             # one directory per template
     template.json                       # metadata: id, name, type, subtype, folder/project, tags, hasDraft, (api only) `api` block
     request.http                        # api templates: method/url/headers/body + Seebo, info as `#` comments
+    scenario.arazzo.yaml                # scenario templates: an Arazzo 1.0 workflow document, Swaft-only bits under `x-swaft`
     source.<ext>                        # other template types: verbatim editable body (e.g. .md, .js, .yaml)
     releases/v<version>.<shortId>.json  # published release snapshots
 .gitignore  .gitattributes              # keep local caches / OS cruft out; normalize line endings to LF
@@ -89,6 +90,12 @@ depends on the template `type`:
   api-key-in-header, basic) is rendered as the actual header; parts `.http` cannot carry — structured
   auth (api-key-in-**query**, `inherit`, `secretRef`) and pre/post **actions** — live in the
   `template.json` `api` block.
+- **`scenario`** → **`scenario.arazzo.yaml`**, an [Arazzo 1.0](https://spec.openapis.org/arazzo/latest.html)
+  workflow document: the graph's nodes become `steps`, edges become `onSuccess`/`onFailure` `goto`s. An
+  `api`-typed node gets a best-effort native `operationId` hint. Everything Arazzo has no native concept
+  for — non-HTTP nodes (action/capability/delay), decision branches, breakpoints, Seebo conditions,
+  canvas positions — lives under **`x-swaft`** extensions on the workflow/step, so the round-trip is
+  lossless while the document stays a valid Arazzo file another tool can partially read.
 - **all other types** → **`source.<ext>`**, the editable body written verbatim with a type-appropriate
   extension (`.md`, `.html`, `.js`, `.yaml`, …). The extension is cosmetic; content is byte-for-byte.
 
@@ -107,8 +114,9 @@ etc. Secrets are never materialized to files.
 
 `workspace.json` carries two integers:
 
-- **`formatVersion`** — the on-disk file *shapes*. Current: **2** (api templates as `request.http` +
-  `api` block; v1 stored an api `source.json` and still loads, upgraded on the next save).
+- **`formatVersion`** — the on-disk file *shapes*. Current: **3** (scenario templates as
+  `scenario.arazzo.yaml`; v2 added api templates as `request.http` + `api` block; earlier versions
+  stored api/scenario sources as `source.json` and still load, upgraded on the next save).
 - **`schemaVersion`** — the working-store schema. Opening a workspace whose `schemaVersion` is newer
   than the app supports is refused (`SCHEMA_TOO_NEW`) rather than risking a lossy downgrade.
 

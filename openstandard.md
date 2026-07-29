@@ -8,8 +8,9 @@
 > **Goal (unchanged):** make Swaft store and exchange its data using **open, plain-file standards** —
 > the folder of files is the source of truth, API requests are `.http` files, while keeping Seebo
 > formulas and Swaft's richer features, and offering guided import/export to the wider ecosystem
-> (Postman, Bruno, OpenAPI, cURL, HAR). Scenarios-as-Arazzo and documents-as-front-matter were designed
-> but **not yet wired in** — see §3.
+> (Postman, Bruno, OpenAPI, cURL, HAR). Scenarios-as-Arazzo is now wired into the projection (§1.7); a
+> dedicated import/export UI for it, and documents-as-front-matter, were designed but **not yet wired
+> in** — see §3.
 
 The load-bearing architectural principle held throughout: **the canonical *runtime* model is
 unchanged.** An API request is still a `HttpRequestModel` ([`ops.ts`](packages/shared/src/ops.ts)) held
@@ -35,7 +36,7 @@ usable from the renderer or main:
 | Postman v2.1 | [`postman.ts`](packages/shared/src/postman.ts) | `fromPostman` / `toPostman` (verbatim) | Conversion (variabilize vs. verbatim) is externalized to `ExportService`, not the codec. |
 | Bruno | [`bruno.ts`](packages/shared/src/bruno.ts) | `toBruno` / `fromBruno` | File-per-request `.bru` DSL + `bruno.json`; brace-depth-aware block scanner. |
 | HAR 1.2 | [`har.ts`](packages/shared/src/har.ts) | **export only** | `toHar(entries)`; wired to a UI action (API view → History → "Export HAR"). |
-| Arazzo 1.0 | [`arazzo.ts`](packages/shared/src/arazzo.ts) | `toArazzo` / `fromArazzo` | **Codec exists and is unit-tested, but is NOT wired into the projection or any UI** — see §3.1. |
+| Arazzo 1.0 | [`arazzo.ts`](packages/shared/src/arazzo.ts) | `toArazzo` / `fromArazzo` | Wired into the projection (`scenario` templates, `FORMAT_VERSION` 3) — see §1.7/§3.1. A dedicated import/export UI is not built yet — see §3.1 item 4. |
 | Front matter | [`front-matter.ts`](packages/shared/src/front-matter.ts) | `toFrontMatter` / `parseFrontMatter` | Dependency-free YAML-ish front matter. **NOT wired into the projection** — see §3.2. |
 | Seebo conversion | [`seebo-convert.ts`](packages/shared/src/seebo-convert.ts) | `variabilizeSeebo`, `bracesToSeebo` | `env`/`secret`/bare `${ }` ⇄ `{{ }}`; used by `ExportService` at export time only (on-disk form always keeps Seebo verbatim). |
 | Secret scan | [`secret-scan.ts`](packages/shared/src/secret-scan.ts) | `scanForSecrets`, `hasSecretLiteral` | Detector exists and is unit-tested. **NOT wired into any write/commit path yet** — see §3.4. |
@@ -136,6 +137,16 @@ loudly.
   keychain path still works unchanged as a fallback
   ([`HttpService.ts`](apps/desktop/src/main/http/HttpService.ts)), it's just not offered a conversion UI.
 
+### 1.7 Scenario templates stored as Arazzo (Workstream 4, projection done — see §3.1 for remaining UI)
+
+`FORMAT_VERSION = 3` ([`projection.ts:35`](apps/desktop/src/main/workspace/projection/projection.ts)):
+a `scenario` template's on-disk body is `templates/<slug>.<id>/scenario.arazzo.yaml` (via
+`toArazzo`/`fromArazzo`), an Arazzo 1.0 workflow document. Everything Arazzo has no native concept for —
+non-HTTP nodes, decision branches, breakpoints, canvas positions — lives under `x-swaft` extensions, so
+nothing Swaft-specific needed its own JSON schema. v1/v2 workspaces (a scenario graph in `source.json`)
+still hydrate; the next save upgrades them to v3. The canvas, execution engine and Seebo formula
+resolution are untouched — only the on-disk form changed.
+
 ---
 
 ## 2. Cross-cutting facts that still hold
@@ -162,27 +173,26 @@ be byte-identical to the runtime JSON), then UI.
 
 ### 3.1 Scenarios stored as Arazzo (was Workstream 4)
 
-The `toArazzo`/`fromArazzo` codec exists and is unit-tested
-([`arazzo.ts`](packages/shared/src/arazzo.ts), `arazzo.test.ts`) but scenario templates still write
-`source.json` verbatim — `sourceExtension('scenario', …)` still returns `'json'`
-([`projection.ts:497`](apps/desktop/src/main/workspace/projection/projection.ts)).
+**Items 1-3 done.** `dumpTemplates`/`hydrateTemplates`
+([`projection.ts:242-410`](apps/desktop/src/main/workspace/projection/projection.ts)) now branch on
+`type === 'scenario'` the same way `type === 'api'` already branches: `dumpTemplates` writes
+`scenario.arazzo.yaml` via `toArazzo`; `hydrateTemplates` reads it back via `fromArazzo` when present,
+else falls back to the legacy `source.json` sidecar (v1/v2 back-compat, mirroring how api templates fall
+back to `source.json`). `FORMAT_VERSION` is now **3** (documented in `FORMAT.md` §1/§4/§5); no new JSON
+schema was needed — every Swaft-only piece (action/capability/delay nodes, decision branches,
+breakpoints, canvas layout) lives under `x-swaft` extensions inside the YAML document itself, not a
+separate file. A gap was found and fixed while wiring this up: the `breakpoint` field (added by the
+block-breakpoints feature) was on `ScenarioNode` but never round-tripped by `toStep`/`fromArazzo` in
+`arazzo.ts` — fixed, covered by a new case in `arazzo.test.ts`. Domain-level round-trip coverage (incl.
+a legacy `source.json` back-compat case) is in `projection.test.ts` (`canonicalScenarioSource`,
+`N.tplScenario`), following the `canonicalApiSource` pattern already there.
 
-**To do:**
-1. In `dumpTemplates`/`hydrateTemplates` ([`projection.ts:242-385`](apps/desktop/src/main/workspace/projection/projection.ts)),
-   branch on `type === 'scenario'` the same way `type === 'api'` already branches: write
-   `scenario.arazzo.yaml` via `toArazzo`, put Swaft-only pieces (action/capability/delay nodes, canvas
-   layout) under `x-swaft-*` extensions; `hydrateTemplates` reads `scenario.arazzo.yaml` back via
-   `fromArazzo` when present, else falls back to `source.json` (v1/back-compat, mirroring how api
-   templates fall back to `source.json` today).
-2. Bump `FORMAT_VERSION` to 3 and document the migration in `FORMAT.md` + the new schema
-   (`apps/desktop/src/main/workspace/projection/schemas/scenario.schema.json` for the parts not
-   expressible in Arazzo itself, if any remain outside `x-swaft`).
-3. A domain-level round-trip test in `projection.test.ts`, following the `canonicalApiSource` pattern
-   already there (the `.yaml` form won't be byte-identical to the runtime `ScenarioGraph` JSON, so
-   compare the rehydrated graph, not raw bytes).
-4. UI: an "Export scenario as Arazzo" / "Import Arazzo" action with a guided-conflict-resolution dialog
-   (mirrors `ExportDialog`/`ImportDialog`) for scenarios that use Swaft-only constructs — same
-   fidelity-report pattern as the existing collection export/import.
+**Still open (item 4):**
+- UI: an "Export scenario as Arazzo" / "Import Arazzo" action with a guided-conflict-resolution dialog
+  (mirrors `ExportDialog`/`ImportDialog`) for scenarios that use Swaft-only constructs — same
+  fidelity-report pattern as the existing collection export/import. Note this is UI-only scope now:
+  every scenario already round-trips through Arazzo transparently on every save/load, with or without
+  this dialog.
 
 ### 3.2 Documents stored as Markdown/native + YAML front matter (was Workstream 5)
 
