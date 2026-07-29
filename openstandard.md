@@ -275,22 +275,27 @@ no-header back-compat case). See §1.8 for the full write-up.
   `EnvironmentsSettings`, a no-op everywhere else it's reused — request params/headers have no such
   concept) — a per-row lock-icon toggle, and the value input renders as `type="password"` once a row
   is marked secret.
-- **Two gaps found and fixed while wiring this up** (both pre-existing, exposed by adding this column):
-  (a) the v18 migration step referenced the *live* `ENVIRONMENTS_DDL` constant instead of a frozen
-  historical snapshot, so mutating that constant for v26 silently broke `ALTER TABLE ... ADD COLUMN` on
-  a fresh v1→v26 migration (`duplicate column name`) — fixed by inlining the v18-era DDL, matching how
-  every other migration step already treats its DDL as frozen; (b) `domainToRow` would hydrate a
-  literal SQL `NULL` into a `NOT NULL` column for a domain field entirely absent from an old file — the
-  `jsonDefaults` mechanism above fixes this for `secret_vars` specifically. **Not fixed** (same bug
-  class, pre-existing, out of scope here): `folders.headers`/`proxy`/`auth`/`actions`/`notes` were each
-  added to the `folders` table well after folders existed, and the projection's `folders` `FLAT_ENTITIES`
-  entry has no `jsonDefaults`/plain-column-default fallback either — a folder file old enough to predate
-  one of those columns would hit the same `NOT NULL constraint failed` on hydrate. Worth a dedicated
-  audit pass if very old git-workspace folder files are still in the wild.
+- **Three gaps found and fixed while wiring this up** (all pre-existing, exposed by adding this
+  column): (a) the v18 migration step referenced the *live* `ENVIRONMENTS_DDL` constant instead of a
+  frozen historical snapshot, so mutating that constant for v26 silently broke `ALTER TABLE ... ADD
+  COLUMN` on a fresh v1→v26 migration (`duplicate column name`) — fixed by inlining the v18-era DDL,
+  matching how every other migration step already treats its DDL as frozen; (b) `domainToRow` would
+  hydrate a literal SQL `NULL` into a `NOT NULL` column (or a wrong `0` into a `NOT NULL` `bool` column)
+  for a domain field entirely absent from an old file, as opposed to present-and-`null` — generalized a
+  `jsonDefaults`→**`defaults`** hook on `FlatEntity`/`domainToRow`
+  ([`projection.ts`](apps/desktop/src/main/workspace/projection/projection.ts)) covering `json`, `bool`
+  and plain columns alike; (c) applying (b) more broadly surfaced the *same* bug already latent for
+  `folders.headers`/`actions`/`notes` (added at v21/v24, well after folders existed — a pre-existing
+  file predating one of them would hit `NOT NULL constraint failed` on hydrate) and for
+  `workspace_settings.batcher_enabled` (added at v22 — an old `settings.json` would silently hydrate the
+  batcher *disabled* instead of its intended default-enabled) — both now covered by `defaults` entries
+  too (`proxy`/`auth` stay undefaulted; they're genuinely nullable, so an absent key correctly hydrates
+  as `null`, not `{}`).
 - Covered by `Environment.test.ts` (label round-trip + pruning + kind-agnostic `resolve()`),
   `schema.test.ts` (fresh-schema + migration pair, the v24/v25 pattern), `migration.test.ts` (full
-  v1→current path, which is what caught gap (a)), `projection.test.ts` (the missing-key back-compat
-  case, which caught gap (b)), and `EnvironmentsSettings.test.tsx` (new — the renderer had no test file
+  v1→current path, which is what caught gap (a)), `projection.test.ts` (missing-key back-compat cases
+  for environments/folders/settings, which caught gaps (b) and (c)), and `EnvironmentsSettings.test.tsx`
+  (new — the renderer had no test file
   for this section before).
 
 **Item 2 (dotenv on-disk form) — deprioritized, not done.** The JSON form already works, is validated,

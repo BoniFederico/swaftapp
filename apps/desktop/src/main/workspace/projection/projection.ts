@@ -82,12 +82,15 @@ interface FlatEntity {
   /** Column whose value seeds the readable file-name slug. Defaults to `name`. */
   nameColumn?: string;
   /**
-   * Fallback for a `json` column added to this table *after* older files were written, so a file
-   * missing the key entirely (rather than carrying it as `null`) still satisfies a `NOT NULL DEFAULT`
-   * column instead of hydrating a literal `NULL` into it. Only applies when the key is absent — a key
-   * explicitly present with value `null` still round-trips as `null` (for genuinely nullable columns).
+   * Fallback for a column added to this table *after* older files were written, so a file missing the
+   * key entirely (rather than carrying it as `null`/`false`) still satisfies a `NOT NULL DEFAULT`
+   * column instead of hydrating a literal `NULL` (or, for a `bool` column, a wrong `0`) into it. Only
+   * applies when the key is absent — a key explicitly present with value `null` still round-trips as
+   * `null` (for genuinely nullable `json` columns). Keyed by column name; value is the raw domain-shape
+   * default (an object/array for a `json` column, a boolean for a `bool` column, the literal string for
+   * a plain column) — mirrors the column's own SQL `DEFAULT`.
    */
-  jsonDefaults?: Readonly<Record<string, unknown>>;
+  defaults?: Readonly<Record<string, unknown>>;
 }
 
 const FLAT_ENTITIES: readonly FlatEntity[] = [
@@ -107,6 +110,10 @@ const FLAT_ENTITIES: readonly FlatEntity[] = [
       'notes',
     ],
     json: ['headers', 'proxy', 'auth', 'actions'],
+    // `headers`/`actions`/`notes` were added to this table well after folders existed (v21/v24); a
+    // file predating one of them has no such key at all. `proxy`/`auth` are genuinely nullable, so
+    // they're deliberately not defaulted here — an absent key there still hydrates as `null`.
+    defaults: { headers: {}, actions: [], notes: '' },
   },
   { table: 'tags', dir: 'tags', columns: ['id', 'name', 'color'] },
   {
@@ -116,7 +123,7 @@ const FLAT_ENTITIES: readonly FlatEntity[] = [
     json: ['vars', 'secret_vars'],
     // A file written before `secretVars` existed has no such key at all (not `null`) — default it to
     // an empty array rather than hydrating NULL into the NOT NULL `secret_vars` column.
-    jsonDefaults: { secret_vars: [] },
+    defaults: { secret_vars: [] },
   },
   {
     table: 'changelog',
@@ -140,6 +147,10 @@ const SETTINGS_ENTITY: FlatEntity = {
   ],
   json: ['blocked_domains', 'enforced_headers'],
   bool: ['batcher_enabled'],
+  // `batcher_enabled` was added at v22; a settings.json predating it has no such key. Without a
+  // default, an absent bool key reads as falsy → the batcher would be silently disabled for every
+  // pre-v22 workspace instead of keeping the column's own DEFAULT 1 (enabled).
+  defaults: { batcher_enabled: true },
 };
 
 const SYNC_META_FOR_INSERT = (ctx: HydrateContext): Record<string, SqlParam> => ({
@@ -502,17 +513,20 @@ function domainToRow(domain: Record<string, unknown>, entity: FlatEntity): Recor
   const out: Record<string, SqlParam> = {};
   for (const col of entity.columns) {
     const key = toCamel(col);
+    const absent = !(key in domain);
+    const hasDefault = !!entity.defaults && col in entity.defaults;
     if (entity.json?.includes(col)) {
-      if (!(key in domain) && entity.jsonDefaults && col in entity.jsonDefaults) {
-        out[col] = JSON.stringify(entity.jsonDefaults[col]);
+      if (absent && hasDefault) {
+        out[col] = JSON.stringify(entity.defaults![col]);
       } else {
         const value = domain[key];
         out[col] = value == null ? null : JSON.stringify(value);
       }
     } else if (entity.bool?.includes(col)) {
-      out[col] = domain[key] ? 1 : 0;
+      const value = absent && hasDefault ? entity.defaults![col] : domain[key];
+      out[col] = value ? 1 : 0;
     } else {
-      out[col] = (domain[key] ?? null) as SqlParam;
+      out[col] = (absent && hasDefault ? entity.defaults![col] : (domain[key] ?? null)) as SqlParam;
     }
   }
   return out;

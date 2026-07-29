@@ -647,6 +647,61 @@ describe('WorkspaceProjection', () => {
     expect(JSON.parse(row!.secret_vars)).toEqual([]);
   });
 
+  it('hydrates a folder file written before headers/actions/notes existed (back-compat)', async () => {
+    const fs = new MemoryDirFs();
+    await fs.writeFile(
+      'workspace.json',
+      JSON.stringify({ formatVersion: 4, schemaVersion: 20, name: 'Old', executionMode: 'sandbox' }),
+    );
+    await fs.writeFile(
+      'projects/p.json',
+      JSON.stringify({ id: 'p', name: 'P', color: null, description: null }),
+    );
+    // A folder as it stood before v21 (no headers/proxy/auth/actions/notes at all).
+    await fs.writeFile(
+      'folders/old.f1.json',
+      JSON.stringify({ id: 'f1', name: 'Old', projectId: 'p', parentFolderId: null }),
+    );
+
+    const b = await freshAdapter();
+    await b.createSchema();
+    await hydrateWorkspace(b, fs, { deviceId: 'd', now: isoNow(), storageMode: 'git' });
+    const row = await b.get<{ headers: string; proxy: string | null; actions: string; notes: string }>(
+      "SELECT headers, proxy, actions, notes FROM folders WHERE id = 'f1'",
+    );
+    expect(JSON.parse(row!.headers)).toEqual({});
+    expect(row!.proxy).toBeNull(); // genuinely nullable — absent still hydrates as null, not '{}'
+    expect(JSON.parse(row!.actions)).toEqual([]);
+    expect(row!.notes).toBe('');
+  });
+
+  it('hydrates settings.json written before `batcherEnabled` existed, defaulting to enabled', async () => {
+    const fs = new MemoryDirFs();
+    await fs.writeFile(
+      'workspace.json',
+      JSON.stringify({ formatVersion: 4, schemaVersion: 21, name: 'Old', executionMode: 'sandbox' }),
+    );
+    // Settings as they stood before v22 (no batcherEnabled at all).
+    await fs.writeFile(
+      'settings.json',
+      JSON.stringify({
+        id: 'settings',
+        executionMode: 'sandbox',
+        proxyUrl: null,
+        blockedDomains: [],
+        enforcedHeaders: {},
+      }),
+    );
+
+    const b = await freshAdapter();
+    await b.createSchema();
+    await hydrateWorkspace(b, fs, { deviceId: 'd', now: isoNow(), storageMode: 'git' });
+    const row = await b.get<{ batcher_enabled: number }>(
+      `SELECT batcher_enabled FROM workspace_settings WHERE id = 'settings'`,
+    );
+    expect(row!.batcher_enabled).toBe(1);
+  });
+
   it('rejects a folder with no manifest and a workspace from a newer schema', async () => {
     const empty = new MemoryDirFs();
     const b = await freshAdapter();
