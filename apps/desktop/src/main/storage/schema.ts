@@ -11,7 +11,7 @@
  * reshaped to flat collections) + workspace settings + restrictions.
  */
 
-export const SCHEMA_VERSION = 26;
+export const SCHEMA_VERSION = 27;
 
 /** Sync-metadata columns present on every 🟢 synchronized entity. */
 export const SYNC_META_COLUMNS = [
@@ -226,6 +226,7 @@ const SCENARIO_RUN_STEPS_DDL = `CREATE TABLE scenario_run_steps (
   url TEXT,
   http_status INTEGER,
   message TEXT,
+  input TEXT,
   output TEXT,
   duration_ms INTEGER,
   created_at TEXT NOT NULL
@@ -528,5 +529,11 @@ export const MIGRATIONS: { to: number; sql: string }[] = [
     // v26 labels individual environment variables as "config" or "secret" (a JSON array of the
     // secret-labeled keys) — advisory only, gates export/UI, not `env(...)` resolution.
     sql: `ALTER TABLE environments ADD COLUMN secret_vars TEXT NOT NULL DEFAULT '[]';`,
+  },
+  {
+    to: 27,
+    // v27 captures the input (request body snapshot) for API steps in a scenario run so they can be
+    // inspected alongside the response.
+    sql: `ALTER TABLE scenario_run_steps ADD COLUMN input TEXT;`,
   },
 ];

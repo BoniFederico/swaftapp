@@ -1222,12 +1222,13 @@ export interface BlockOutput {
   kind: 'api' | 'action' | 'capability' | 'document' | 'decision' | 'delay' | 'start';
   ok: boolean;
   output: unknown;
-  /** API metadata (never bodies): the method + url the call used. */
+  /** API metadata: the method + url the call used. */
   method?: string;
   url?: string;
   status?: number;
   statusText?: string;
   headers?: Record<string, string>;
+  input?: string;
   body?: string;
   json?: unknown;
   durationMs?: number;
@@ -1257,7 +1258,7 @@ export interface ScenarioRunDto {
   finishedAt: string | null;
 }
 
-/** One executed node in a run (redacted: metadata + a truncated output snapshot, never inputs/bodies). */
+/** One executed node in a run (redacted: metadata + a truncated output snapshot; API steps include input snapshot). */
 export interface ScenarioRunStepDto {
   id: string;
   runId: string;
@@ -1270,6 +1271,7 @@ export interface ScenarioRunStepDto {
   url: string | null;
   httpStatus: number | null;
   message: string | null;
+  input: unknown | null;
   output: unknown;
   durationMs: number | null;
   createdAt: string;

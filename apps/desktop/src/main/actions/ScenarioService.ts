@@ -92,6 +92,7 @@ interface StepRow {
   url: string | null;
   http_status: number | null;
   message: string | null;
+  input: string | null;
   output: string | null;
   duration_ms: number | null;
   created_at: string;
@@ -431,6 +432,7 @@ export class ScenarioService extends RepoBase {
               status: res.response.status,
               statusText: res.response.statusText,
               headers: res.response.headers,
+              input: JSON.stringify(values),
               body: res.response.body,
               json,
               durationMs: res.response.durationMs,
@@ -656,8 +658,8 @@ export class ScenarioService extends RepoBase {
           : 'failed';
     const isApi = out.kind === 'api';
     await this.adapter.run(
-      `INSERT INTO scenario_run_steps (id, run_id, seq, node_id, alias, kind, status, method, url, http_status, message, output, duration_ms, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO scenario_run_steps (id, run_id, seq, node_id, alias, kind, status, method, url, http_status, message, input, output, duration_ms, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         randomUUID(),
         state.run.id,
@@ -670,6 +672,7 @@ export class ScenarioService extends RepoBase {
         isApi ? (out.url ?? null) : null,
         isApi ? (out.status ?? null) : null,
         out.error ?? null,
+        isApi ? (out.input ?? null) : null,
         snapshotOutput(out),
         out.durationMs ?? null,
         this.ws.nowIso(),
@@ -757,6 +760,7 @@ function stepFromRow(r: StepRow): ScenarioRunStepDto {
     url: r.url,
     httpStatus: r.http_status,
     message: r.message,
+    input: r.input ? parseJsonOr<unknown>(r.input, undefined) : null,
     output: r.output,
     durationMs: r.duration_ms,
     createdAt: r.created_at,
