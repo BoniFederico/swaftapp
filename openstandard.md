@@ -114,11 +114,11 @@ loudly.
   `forwardRef` ([`WorkingTree.tsx`](apps/desktop/src/renderer/src/workspace/WorkingTree.tsx),
   `WorkingTreeHandle`) so the top bar drives it imperatively while the dialogs/state stay owned by the
   tree (shared with the per-node menus).
-- **Not built:** the **environments multi-select at export time** and the **"personal environment"
-  opt-in/flag** described in the original plan's §6.3 — today `ExportService` exports whichever
-  environments the scope implies, with no picker and no personal/shared distinction in the dialog.
-  Also not built: **round-trip identity preservation** (a Bruno `meta.swaftId` marker so a re-import
-  updates in place instead of creating new entities) — every import today creates fresh ids.
+- **Environments multi-select + personal flag (§6.3) — done, see §3.6.** `ExportDialog` now offers a
+  checkbox list of every environment (defaulting to the active one), with a Personal/Workspace
+  ownership badge next to each so a shared export can't silently include a personal one unnoticed.
+  Not built: **round-trip identity preservation** (a Bruno `meta.swaftId` marker so a re-import
+  updates in place instead of creating new entities) — every import today creates fresh ids (§3.7).
 
 ### 1.6 Secrets (Workstream 6, partial — see §3.3/§3.4 for what's left)
 
@@ -363,12 +363,35 @@ new cases in `FolderPersistence.test.ts`/`GitPersistence.test.ts` (save → reop
 cache on an older workspace, and — on the real-git suite — that `.swaft/local-cache.json` lands on
 disk but stays untracked by `git ls-files`).
 
-### 3.6 Export dialog: environment multi-select + personal/shared flag
+### 3.6 Export dialog: environment multi-select + personal/shared flag — done
 
-Noted in §1.5 as not built. `ExportDialog`/`ExportService` don't yet let the user pick which
-environments to bundle with a collection export, and don't distinguish workspace-scoped from
-user-scoped ("personal") environments. Add a multi-select to `ExportDialog.tsx`, default to the active
-environment, and flag personal ones so a shared export can't silently leak them.
+`ExportDialog.tsx` gained a checkbox list under the format/conversion pickers, one row per environment
+(name + the existing `OwnerBadge` Personal/Workspace label reused from `EnvironmentPicker.tsx`),
+default-checked to the workspace's active environment (`useEnvironmentsOptional()` — the `Optional`
+variant so the dialog degrades to "no environments" instead of crashing outside an
+`EnvironmentProvider`, e.g. in isolated tests). Selected ids go out as `environmentIds` on
+`collection.export` (`collectionExportRequestSchema`, `ops.ts`).
+
+`ExportService.export()` takes a fourth `environmentIds` param, fetches each via
+`EnvironmentService.get`, filters out `secretVars`-labeled keys (never emit a literal secret into a
+shared file, mirroring the invariant already documented on `ImportedEnvironment` — "environment values
+are plain config, never secrets"), and reports how many were redacted. Silently skips an
+unknown/deleted id rather than failing the whole export.
+
+Per-format bundling (open-standards question, resolved: Postman + Bruno only):
+- **Postman** — a companion `<name>.postman_environment.json` file per selected environment
+  (`toPostmanEnvironment`, `postman.ts`), Postman's own environment-file format.
+- **Bruno** — a `environments/<name>.bru` file per selected environment inside the collection
+  directory (`toBruno` now takes an optional `environments` array; `bruno.ts`), Bruno's native
+  environment block (`vars { key: value }`).
+- **`.http`** — no native single-file environment concept; a selected environment is silently *not*
+  bundled, and the fidelity report says so explicitly (`N environment(s) were not bundled — .http
+  export has no environment file.`) rather than pretending to include it.
+
+Covered by new cases in `ExportService.test.ts` (Postman/Bruno env file content, secret redaction,
+`.http` limitation reported, unknown-id skip), `postman.test.ts`/`bruno.test.ts` (codec-level env file
+shape), and `ExportDialog.test.tsx` (default-to-active-environment, personal badge shown, toggling
+changes the `collection.export` payload).
 
 ### 3.7 Round-trip identity for Bruno exports
 

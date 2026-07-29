@@ -2,11 +2,14 @@ import {
   toBruno,
   toHttpFile,
   toPostman,
+  toPostmanEnvironment,
   variabilizeSeebo,
   hasSeeboLogic,
   type HttpRequestModel,
+  type ImportedEnvironment,
   type ImportedRequest,
 } from '@swaft/shared';
+import type { EnvironmentService } from './EnvironmentService';
 import type { OrganizationService } from './OrganizationService';
 import type { TemplateService } from './TemplateService';
 
@@ -74,13 +77,18 @@ function convertRequest(req: HttpRequestModel, conversion: ExportConversion): Ht
 
 export class ExportService {
   constructor(
-    private readonly deps: { organization: OrganizationService; templates: TemplateService },
+    private readonly deps: {
+      organization: OrganizationService;
+      templates: TemplateService;
+      environments: EnvironmentService;
+    },
   ) {}
 
   async export(
     scope: ExportScope,
     format: ExportFormat,
     conversion: ExportConversion,
+    environmentIds: string[] = [],
   ): Promise<ExportResult> {
     const tree = await this.deps.organization.getTree();
     const folderById = new Map(tree.folders.map((f) => [f.id, f]));
@@ -172,23 +180,49 @@ export class ExportService {
       report.push(`${withLogic} request(s) keep Seebo formulas a foreign tool won't evaluate.`);
     }
 
-    const collection = { name, requests, environments: [] };
+    const environments: ImportedEnvironment[] = [];
+    let redactedSecrets = 0;
+    for (const id of environmentIds) {
+      const env = await this.deps.environments.get(id).catch(() => null);
+      if (!env) continue;
+      const secret = new Set(env.secretVars);
+      redactedSecrets += secret.size;
+      const vars = Object.fromEntries(Object.entries(env.vars).filter(([k]) => !secret.has(k)));
+      environments.push({ name: env.name, vars });
+    }
+    if (redactedSecrets > 0) {
+      report.push(
+        `${redactedSecrets} secret-labeled variable(s) were left out of the exported environment(s).`,
+      );
+    }
+    if (environments.length > 0 && format === 'http') {
+      report.push(`${environments.length} environment(s) were not bundled — .http export has no environment file.`);
+    }
+
+    const collection = { name, requests, environments };
     const files = this.serialize(collection, format, name);
     return { files, report };
   }
 
   private serialize(
-    collection: { name: string; requests: ImportedRequest[] },
+    collection: { name: string; requests: ImportedRequest[]; environments: ImportedEnvironment[] },
     format: ExportFormat,
     name: string,
   ): ExportFile[] {
     if (format === 'postman') {
-      return [
+      const files: ExportFile[] = [
         {
           path: `${safe(name)}.postman_collection.json`,
           content: `${JSON.stringify(toPostman(collection), null, 2)}\n`,
         },
       ];
+      for (const env of collection.environments) {
+        files.push({
+          path: `${safe(env.name)}.postman_environment.json`,
+          content: `${JSON.stringify(toPostmanEnvironment(env), null, 2)}\n`,
+        });
+      }
+      return files;
     }
     if (format === 'bruno') {
       return toBruno(collection).map((f) => ({ path: `${safe(name)}/${f.path}`, content: f.content }));

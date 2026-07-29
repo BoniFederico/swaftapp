@@ -160,6 +160,10 @@ export const en = {
   'export.empty': 'No API requests in this scope.',
   'export.done': 'Exported.',
   'export.doneMany': 'Exported {{count}} files.',
+  'export.environments': 'Environments to bundle',
+  'export.environmentsHint':
+    'Personal environments are yours alone — think twice before including one in a shared export.',
+  'export.environmentsEmpty': 'No environments defined yet.',
   'tree.createFolder': 'Create folder',
   'tree.selectFolderFirst': 'Select a folder first',
   'tree.expand': 'Expand',
@@ -801,6 +805,10 @@ export const it: Partial<Record<TranslationKey, string>> = {
   'export.empty': 'Nessuna richiesta API in questo ambito.',
   'export.done': 'Esportato.',
   'export.doneMany': 'Esportati {{count}} file.',
+  'export.environments': 'Ambienti da includere',
+  'export.environmentsHint':
+    'Gli ambienti personali sono solo tuoi: pensaci due volte prima di includerne uno in un export condiviso.',
+  'export.environmentsEmpty': 'Nessun ambiente definito.',
   'tree.createFolder': 'Crea cartella',
   'tree.selectFolderFirst': 'Seleziona prima una cartella',
   'tree.expand': 'Espandi',

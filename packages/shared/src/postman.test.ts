@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fromPostman, postmanToSeebo, seeboToPostman, toPostman } from './postman';
+import { fromPostman, postmanToSeebo, seeboToPostman, toPostman, toPostmanEnvironment } from './postman';
 import type { ImportedRequest } from './collection';
 
 describe('variable translation', () => {
@@ -124,5 +124,16 @@ describe('toPostman', () => {
     expect(r.request.url).toBe("https://${ env('base') }/orders"); // verbatim round-trip (no {{ }})
     expect(r.request.bodyType).toBe('json');
     expect(r.request.auth?.kind).toBe('bearer');
+  });
+});
+
+describe('toPostmanEnvironment (open-standards §3.6)', () => {
+  it('exports vars as a Postman environment document', () => {
+    const doc = toPostmanEnvironment({ name: 'Staging', vars: { BASE: 'https://staging.example.test' } });
+    expect(doc).toEqual({
+      name: 'Staging',
+      values: [{ key: 'BASE', value: 'https://staging.example.test', enabled: true }],
+      _postman_variable_scope: 'environment',
+    });
   });
 });

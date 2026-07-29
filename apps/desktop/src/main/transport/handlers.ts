@@ -537,7 +537,7 @@ export const handlers: Record<OpName, Handler> = {
   'collection.export': (p) =>
     svc(async () => {
       const r = p as CollectionExportRequest;
-      return getExportService().export(r.scope, r.format, r.conversion);
+      return getExportService().export(r.scope, r.format, r.conversion, r.environmentIds ?? []);
     }),
   // Package the open workspace into a portable `.swaft` zip container (D1), optionally encrypted.
   'container.export': (p) =>

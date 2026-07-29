@@ -390,6 +390,8 @@ export const collectionExportRequestSchema = z
     scope: exportScopeSchema,
     format: z.enum(['postman', 'http', 'bruno']),
     conversion: z.enum(['verbatim', 'variabilize']),
+    /** Environments to bundle with the export (open-standards §3.6); none when omitted/empty. */
+    environmentIds: z.array(z.string().min(1)).max(64).optional(),
   })
   .strict();
 const exportFileSchema = z

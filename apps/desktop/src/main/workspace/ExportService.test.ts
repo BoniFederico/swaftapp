@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CryptoService } from '../crypto/CryptoService';
 import { InProcessDbBackend } from '../storage/db-backend';
 import { ChangelogService } from './ChangelogService';
+import { EnvironmentService } from './EnvironmentService';
 import { ExportService } from './ExportService';
 import { OrganizationService } from './OrganizationService';
 import { TemplateService } from './TemplateService';
@@ -26,7 +27,8 @@ async function setup() {
   const org = new OrganizationService(ws);
   const changelog = new ChangelogService(ws);
   const templates = new TemplateService(ws, org, changelog);
-  const exporter = new ExportService({ organization: org, templates });
+  const environments = new EnvironmentService(ws);
+  const exporter = new ExportService({ organization: org, templates, environments });
 
   let tree = await org.createProject({ name: 'Shop' });
   const projectId = tree.projects[0]!.id;
@@ -41,7 +43,7 @@ async function setup() {
   await templates.createTemplate({ folderId, name: 'Get order', type: 'api', subtype: 'json', source: apiSource });
   await templates.createTemplate({ folderId, name: 'Notes', type: 'document', source: 'hi' });
 
-  return { org, templates, exporter, projectId, folderId };
+  return { org, templates, environments, exporter, projectId, folderId };
 }
 
 describe('ExportService.export', () => {
@@ -81,5 +83,49 @@ describe('ExportService.export', () => {
     const paths = res.files.map((f) => f.path);
     expect(paths).toContain('Shop/bruno.json');
     expect(paths.some((p) => p.endsWith('Get order.bru'))).toBe(true);
+  });
+
+  describe('bundled environments (open-standards §3.6)', () => {
+    async function setupWithEnv() {
+      const s = await setup();
+      const env = await s.environments.create({ name: 'Staging', ownerKind: 'workspace' });
+      await s.environments.update(env.id, {
+        vars: { BASE: 'https://staging.example.test', TOKEN: 'shh' },
+        secretVars: ['TOKEN'],
+      });
+      return { ...s, envId: env.id };
+    }
+
+    it('bundles a selected environment as a companion Postman environment file, redacting secret vars', async () => {
+      const { exporter, projectId, envId } = await setupWithEnv();
+      const res = await exporter.export({ kind: 'project', projectId }, 'postman', 'verbatim', [envId]);
+      const envFile = res.files.find((f) => f.path === 'Staging.postman_environment.json');
+      expect(envFile).toBeDefined();
+      const parsed = JSON.parse(envFile!.content);
+      expect(parsed.values).toEqual([{ key: 'BASE', value: 'https://staging.example.test', enabled: true }]);
+      expect(res.report.join(' ')).toMatch(/1 secret-labeled variable/);
+    });
+
+    it('bundles a selected environment as a Bruno environments/*.bru file', async () => {
+      const { exporter, projectId, envId } = await setupWithEnv();
+      const res = await exporter.export({ kind: 'project', projectId }, 'bruno', 'verbatim', [envId]);
+      const envFile = res.files.find((f) => f.path === 'Shop/environments/Staging.bru');
+      expect(envFile).toBeDefined();
+      expect(envFile!.content).toContain('BASE: https://staging.example.test');
+      expect(envFile!.content).not.toContain('shh');
+    });
+
+    it('reports that .http export cannot bundle a selected environment', async () => {
+      const { exporter, folderId, envId } = await setupWithEnv();
+      const res = await exporter.export({ kind: 'folder', folderId }, 'http', 'verbatim', [envId]);
+      expect(res.files).toHaveLength(1); // no companion file
+      expect(res.report.join(' ')).toMatch(/not bundled/);
+    });
+
+    it('silently skips an unknown/deleted environment id', async () => {
+      const { exporter, projectId } = await setupWithEnv();
+      const res = await exporter.export({ kind: 'project', projectId }, 'postman', 'verbatim', ['missing']);
+      expect(res.files).toHaveLength(1);
+    });
   });
 });

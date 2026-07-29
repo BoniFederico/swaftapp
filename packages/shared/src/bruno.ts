@@ -1,4 +1,4 @@
-import type { ImportedCollection, ImportedRequest } from './collection';
+import type { ImportedCollection, ImportedEnvironment, ImportedRequest } from './collection';
 import type { HttpAuth, HttpMethod, HttpRequestModel } from './ops';
 import { bracesToSeebo } from './seebo-convert';
 
@@ -199,8 +199,20 @@ function safeFile(name: string): string {
   return name.replace(/[\\/:*?"<>|]+/g, '-').trim() || 'request';
 }
 
-/** Export a collection as Bruno files (`bruno.json` + one `.bru` per request). */
-export function toBruno(collection: { name: string; requests: ImportedRequest[] }): BrunoFile[] {
+/** Export a Swaft environment as a Bruno `environments/<name>.bru` file (a `vars { key: value }` block). */
+function toBruEnvironment(env: ImportedEnvironment): BrunoFile {
+  return {
+    path: `environments/${safeFile(env.name)}.bru`,
+    content: `vars {${DL}${dict(Object.entries(env.vars))}${DL}}${DL}`,
+  };
+}
+
+/** Export a collection as Bruno files (`bruno.json` + one `.bru` per request + one per environment). */
+export function toBruno(collection: {
+  name: string;
+  requests: ImportedRequest[];
+  environments?: ImportedEnvironment[];
+}): BrunoFile[] {
   const files: BrunoFile[] = [
     {
       path: 'bruno.json',
@@ -215,5 +227,6 @@ export function toBruno(collection: { name: string; requests: ImportedRequest[] 
     const path = `${dir ? `${dir}/` : ''}${safeFile(req.name)}.bru`;
     files.push({ path, content: toBru(req, seq) });
   }
+  for (const env of collection.environments ?? []) files.push(toBruEnvironment(env));
   return files;
 }

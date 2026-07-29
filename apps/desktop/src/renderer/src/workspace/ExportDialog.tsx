@@ -1,6 +1,8 @@
-import { useEffect, useId, useState } from 'react';
-import type { ExportScopeDto } from '@swaft/shared';
+import { useEffect, useId, useRef, useState } from 'react';
+import type { EnvironmentSummaryDto, ExportScopeDto } from '@swaft/shared';
 import { ApiClient, ApiError } from '../api-client/client';
+import { useEnvironmentsOptional } from '../environment/EnvironmentProvider';
+import { OWNER_KIND_LABEL } from '../environment/ownerKind';
 import { useI18n } from '../i18n/I18nProvider';
 import { Button, Dialog, useToast } from '../ui';
 
@@ -40,10 +42,17 @@ function RadioGroup<T extends string>({
   );
 }
 
+/** Ownership badge (Personal / Workspace) shown next to each environment checkbox. */
+function OwnerBadge({ env }: { env: EnvironmentSummaryDto }) {
+  const { t } = useI18n();
+  return <span className={`ui-badge env-badge env-badge--${env.ownerKind}`}>{t(OWNER_KIND_LABEL[env.ownerKind])}</span>;
+}
+
 /**
  * Export the api requests in a scope (a request / folder / project / workspace) to an open format.
- * Gathering + serialization happen in the `collection.export` op; this dialog picks the format and the
- * Seebo conversion, shows the scope preview, then saves via the native save dialogs.
+ * Gathering + serialization happen in the `collection.export` op; this dialog picks the format, the
+ * Seebo conversion, and which environments to bundle alongside (open-standards §3.6), shows the scope
+ * preview, then saves via the native save dialogs.
  */
 export function ExportDialog({
   open,
@@ -62,21 +71,53 @@ export function ExportDialog({
 }) {
   const { t } = useI18n();
   const toast = useToast();
+  const { environments, activeId, loading: envLoading } = useEnvironmentsOptional() ?? {
+    environments: [],
+    activeId: null,
+    loading: false,
+  };
   const [format, setFormat] = useState<Format>('postman');
   const [conversion, setConversion] = useState<Conversion>('variabilize');
+  const [envIds, setEnvIds] = useState<ReadonlySet<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  const seededFor = useRef<boolean>(false);
 
   useEffect(() => {
-    if (open) {
-      setFormat('postman');
-      setConversion('variabilize');
+    if (!open) {
+      seededFor.current = false;
+      return;
     }
+    setFormat('postman');
+    setConversion('variabilize');
   }, [open]);
+
+  useEffect(() => {
+    // Default-check the active environment once per open; the active env only resolves after an
+    // async env.selection.get, so wait for that to settle instead of racing it on mount.
+    if (open && !envLoading && !seededFor.current) {
+      seededFor.current = true;
+      setEnvIds(new Set(activeId ? [activeId] : []));
+    }
+  }, [open, envLoading, activeId]);
+
+  function toggleEnv(id: string) {
+    setEnvIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   async function doExport() {
     setBusy(true);
     try {
-      const res = await client.call('collection.export', { scope, format, conversion });
+      const res = await client.call('collection.export', {
+        scope,
+        format,
+        conversion,
+        environmentIds: [...envIds],
+      });
       if (res.files.length === 0) {
         toast.show(t('export.empty'), 'error');
         return;
@@ -151,6 +192,27 @@ export function ExportDialog({
           ]}
         />
         <p className="field-hint">{t('export.hint')}</p>
+        <div className="ui-field">
+          <span className="ui-field__label">{t('export.environments')}</span>
+          {environments.length === 0 ? (
+            <p className="field-hint">{t('export.environmentsEmpty')}</p>
+          ) : (
+            <div className="col" style={{ gap: 'var(--space-1)' }}>
+              {environments.map((env) => (
+                <label key={env.id} className="row" style={{ gap: 'var(--space-2)', alignItems: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={envIds.has(env.id)}
+                    onChange={() => toggleEnv(env.id)}
+                  />
+                  <span>{env.name}</span>
+                  <OwnerBadge env={env} />
+                </label>
+              ))}
+            </div>
+          )}
+          <p className="field-hint">{t('export.environmentsHint')}</p>
+        </div>
       </div>
     </Dialog>
   );

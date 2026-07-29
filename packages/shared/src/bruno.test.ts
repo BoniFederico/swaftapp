@@ -45,6 +45,25 @@ describe('toBruno', () => {
   });
 });
 
+describe('toBruno — environments (open-standards §3.6)', () => {
+  it('emits an environments/<name>.bru file per bundled environment', () => {
+    const files = toBruno({
+      name: 'Shop',
+      requests,
+      environments: [{ name: 'Staging', vars: { BASE: 'https://staging.example.test' } }],
+    });
+    const envFile = files.find((f) => f.path === 'environments/Staging.bru');
+    expect(envFile).toBeDefined();
+    expect(envFile!.content).toContain('vars {');
+    expect(envFile!.content).toContain('BASE: https://staging.example.test');
+  });
+
+  it('omits the environments directory entirely when none are bundled', () => {
+    const files = toBruno({ name: 'Shop', requests });
+    expect(files.some((f) => f.path.startsWith('environments/'))).toBe(false);
+  });
+});
+
 describe('fromBruno', () => {
   it('round-trips structure and fields (verbatim), reading folder path from the file path', () => {
     const files = toBruno({ name: 'Shop', requests });
