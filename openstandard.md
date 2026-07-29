@@ -76,9 +76,10 @@ editor and Seebo formula resolution are untouched.
   in the Working Tree's Import/Export menu.
 - **Local-only data** (history, run logs, input state, selections) was already excluded from the
   projection (🔵 tables, [`projection.ts`](apps/desktop/src/main/workspace/projection/projection.ts)
-  doc comment) — it simply isn't persisted for folder/git workspaces today. A dedicated git-ignored
-  `/.swaft/` cache directory for this data was **not built** (see §3.5) — not needed yet since nothing
-  currently needs to persist it there.
+  doc comment). A dedicated git-ignored `/.swaft/` cache directory for it is now built — see §3.5,
+  done: [`local-cache.ts`](apps/desktop/src/main/workspace/projection/local-cache.ts) serializes all
+  8 `LOCAL_ONLY_TABLES` to `/.swaft/local-cache.json`, read on open / written on save, for folder and
+  git workspaces.
 
 ### 1.4 Published, machine-checkable format (Workstream "Phase 0" — done)
 
@@ -338,15 +339,29 @@ unchanged in [`HttpService.ts`](apps/desktop/src/main/http/HttpService.ts) eithe
 `secretRef` has **no UI at all** (not shown/editable in `AuthEditor.tsx`), so this would start from
 scratch rather than adding a button next to an existing field. Revisit as its own pass.
 
-### 3.5 Local-only data under a git-ignored `/.swaft/` cache directory
+### 3.5 Local-only data under a git-ignored `/.swaft/` cache directory — done
 
-Not built. Today, local-only tables (request/run history, receipts, input state, selections) simply
-aren't projected to files for folder/git workspaces — they live only in the in-memory SQLite cache and
-are lost across a close/reopen of a folder or git workspace (this was already true before this work;
-it is called out here because the original plan assumed a persistent local cache directory that was
-never implemented). If this data should survive a reopen, add a `/.swaft/` directory (git-ignored, like
-`.gitignore` already reserves) holding a serialized cache of the 🔵 local-only tables, read on open and
-written on save, alongside (not instead of) the versioned projection tree.
+[`local-cache.ts`](apps/desktop/src/main/workspace/projection/local-cache.ts) adds `dumpLocalCache`/
+`hydrateLocalCache`, serializing all 8 [`LOCAL_ONLY_TABLES`](apps/desktop/src/main/storage/schema.ts)
+(`local_input_state`, `release_selection`, `api_history`, `api_action_runs`, `receipts`,
+`environment_selection`, `scenario_runs`, `scenario_run_steps`) to a single
+`/.swaft/local-cache.json`, alongside (not instead of) the versioned projection tree. `.gitignore`
+already reserved `/.swaft/` in both `FolderPersistence`/`GitPersistence` (§1.3), so the cache file is
+written to disk but never tracked/committed.
+
+Wired into [`FolderPersistence.ts`](apps/desktop/src/main/workspace/persistence/FolderPersistence.ts)
+and [`GitPersistence.ts`](apps/desktop/src/main/workspace/persistence/GitPersistence.ts) only (not the
+single-file `.swaft` container mode, which keeps the local-only tables in its own SQLite file
+already): `open()` calls `hydrateLocalCache` right after `hydrateWorkspace` succeeds; `save()` calls
+`dumpLocalCache` right after `dumpWorkspace`. A missing or corrupt cache file is treated as "nothing
+to restore" — this data was always best-effort/local, so it must never block opening or saving a
+workspace.
+
+Covered by [`local-cache.test.ts`](apps/desktop/src/main/workspace/projection/local-cache.test.ts)
+(round-trip across several tables, missing-file no-op, corrupt-JSON tolerance, empty-cache shape) and
+new cases in `FolderPersistence.test.ts`/`GitPersistence.test.ts` (save → reopen round-trip, absent
+cache on an older workspace, and — on the real-git suite — that `.swaft/local-cache.json` lands on
+disk but stays untracked by `git ls-files`).
 
 ### 3.6 Export dialog: environment multi-select + personal/shared flag
 
