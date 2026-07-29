@@ -81,3 +81,42 @@ Folders have their own menu for creating templates/subfolders, renaming and dele
 {: .tip }
 > Templates can be **dragged** from the tree onto the [Batcher](batcher-and-releases.md#the-batcher)
 > or a [Scenario](scenarios.md) canvas — that's how you compose and wire them together.
+
+## Import & Export
+
+The **Import/Export** menu in the top bar (and per-node context menu entries — "Export folder…",
+"Export request…", "Copy as cURL" on an API template) move requests in and out of Swaft using open,
+foreign formats:
+
+| Direction | Formats |
+|-----------|---------|
+| **Import** | OpenAPI (JSON/YAML), Postman collection, cURL, an Arazzo document onto a scenario |
+| **Export** | Postman collection, `.http` file, Bruno collection, a scenario as Arazzo |
+
+Import materializes each request as an `api` template (new project, an existing project/folder, or a
+new one you name), plus any collection-level variables as a new **environment**. Export gathers the
+`api` templates in a chosen scope (one request / a folder / a project / the whole workspace) and lets
+you choose whether Seebo formulas are kept **verbatim** or **variabilized** to the target format's own
+placeholder syntax (`${ env('X') }` → `{{X}}`). A **fidelity report** after the fact lists anything
+that couldn't be carried over — non-`api` templates have no request equivalent in any of these
+formats, so they're skipped and counted.
+
+### Bundling environments
+
+The export dialog lets you pick which **environments** to bundle alongside the requests, defaulting to
+whichever is currently active. Each one you check gets its own [ownership badge](environments.md#personal-vs-shared)
+(Personal/Workspace) right there in the picker — think twice before including a personal one in an
+export you're about to hand to someone else. A secret-labeled variable is never bundled; only its name
+appears, so nothing is silently leaked into a file you share.
+
+Postman gets a companion `*.postman_environment.json`; Bruno gets a `environments/*.bru` file inside
+the collection. `.http` has no single-file environment concept, so a selection there isn't bundled —
+the fidelity report says so explicitly.
+
+### Bruno round-trip identity
+
+A Bruno export stamps each request with its own Swaft template id. Re-importing that same export back
+into an **existing** project or folder recognizes the id and updates the matching template's request
+in place instead of creating a duplicate — handy for a round trip through an external tool that only
+understands Bruno. Postman and `.http` have no such marker; importing them always creates fresh
+templates.

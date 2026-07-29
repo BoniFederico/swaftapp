@@ -47,6 +47,31 @@ re-resolves every `env(...)` reference across the app.
 The active selection is **local to your device**, so switching environments never changes anything
 for other users of a shared workspace.
 
+## Config vs. secret label
+
+Each variable can be marked **config** (the default) or **secret** with a lock-icon toggle next to
+its row. A secret-labeled value is masked (shown as a password field) in the editor.
+
+{: .warning }
+> The label is **advisory only** — it does not encrypt the value or change how `env(...)` resolves it.
+> The variable is still stored as plain text in the workspace, exactly like a config one. Use the
+> label to flag values that shouldn't be casually shared, not as a substitute for a real
+> [secret](security-and-settings.md#secrets).
+
+The label gates two things:
+
+- **[Export](working-tree.md#import--export)** — a secret-labeled variable is never included in a
+  Postman/Bruno environment bundle; only its name appears, in a comment, so a teammate you share the
+  export with knows something was left out.
+- **The pre-commit check** on a Git workspace — see
+  [Using Git version control](workspaces.md#pre-commit-secret-check) — treats a labeled variable as an
+  acknowledged risk and does not re-flag it.
+
+Each environment's JSON file also gets a companion, hand-editable `.env` (dotenv) file alongside it —
+useful if you want to peek at or copy config values with a plain text editor or a tool that reads
+`.env` files. It is regenerated every save from the JSON (the real source of truth) and never
+contains secret-labeled values.
+
 ## Reading variables in formulas
 
 Read a variable with the **`env(...)`** data capability:

@@ -44,7 +44,10 @@ an **opaque reference** to a secret — the value itself is:
   history.
 
 Enter credentials as secrets in the [API Auth tab](api-requests.md#authentication), not as environment
-variables or plain text.
+variables or plain text: reference one with a `${ secret('NAME') }` formula in the token/username/
+password/key field. If a request still shows a banner about a legacy keychain reference, the Auth tab
+offers a one-click **Migrate to secret(...)** action that rewrites it to the formula form (or, if the
+field already has a value, just removes the unused legacy reference).
 
 ## Workspace encryption
 
