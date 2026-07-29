@@ -89,6 +89,34 @@ describe('EnvironmentService', () => {
     expect((await environments.list()).find((e) => e.id === env.id)?.varCount).toBe(2);
   });
 
+  it('labels variables as secret vs config, dropping the label for a removed/renamed key', async () => {
+    const { environments } = await setup();
+    const env = await environments.create({ name: 'E', ownerKind: 'workspace' });
+    await environments.update(env.id, {
+      vars: { API_URL: 'https://api.test', TOKEN: 'abc' },
+      secretVars: ['TOKEN'],
+    });
+    let full = await environments.get(env.id);
+    expect(full.secretVars).toEqual(['TOKEN']);
+
+    // A secret label surviving a vars replace that drops the key must not dangle.
+    full = await environments.update(env.id, { vars: { API_URL: 'https://api.test' } });
+    expect(full.vars).toEqual({ API_URL: 'https://api.test' });
+    expect(full.secretVars).toEqual([]);
+
+    // Sending a secretVars key not present in vars is filtered out too (defensive).
+    full = await environments.update(env.id, { secretVars: ['NOPE'] });
+    expect(full.secretVars).toEqual([]);
+  });
+
+  it('resolves env(KEY) identically for a secret-labeled variable — the label only gates export/UI', async () => {
+    const { environments } = await setup();
+    const env = await environments.create({ name: 'E', ownerKind: 'workspace' });
+    await environments.update(env.id, { vars: { TOKEN: 'abc' }, secretVars: ['TOKEN'] });
+    await environments.setSelection(env.id);
+    expect(await environments.resolve('TOKEN')).toBe('abc');
+  });
+
   it('resolves env(KEY) from the active environment; errors when absent', async () => {
     const { environments } = await setup();
     const env = await environments.create({ name: 'E', ownerKind: 'workspace' });

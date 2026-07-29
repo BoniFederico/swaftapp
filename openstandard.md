@@ -250,21 +250,53 @@ no-header back-compat case). See §1.8 for the full write-up.
 
 ### 3.3 Config/secret split for environment variables + dotenv form
 
-Environments today store `vars` as an untyped `string → string` map
-([`EnvironmentService.ts`](apps/desktop/src/main/workspace/EnvironmentService.ts)) and are dumped as
-plain JSON (`environments/<slug>.<id>.json`, `environment.schema.json`). The plan called for:
+**Item 1 done** (per the plan's own fallback: "if deprioritized, at least add the per-variable
+`config`/`secret` label" — item 2, below, was deprioritized; item 1 was not).
 
-1. **Per-variable label** (`config` vs `secret`) in the data model, UI
-   ([`EnvironmentsSettings.tsx`](apps/desktop/src/renderer/src/settings/sections/EnvironmentsSettings.tsx))
-   and schema — mirrors Postman's `default`/`secret` variable types. A variable marked `secret` should
-   not be exportable as a literal value (route it through the `${ secret('NAME') }` capability instead,
-   or export as a placeholder — same rule already applied to keychain secrets in `ExportService`).
-2. **Environments as `.env` (dotenv) files on disk** instead of JSON — the plan's `environments/<name>.env`
-   form (§3 of the old plan). This is a projection change (new codec) plus an `environment.schema.json`
-   revision (or its retirement in favor of a documented dotenv grammar in `FORMAT.md`).
-3. Decide whether this is worth the churn now — the JSON form already works and is validated; the
-   dotenv form is mostly a portability/readability nicety for hand-editing. If deprioritized, at least
-   add the per-variable `config`/`secret` label (item 1), which has real security value.
+- **Schema:** `environments.secret_vars TEXT NOT NULL DEFAULT '[]'` (a JSON array of the keys in `vars`
+  labeled "secret" rather than "config"), `SCHEMA_VERSION` 25→26
+  ([`schema.ts`](apps/desktop/src/main/storage/schema.ts): DDL + forward migration). **Advisory only**
+  — mirrors Postman's `default`/`secret` variable types, gates UI display and (once export exists —
+  see §3.6, not yet built) export; `env('KEY')` resolution
+  ([`EnvironmentService.resolve`](apps/desktop/src/main/workspace/EnvironmentService.ts)) is unchanged
+  and kind-agnostic, exactly like a keychain `secret(...)` value is only ever a reference, never
+  re-derived from a label.
+- **Service:** `EnvironmentService.update()` accepts `secretVars?: string[]`, always filtered against
+  the live `vars` keys (on every `vars` and/or `secretVars` write) so renaming/removing a variable can
+  never leave a stale secret label pointing at nothing.
+- **Wire format:** `envUpdateRequestSchema`/`EnvironmentDto` in `ops.ts` carry `secretVars`; the
+  projection's `environments` `FLAT_ENTITIES` entry and `environment.schema.json` both gained the
+  field. Back-compat: an environment file written before this (no `secretVars` key at all, not `null`)
+  hydrates the key as `[]` — a new `jsonDefaults` hook on `FlatEntity`/`domainToRow`
+  ([`projection.ts`](apps/desktop/src/main/workspace/projection/projection.ts)) distinguishes "key
+  absent → default" from "key present as `null` → stays `null`" (needed here because `secret_vars` is
+  `NOT NULL`, unlike the already-nullable `vars`).
+- **UI:** `KeyValueEditor` gained optional `secretKeys`/`onToggleSecret` props (only used by
+  `EnvironmentsSettings`, a no-op everywhere else it's reused — request params/headers have no such
+  concept) — a per-row lock-icon toggle, and the value input renders as `type="password"` once a row
+  is marked secret.
+- **Two gaps found and fixed while wiring this up** (both pre-existing, exposed by adding this column):
+  (a) the v18 migration step referenced the *live* `ENVIRONMENTS_DDL` constant instead of a frozen
+  historical snapshot, so mutating that constant for v26 silently broke `ALTER TABLE ... ADD COLUMN` on
+  a fresh v1→v26 migration (`duplicate column name`) — fixed by inlining the v18-era DDL, matching how
+  every other migration step already treats its DDL as frozen; (b) `domainToRow` would hydrate a
+  literal SQL `NULL` into a `NOT NULL` column for a domain field entirely absent from an old file — the
+  `jsonDefaults` mechanism above fixes this for `secret_vars` specifically. **Not fixed** (same bug
+  class, pre-existing, out of scope here): `folders.headers`/`proxy`/`auth`/`actions`/`notes` were each
+  added to the `folders` table well after folders existed, and the projection's `folders` `FLAT_ENTITIES`
+  entry has no `jsonDefaults`/plain-column-default fallback either — a folder file old enough to predate
+  one of those columns would hit the same `NOT NULL constraint failed` on hydrate. Worth a dedicated
+  audit pass if very old git-workspace folder files are still in the wild.
+- Covered by `Environment.test.ts` (label round-trip + pruning + kind-agnostic `resolve()`),
+  `schema.test.ts` (fresh-schema + migration pair, the v24/v25 pattern), `migration.test.ts` (full
+  v1→current path, which is what caught gap (a)), `projection.test.ts` (the missing-key back-compat
+  case, which caught gap (b)), and `EnvironmentsSettings.test.tsx` (new — the renderer had no test file
+  for this section before).
+
+**Item 2 (dotenv on-disk form) — deprioritized, not done.** The JSON form already works, is validated,
+and (as of item 1) now carries the secret label too; dotenv is a portability/hand-editing nicety with
+no security value beyond what item 1 already delivers. Revisit only if a concrete need for hand-editable
+`.env` files surfaces.
 
 ### 3.4 Pre-write secret scan + `secretRef` migration
 

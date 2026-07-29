@@ -620,6 +620,33 @@ describe('WorkspaceProjection', () => {
     expect(proj?.name).toBe('Legacy');
   });
 
+  it('hydrates an environment file written before `secretVars` existed (back-compat)', async () => {
+    const fs = new MemoryDirFs();
+    await fs.writeFile(
+      'workspace.json',
+      JSON.stringify({ formatVersion: 4, schemaVersion: 25, name: 'Old', executionMode: 'sandbox' }),
+    );
+    await fs.writeFile(
+      'environments/staging.env1.json',
+      JSON.stringify({
+        id: 'env1',
+        name: 'Staging',
+        description: null,
+        ownerKind: 'workspace',
+        ownerId: null,
+        vars: { API_URL: 'https://x' },
+      }),
+    );
+
+    const b = await freshAdapter();
+    await b.createSchema();
+    await hydrateWorkspace(b, fs, { deviceId: 'd', now: isoNow(), storageMode: 'git' });
+    const row = await b.get<{ secret_vars: string }>(
+      "SELECT secret_vars FROM environments WHERE id = 'env1'",
+    );
+    expect(JSON.parse(row!.secret_vars)).toEqual([]);
+  });
+
   it('rejects a folder with no manifest and a workspace from a newer schema', async () => {
     const empty = new MemoryDirFs();
     const b = await freshAdapter();

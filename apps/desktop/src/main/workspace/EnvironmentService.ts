@@ -8,7 +8,7 @@ import type {
 import { AppError } from '../errors';
 import type { EnvDataProvider } from '../seebo/SeeboHost';
 import type { SqlParam } from '../storage/sqlite';
-import { parseStringMap } from '../util/json';
+import { parseStringList, parseStringMap } from '../util/json';
 import { RepoBase } from './RepoBase';
 import type { WorkspaceService } from './WorkspaceService';
 
@@ -21,6 +21,7 @@ interface EnvironmentRow {
   owner_kind: string;
   owner_id: string | null;
   vars: string;
+  secret_vars: string;
 }
 
 /** Parse the stored `vars` JSON blob into a plain string→string map (tolerant of corruption). */
@@ -41,7 +42,7 @@ export class EnvironmentService extends RepoBase implements EnvDataProvider {
 
   async list(): Promise<EnvironmentSummaryDto[]> {
     const rows = await this.adapter.all<EnvironmentRow>(
-      `SELECT id, name, description, owner_kind, owner_id, vars
+      `SELECT id, name, description, owner_kind, owner_id, vars, secret_vars
          FROM environments
         WHERE deleted_at IS NULL
         ORDER BY owner_kind, name COLLATE NOCASE`,
@@ -51,7 +52,11 @@ export class EnvironmentService extends RepoBase implements EnvDataProvider {
 
   async get(id: string): Promise<EnvironmentDto> {
     const row = await this.requireRow(id);
-    return { ...this.toSummary(row), vars: parseStringMap(row.vars) };
+    return {
+      ...this.toSummary(row),
+      vars: parseStringMap(row.vars),
+      secretVars: parseStringList(row.secret_vars),
+    };
   }
 
   async create(input: EnvCreateRequest): Promise<EnvironmentDto> {
@@ -64,6 +69,7 @@ export class EnvironmentService extends RepoBase implements EnvDataProvider {
       owner_kind: input.ownerKind,
       owner_id: ownerId,
       vars: '{}',
+      secret_vars: '[]',
     });
     await this.ws.save();
     return this.get(id);
@@ -71,9 +77,17 @@ export class EnvironmentService extends RepoBase implements EnvDataProvider {
 
   async update(
     id: string,
-    patch: { name?: string; description?: string | null; vars?: Record<string, string> },
+    patch: {
+      name?: string;
+      description?: string | null;
+      vars?: Record<string, string>;
+      /** Keys of `vars` labeled "secret" rather than "config" (advisory: gates export/UI display,
+       *  not `env(...)` resolution). Filtered against the live `vars` keys, so renaming/removing a
+       *  variable can never leave a stale secret label behind. */
+      secretVars?: string[];
+    },
   ): Promise<EnvironmentDto> {
-    await this.requireRow(id);
+    const row = await this.requireRow(id);
     const set: Record<string, SqlParam> = {};
     if (patch.name !== undefined) set.name = patch.name.trim();
     if (patch.description !== undefined) {
@@ -81,6 +95,11 @@ export class EnvironmentService extends RepoBase implements EnvDataProvider {
       set.description = d ? d : null;
     }
     if (patch.vars !== undefined) set.vars = JSON.stringify(patch.vars);
+    if (patch.vars !== undefined || patch.secretVars !== undefined) {
+      const varKeys = new Set(Object.keys(patch.vars ?? parseStringMap(row.vars)));
+      const nextSecret = patch.secretVars ?? parseStringList(row.secret_vars);
+      set.secret_vars = JSON.stringify(nextSecret.filter((k) => varKeys.has(k)));
+    }
     if (Object.keys(set).length > 0) {
       await this.updateEntity('environments', id, set);
       await this.ws.save();
@@ -202,7 +221,7 @@ export class EnvironmentService extends RepoBase implements EnvDataProvider {
 
   private async requireRow(id: string): Promise<EnvironmentRow> {
     const row = await this.adapter.get<EnvironmentRow>(
-      `SELECT id, name, description, owner_kind, owner_id, vars
+      `SELECT id, name, description, owner_kind, owner_id, vars, secret_vars
          FROM environments
         WHERE id = ? AND deleted_at IS NULL`,
       [id],

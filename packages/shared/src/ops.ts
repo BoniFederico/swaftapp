@@ -454,6 +454,9 @@ const envVarKeySchema = z
   .max(128)
   .regex(/^[A-Za-z_][A-Za-z0-9_.-]*$/, 'Use letters, digits, _ . - (must start with a letter or _).');
 const envVarsSchema = z.record(envVarKeySchema, z.string().max(8192));
+/** Keys of `vars` labeled "secret" rather than "config" (mirrors Postman's default/secret variable
+ *  types) — advisory: gates export/UI display, never `env(...)` resolution, which is kind-agnostic. */
+const envSecretVarsSchema = z.array(envVarKeySchema).max(256);
 
 export const envCreateRequestSchema = z
   .object({
@@ -469,6 +472,7 @@ export const envUpdateRequestSchema = z
     name: entityNameSchema.optional(),
     description: z.string().trim().max(2000).nullable().optional(),
     vars: envVarsSchema.optional(),
+    secretVars: envSecretVarsSchema.optional(),
   })
   .strict();
 
@@ -1178,6 +1182,9 @@ export interface EnvironmentSummaryDto {
 /** A single environment with its variables (settings editor + the `env(...)` capability source). */
 export interface EnvironmentDto extends EnvironmentSummaryDto {
   vars: Record<string, string>;
+  /** Keys of `vars` labeled "secret" rather than "config" — advisory (export/UI display), never
+   *  gates `env(...)` resolution, which reads any variable's value regardless of this label. */
+  secretVars: string[];
 }
 
 export type EnvCreateRequest = z.infer<typeof envCreateRequestSchema>;

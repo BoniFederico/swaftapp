@@ -454,6 +454,7 @@ export const handlers: Record<OpName, Handler> = {
           name: r.name,
           description: r.description,
           vars: r.vars,
+          secretVars: r.secretVars,
         }),
       };
     }),

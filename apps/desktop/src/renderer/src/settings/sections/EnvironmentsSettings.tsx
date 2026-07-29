@@ -132,6 +132,7 @@ function EnvironmentEditor({
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [vars, setVars] = useState<Record<string, string>>({});
+  const [secretVars, setSecretVars] = useState<Set<string>>(new Set());
   const [dirty, setDirty] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -142,6 +143,7 @@ function EnvironmentEditor({
       setName(res.environment.name);
       setDescription(res.environment.description ?? '');
       setVars(res.environment.vars);
+      setSecretVars(new Set(res.environment.secretVars));
       setDirty(false);
     },
     [client],
@@ -156,11 +158,24 @@ function EnvironmentEditor({
     setDirty(true);
   }
 
+  function toggleSecret(key: string) {
+    if (!key) return;
+    edit(() =>
+      setSecretVars((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
+      }),
+    );
+  }
+
   function cancel() {
     if (!env) return;
     setName(env.name);
     setDescription(env.description ?? '');
     setVars(env.vars);
+    setSecretVars(new Set(env.secretVars));
     setDirty(false);
   }
 
@@ -171,6 +186,7 @@ function EnvironmentEditor({
         name: name.trim(),
         description: description.trim() || null,
         vars,
+        secretVars: [...secretVars],
       });
       toast.show(t('env.settings.saved'), 'success');
       onChanged();
@@ -230,6 +246,8 @@ function EnvironmentEditor({
           onChange={(next) => edit(() => setVars(next))}
           keyLabel={t('env.settings.varKey')}
           valueLabel={t('env.settings.varValue')}
+          secretKeys={secretVars}
+          onToggleSecret={toggleSecret}
         />
       </div>
 

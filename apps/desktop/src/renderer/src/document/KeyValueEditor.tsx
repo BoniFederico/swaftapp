@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { SeeboField } from '../editor/SeeboField';
 import { useI18n } from '../i18n/I18nProvider';
-import { CopyIcon, IconButton, TrashIcon } from '../ui';
+import { CopyIcon, IconButton, LockIcon, TrashIcon } from '../ui';
 
 type Pair = { id: number; k: string; v: string };
 
@@ -50,6 +50,8 @@ export function KeyValueEditor({
   plain = false,
   keyLabel,
   valueLabel,
+  secretKeys,
+  onToggleSecret,
 }: {
   value: Record<string, string>;
   onChange: (value: Record<string, string>) => void;
@@ -65,6 +67,16 @@ export function KeyValueEditor({
   /** Column headers (default "Key" / "Value"). */
   keyLabel?: string;
   valueLabel?: string;
+  /**
+   * Keys currently labeled "secret" (advisory: config vs secret, environment variables only). Passing
+   * this (with `onToggleSecret`) adds a per-row toggle column; omit both for callers with no such
+   * concept (request params/headers). Only shown in table mode — the batch textarea has no discrete
+   * rows to attach a per-key label to.
+   */
+  secretKeys?: ReadonlySet<string>;
+  /** Flip a key's secret label (row identified by its current, committed key — never the trailing
+   *  empty row, which has none yet). */
+  onToggleSecret?: (key: string) => void;
 }) {
   const { t } = useI18n();
   const kLabel = keyLabel ?? t('api.key');
@@ -163,10 +175,12 @@ export function KeyValueEditor({
           <div className="env-vars__headrow" aria-hidden="true">
             <span className="env-vars__colhead env-vars__key">{kLabel}</span>
             <span className="env-vars__colhead env-vars__value">{vLabel}</span>
+            {onToggleSecret && <span className="env-vars__secretcol" />}
             <span className="env-vars__delcol" />
           </div>
           {pairs.map((p, i) => {
             const isTrailing = i === pairs.length - 1;
+            const isSecret = !isTrailing && !!secretKeys?.has(p.k.trim());
             return (
               <div className="env-vars__row" key={p.id}>
                 <input
@@ -184,6 +198,7 @@ export function KeyValueEditor({
                     placeholder={vLabel}
                     value={p.v}
                     spellCheck={false}
+                    type={isSecret ? 'password' : 'text'}
                     onChange={(e) => setAt(i, { v: e.target.value })}
                   />
                 ) : (
@@ -198,6 +213,19 @@ export function KeyValueEditor({
                     />
                   </div>
                 )}
+                {onToggleSecret &&
+                  (!isTrailing ? (
+                    <IconButton
+                      label={isSecret ? t('env.settings.markConfig') : t('env.settings.markSecret')}
+                      aria-pressed={isSecret}
+                      data-active={isSecret}
+                      onClick={() => onToggleSecret(p.k.trim())}
+                    >
+                      <LockIcon />
+                    </IconButton>
+                  ) : (
+                    <span className="env-vars__secretcol" />
+                  ))}
                 {!isTrailing ? (
                   <IconButton label={t('menu.delete')} onClick={() => removeAt(i)}>
                     <TrashIcon />

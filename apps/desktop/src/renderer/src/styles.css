@@ -4540,6 +4540,16 @@ body {
   flex: 0 0 auto;
   width: calc(24px + 2 * var(--space-1));
 }
+/* Head-row spacer matching the per-row secret-toggle button column (environment variables only). */
+.env-vars__secretcol {
+  flex: 0 0 auto;
+  width: calc(24px + 2 * var(--space-1));
+}
+/* The secret-toggle lock icon reads as "on" (colored, full opacity) once a variable is marked secret. */
+.env-vars__row .ui-icon-btn[data-active='true'] {
+  color: var(--primary);
+  opacity: 1;
+}
 /* A grid cell hosting a SeeboField (formula-highlighted value): borderless, like the plain inputs. */
 .env-vars__seebo {
   display: flex;

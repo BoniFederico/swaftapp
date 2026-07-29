@@ -81,6 +81,13 @@ interface FlatEntity {
   bool?: readonly string[];
   /** Column whose value seeds the readable file-name slug. Defaults to `name`. */
   nameColumn?: string;
+  /**
+   * Fallback for a `json` column added to this table *after* older files were written, so a file
+   * missing the key entirely (rather than carrying it as `null`) still satisfies a `NOT NULL DEFAULT`
+   * column instead of hydrating a literal `NULL` into it. Only applies when the key is absent — a key
+   * explicitly present with value `null` still round-trips as `null` (for genuinely nullable columns).
+   */
+  jsonDefaults?: Readonly<Record<string, unknown>>;
 }
 
 const FLAT_ENTITIES: readonly FlatEntity[] = [
@@ -105,8 +112,11 @@ const FLAT_ENTITIES: readonly FlatEntity[] = [
   {
     table: 'environments',
     dir: 'environments',
-    columns: ['id', 'name', 'description', 'owner_kind', 'owner_id', 'vars'],
-    json: ['vars'],
+    columns: ['id', 'name', 'description', 'owner_kind', 'owner_id', 'vars', 'secret_vars'],
+    json: ['vars', 'secret_vars'],
+    // A file written before `secretVars` existed has no such key at all (not `null`) — default it to
+    // an empty array rather than hydrating NULL into the NOT NULL `secret_vars` column.
+    jsonDefaults: { secret_vars: [] },
   },
   {
     table: 'changelog',
@@ -491,13 +501,18 @@ function rowToDomain(row: Record<string, SqlParam>, entity: FlatEntity): Record<
 function domainToRow(domain: Record<string, unknown>, entity: FlatEntity): Record<string, SqlParam> {
   const out: Record<string, SqlParam> = {};
   for (const col of entity.columns) {
-    const value = domain[toCamel(col)];
+    const key = toCamel(col);
     if (entity.json?.includes(col)) {
-      out[col] = value == null ? null : JSON.stringify(value);
+      if (!(key in domain) && entity.jsonDefaults && col in entity.jsonDefaults) {
+        out[col] = JSON.stringify(entity.jsonDefaults[col]);
+      } else {
+        const value = domain[key];
+        out[col] = value == null ? null : JSON.stringify(value);
+      }
     } else if (entity.bool?.includes(col)) {
-      out[col] = value ? 1 : 0;
+      out[col] = domain[key] ? 1 : 0;
     } else {
-      out[col] = (value ?? null) as SqlParam;
+      out[col] = (domain[key] ?? null) as SqlParam;
     }
   }
   return out;
