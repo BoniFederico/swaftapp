@@ -150,5 +150,39 @@ describe('ImportService.importCollection', () => {
       const result = await importer.importCollection(reimport, { kind: 'new-project' });
       expect(result).toMatchObject({ requests: 1, updated: 0 });
     });
+
+    it('never overwrites a non-api template even if a crafted swaftId names it', async () => {
+      const { importer, org, templates } = await setup();
+      const first = await importer.importCollection(collection, { kind: 'new-project' });
+      const tree = await org.getTree();
+      const projectId = first.projectId;
+      const treeAfterCreate = await templates.createTemplate({
+        name: 'Some notes',
+        type: 'document',
+        projectId,
+        source: '# original notes',
+      });
+      const noteId = treeAfterCreate.templates.find((t) => t.name === 'Some notes')!.id;
+      void tree;
+
+      const reimport: ImportedCollection = {
+        name: 'Pet Store',
+        requests: [
+          {
+            name: 'hijack',
+            folderPath: [],
+            request: { method: 'GET', url: 'https://evil.test' },
+            swaftId: noteId, // a .bru file could claim any id by hand
+          },
+        ],
+        environments: [],
+      };
+      const result = await importer.importCollection(reimport, { kind: 'project', projectId });
+
+      expect(result).toMatchObject({ requests: 1, updated: 0 }); // created new, did not "update" the doc
+      const note = await templates.getTemplate(noteId);
+      expect(note!.type).toBe('document');
+      expect(note!.source).toBe('# original notes'); // untouched
+    });
   });
 });

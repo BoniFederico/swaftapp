@@ -36,12 +36,15 @@ export function AuthEditor({
   // as a fallback by HttpService, but never shown/editable here) onto a `${ secret('NAME') }` formula
   // in the field that actually wins at request time.
   const legacyTargetKey = LEGACY_SECRET_TARGET[auth.kind];
-  const legacyCanMigrate = !!legacyTargetKey && !auth[legacyTargetKey];
+  // A ref containing a `'` can't be embedded in a single-quoted secret('...') call without breaking
+  // the formula — secretRef has no charset restriction, so this is a real (if rare) possibility.
+  // Fall back to remove-only rather than ever writing a broken formula.
+  const legacyCanMigrate = !!legacyTargetKey && !auth[legacyTargetKey] && !auth.secretRef?.includes("'");
   function migrateLegacySecretRef() {
     const { secretRef, ...rest } = auth;
     if (!secretRef) return;
     onChange(
-      legacyTargetKey && !rest[legacyTargetKey]
+      legacyCanMigrate && legacyTargetKey
         ? { ...rest, [legacyTargetKey]: `\${ secret('${secretRef}') }` }
         : rest,
     );

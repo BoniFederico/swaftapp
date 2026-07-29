@@ -208,9 +208,14 @@ function safeFile(name: string): string {
 
 /** Export a Swaft environment as a Bruno `environments/<name>.bru` file (a `vars { key: value }` block). */
 function toBruEnvironment(env: ImportedEnvironment): BrunoFile {
+  // The `vars { }` block is a plain one-line-per-entry dict (like headers/meta elsewhere in this
+  // file) with no escaping convention: a raw newline would spill onto its own (colon-less, silently
+  // dropped) line, and could exceed a client's brace-depth block scanner if it also contained braces.
+  // Collapse any embedded line breaks rather than risk desyncing the block.
+  const vars = Object.entries(env.vars).map(([k, v]) => [k, v.replace(/\r\n|\r|\n/g, ' ')] as [string, string]);
   return {
     path: `environments/${safeFile(env.name)}.bru`,
-    content: `vars {${DL}${dict(Object.entries(env.vars))}${DL}}${DL}`,
+    content: `vars {${DL}${dict(vars)}${DL}}${DL}`,
   };
 }
 

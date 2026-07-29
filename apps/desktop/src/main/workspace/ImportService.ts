@@ -88,11 +88,13 @@ export class ImportService {
     let requests = 0;
     let updated = 0;
     for (const req of col.requests) {
-      // §3.7: a Bruno re-import carrying a swaftId that still names a live template updates it in
-      // place instead of creating a duplicate; any other id (foreign, stale, deleted) is ignored and
-      // falls through to a normal create, never reused for a different entity.
-      if (req.swaftId && (await templates.getTemplate(req.swaftId))) {
-        await templates.updateSource(req.swaftId, JSON.stringify(req.request, null, 2));
+      // §3.7: a Bruno re-import carrying a swaftId that still names a live `api` template updates it
+      // in place instead of creating a duplicate; any other id (foreign, stale, deleted, or naming a
+      // non-api template — a hand-edited/crafted .bru could claim any id) falls through to a normal
+      // create, never reused for a different or wrong-typed entity.
+      const existing = req.swaftId ? await templates.getTemplate(req.swaftId) : null;
+      if (existing && existing.type === 'api') {
+        await templates.updateSource(existing.id, JSON.stringify(req.request, null, 2));
         updated++;
         continue;
       }

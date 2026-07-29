@@ -59,4 +59,11 @@ describe('AuthEditor — legacy secretRef migration (open-standards §3.4 item 3
     fireEvent.click(screen.getByRole('button', { name: 'Remove unused reference' }));
     expect(onChange).toHaveBeenCalledWith({ kind: 'none' });
   });
+
+  it('never writes a broken formula when the ref contains a single quote', () => {
+    const onChange = renderAuth({ kind: 'bearer', secretRef: "o'brien-token" });
+    expect(screen.queryByRole('button', { name: 'Migrate to secret(...)' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove unused reference' }));
+    expect(onChange).toHaveBeenCalledWith({ kind: 'bearer' });
+  });
 });

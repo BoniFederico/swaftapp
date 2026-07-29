@@ -855,6 +855,27 @@ describe('environments dotenv mirror (open-standards §3.3 item 2)', () => {
     expect(content).toContain('SIMPLE=ok');
   });
 
+  it('escapes an embedded carriage return, not just newline, in a quoted value', async () => {
+    const a = await freshAdapter();
+    await a.initialize({ name: 'WS', storageMode: 'git', executionMode: 'sandbox', deviceId: 'd', now: isoNow() });
+    await ins(a, 'environments', {
+      id: 'e1',
+      name: 'Prod',
+      description: null,
+      owner_kind: 'workspace',
+      owner_id: null,
+      vars: JSON.stringify({ CRLF: 'line1\r\nline2' }),
+      secret_vars: '[]',
+    });
+
+    const fs = new MemoryDirFs();
+    await dumpWorkspace(a, fs);
+    const content = fs.snapshot().get(`environments/${entityBaseName('Prod', 'e1')}.env`)!;
+    // A raw \r or \n left in the file would corrupt the line-based dotenv format.
+    expect(content).toContain('CRLF="line1\\r\\nline2"');
+    expect(content).not.toMatch(/CRLF="line1\r\nline2"/);
+  });
+
   it('removes a stale .env file when the environment is renamed or deleted', async () => {
     const a = await freshAdapter();
     await a.initialize({ name: 'WS', storageMode: 'git', executionMode: 'sandbox', deviceId: 'd', now: isoNow() });

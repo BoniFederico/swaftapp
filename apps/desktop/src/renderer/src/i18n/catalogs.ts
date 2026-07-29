@@ -443,7 +443,7 @@ export const en = {
   'auth.legacySecretRef.migrateHint':
     'This request still points at the keychain secret "{{ref}}" the old way. Migrate it to a `secret(...)` formula in the field above.',
   'auth.legacySecretRef.unusedHint':
-    'A legacy keychain reference to "{{ref}}" is set but unused (the field above already has a value). Safe to remove.',
+    'A legacy keychain reference to "{{ref}}" won\'t be migrated automatically (the field above already has a value, or the name can\'t be safely embedded in a formula). Safe to remove.',
   'auth.legacySecretRef.migrate': 'Migrate to secret(...)',
   'auth.legacySecretRef.remove': 'Remove unused reference',
   'api.send': 'Send',
@@ -1093,7 +1093,7 @@ export const it: Partial<Record<TranslationKey, string>> = {
   'auth.legacySecretRef.migrateHint':
     'Questa richiesta punta ancora al segreto del keychain "{{ref}}" nel modo vecchio. Migra a una formula `secret(...)` nel campo sopra.',
   'auth.legacySecretRef.unusedHint':
-    'È presente un riferimento keychain legacy a "{{ref}}" ma inutilizzato (il campo sopra ha già un valore). Puoi rimuoverlo.',
+    'Il riferimento keychain legacy a "{{ref}}" non verrà migrato automaticamente (il campo sopra ha già un valore, oppure il nome non è incorporabile in sicurezza in una formula). Puoi rimuoverlo.',
   'auth.legacySecretRef.migrate': 'Migra a secret(...)',
   'auth.legacySecretRef.remove': 'Rimuovi riferimento inutilizzato',
   'api.send': 'Invia',

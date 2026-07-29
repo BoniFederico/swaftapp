@@ -40,10 +40,15 @@ export async function hydrateLocalCache(adapter: LocalAdapter, fs: DirFs): Promi
       const cols = Object.keys(row as Row);
       if (cols.length === 0) continue;
       const placeholders = cols.map(() => '?').join(', ');
-      await adapter.run(
-        `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${placeholders})`,
-        cols.map((c) => (row as Row)[c]),
-      );
+      try {
+        await adapter.run(
+          `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${placeholders})`,
+          cols.map((c) => (row as Row)[c]),
+        );
+      } catch {
+        // A single incompatible/stale cached row must never block opening the rest of the
+        // workspace — this cache is best-effort local data, not the source of truth.
+      }
     }
   }
 }

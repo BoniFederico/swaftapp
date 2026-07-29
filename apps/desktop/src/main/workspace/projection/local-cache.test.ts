@@ -62,4 +62,21 @@ describe('local-cache (open-standards §3.5)', () => {
     expect(JSON.parse(raw!).api_history).toEqual([]);
     await a.close();
   });
+
+  it('skips a row that fails to insert (e.g. an incompatible shape) instead of blocking the rest', async () => {
+    const fs = new MemoryDirFs();
+    await fs.writeFile(
+      '.swaft/local-cache.json',
+      JSON.stringify({
+        api_history: [
+          { id: 'bad', no_such_column: 'x' }, // would throw: unknown column
+          { id: 'h1', template_id: 't1', method: 'GET', url: 'https://x', status: 200, created_at: '2024-01-01T00:00:00.000Z' },
+        ],
+      }),
+    );
+    const a = await makeAdapter();
+    await expect(hydrateLocalCache(a, fs)).resolves.toBeUndefined();
+    expect(await a.all('SELECT id FROM api_history')).toEqual([{ id: 'h1' }]); // the good row still landed
+    await a.close();
+  });
 });

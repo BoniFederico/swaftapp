@@ -183,7 +183,11 @@ export async function dumpWorkspace(adapter: LocalAdapter, fs: DirFs): Promise<v
 /** Quote a dotenv value when it needs it (whitespace, `#`, quotes, or a newline), escaping `\` and `"`. */
 function dotenvValue(v: string): string {
   if (!/[\s#"'\\]/.test(v)) return v;
-  return `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`;
+  return `"${v
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n')}"`;
 }
 
 /**
