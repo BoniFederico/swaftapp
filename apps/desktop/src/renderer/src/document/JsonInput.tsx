@@ -1,10 +1,12 @@
 import { useRef, useState } from 'react';
+import { CodeEditor } from '../editor/CodeEditor';
 import { useI18n } from '../i18n/I18nProvider';
 
 /**
  * JSON input widget: a file dropzone (click to browse or drag-and-drop a `.json` file) plus a
- * textarea so a JSON value can also be pasted/edited directly. Valid JSON is stored structured; any
- * other text is kept verbatim so the Input Panel can flag it as invalid.
+ * CodeMirror field (JSON + Seebo formula highlighting) so a JSON value can also be pasted/edited
+ * directly. Valid JSON is stored structured; any other text is kept verbatim so the Input Panel can
+ * flag it as invalid.
  */
 export function JsonInput({
   label,
@@ -70,17 +72,17 @@ export function JsonInput({
           e.target.value = '';
         }}
       />
-      <textarea
-        className="ui-input jsonfield__paste"
-        rows={5}
-        aria-label={label}
-        placeholder={t('input.jsonPaste')}
-        value={text}
-        onChange={(e) => {
-          setFileName(null);
-          apply(e.target.value);
-        }}
-      />
+      <div className="jsonfield__code">
+        <CodeEditor
+          value={text}
+          language="json"
+          ariaLabel={label}
+          onChange={(next) => {
+            setFileName(null);
+            apply(next);
+          }}
+        />
+      </div>
     </div>
   );
 }

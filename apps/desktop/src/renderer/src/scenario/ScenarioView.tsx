@@ -234,7 +234,14 @@ export function ScenarioView({
         .then((res) => {
           const map = new Map<string, ResolvedTemplate>();
           for (const tpl of res.tree.templates) {
-            if (tpl.type === 'api' || tpl.type === 'action' || tpl.type === 'capability') {
+            // Every executable block kind — must match what the canvas allows on drop (anything but
+            // `scenario`). Excluding `document` here made json/document blocks show "Missing template".
+            if (
+              tpl.type === 'api' ||
+              tpl.type === 'action' ||
+              tpl.type === 'capability' ||
+              tpl.type === 'document'
+            ) {
               map.set(tpl.id, { name: tpl.name, type: tpl.type as TemplateType });
             }
           }
@@ -466,9 +473,15 @@ export function ScenarioView({
     if (selection) setConfirmDelete(true);
   }
 
-  // --- node context menu (right-click) actions ------------------------------
+  // --- node context menu (right-click) actions + double-click -----
   function menuEdit(node: ScenarioNode) {
     setNodeMenu(null);
+    if (node.kind === 'template' && node.ref && node.templateType && onOpenTemplate) {
+      onOpenTemplate(node.ref, node.templateType, resolveTemplate(node.ref)?.name ?? node.alias ?? '');
+    }
+  }
+
+  function menuDoubleClick(node: ScenarioNode) {
     if (node.kind === 'template' && node.ref && node.templateType && onOpenTemplate) {
       onOpenTemplate(node.ref, node.templateType, resolveTemplate(node.ref)?.name ?? node.alias ?? '');
     }
@@ -631,6 +644,7 @@ export function ScenarioView({
           onChange={(next) => commit(next)}
           onSelect={setSelection}
           onNodeContextMenu={(node, x, y) => setNodeMenu({ node, x, y })}
+          onNodeDoubleClick={menuDoubleClick}
           onInteract={() => {
             // Any click on the canvas drops the followed run (history highlight + node highlights),
             // unless a run/batch is still live (so live progress is never lost by a stray click).

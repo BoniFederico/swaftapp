@@ -82,6 +82,7 @@ export function ScenarioCanvas({
   onChange,
   onSelect,
   onNodeContextMenu,
+  onNodeDoubleClick,
   onInteract,
   resolveTemplate,
 }: {
@@ -94,6 +95,8 @@ export function ScenarioCanvas({
   onSelect: (sel: Selection | null) => void;
   /** Right-click on a node → open its context menu at the cursor (screen coords). */
   onNodeContextMenu?: (node: ScenarioNode, x: number, y: number) => void;
+  /** Double-click on a node → open its template. */
+  onNodeDoubleClick?: (node: ScenarioNode) => void;
   /** Any pointer-down anywhere on the canvas (background, node, port or edge). */
   onInteract?: () => void;
   resolveTemplate: (id: string) => ResolvedTemplate | null;
@@ -262,7 +265,7 @@ export function ScenarioCanvas({
       kind: 'template',
       ref: tpl.id,
       templateType: tpl.type,
-      alias: slug(tpl.name),
+      alias: '',
       position,
     };
     onChange({ ...graph, nodes: [...graph.nodes, node] });
@@ -342,6 +345,7 @@ export function ScenarioCanvas({
             template={node.ref ? resolveTemplate(node.ref) : null}
             onPointerDown={onNodePointerDown}
             onContextMenu={onNodeContext}
+            onDoubleClick={onNodeDoubleClick}
             onPortPointerDown={onPortPointerDown}
           />
         ))}
@@ -359,6 +363,7 @@ function NodeView({
   template,
   onPointerDown,
   onContextMenu,
+  onDoubleClick,
   onPortPointerDown,
 }: {
   node: ScenarioNode;
@@ -368,6 +373,7 @@ function NodeView({
   template: ResolvedTemplate | null;
   onPointerDown: (e: ReactPointerEvent, node: ScenarioNode) => void;
   onContextMenu: (e: ReactMouseEvent, node: ScenarioNode) => void;
+  onDoubleClick?: (node: ScenarioNode) => void;
   onPortPointerDown: (e: ReactPointerEvent, node: ScenarioNode, branch: ScenarioBranch | null) => void;
 }) {
   const { w, h } = nodeSize(node.kind);
@@ -385,6 +391,7 @@ function NodeView({
       draggable={false}
       onPointerDown={(e) => onPointerDown(e, node)}
       onContextMenu={(e) => onContextMenu(e, node)}
+      onDoubleClick={() => node.kind === 'template' && onDoubleClick?.(node)}
     >
       {node.kind === 'template' && (
         <span className="scenario-node__breakpoint" aria-hidden="true" title="Breakpoint" />
@@ -438,14 +445,4 @@ function edgeSourcePoint(graph: ScenarioGraph, from: string, branch: ScenarioBra
   if (!node) return null;
   const ports = outputPorts(node);
   return (branch ? ports.find((p) => p.branch === branch) : ports[0]) ?? null;
-}
-
-/** A readable default alias from a template name (identifier-ish, for `previous('alias')`). */
-export function slug(name: string): string {
-  const s = name
-    .trim()
-    .replace(/[^A-Za-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .replace(/^(\d)/, '_$1');
-  return s || 'block';
 }

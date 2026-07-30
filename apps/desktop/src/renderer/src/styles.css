@@ -1468,6 +1468,14 @@ body {
   resize: vertical;
   font-family: var(--font-mono);
 }
+.jsonfield__code {
+  margin-top: var(--space-2);
+  width: 100%;
+  height: 140px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
 
 /* ---------- Document View ---------- */
 .doc {
@@ -2491,6 +2499,7 @@ body {
   align-items: center;
   gap: var(--space-2);
   white-space: nowrap;
+  align-self: start;
 }
 /* Step/run status badges. */
 .scenario-step--failed,
@@ -3902,30 +3911,33 @@ body {
 .cm-host .cm-editor.cm-focused {
   outline: none;
 }
-/* Seebo formula slots — semantic highlight over the base language (Atom One palette). */
+/* Seebo formula slots — semantic highlight ALWAYS on top of the base language highlight (Atom One
+   palette), even inside quoted strings (e.g. a JSON string value containing `${…}`). The seebo-cm.ts
+   decoration is `Prec.highest` so it nests innermost against the syntax-highlight span; `!important`
+   here is a belt-and-braces backstop in case some other decoration ever nests inside ours instead. */
 .cm-sb-delim,
 .cm-sb-kw {
-  color: #a626a4;
+  color: #a626a4 !important;
   font-weight: 600;
 }
 .cm-sb-fn {
-  color: #4078f2;
+  color: #4078f2 !important;
 }
 .cm-sb-str {
-  color: #50a14f;
+  color: #50a14f !important;
 }
 .cm-sb-num {
-  color: #986801;
+  color: #986801 !important;
 }
 .cm-sb-prop {
-  color: #e45649;
+  color: #e45649 !important;
 }
 .cm-sb-punc {
-  color: var(--text-muted);
+  color: var(--text-muted) !important;
 }
 /* Whole-slot bare identifier: the env-variable sugar (`${ name }` ≈ `${ env('name') }`). */
 .cm-sb-envref {
-  color: #0184bc;
+  color: #0184bc !important;
 }
 /* Hover preview tooltip: the rendered value of a `${ … }` formula. */
 .cm-tooltip:has(> .sb-preview) {
@@ -3977,22 +3989,22 @@ body {
 }
 .cm-host--dark .cm-sb-delim,
 .cm-host--dark .cm-sb-kw {
-  color: #c678dd;
+  color: #c678dd !important;
 }
 .cm-host--dark .cm-sb-fn {
-  color: #61afef;
+  color: #61afef !important;
 }
 .cm-host--dark .cm-sb-str {
-  color: #98c379;
+  color: #98c379 !important;
 }
 .cm-host--dark .cm-sb-num {
-  color: #d19a66;
+  color: #d19a66 !important;
 }
 .cm-host--dark .cm-sb-prop {
-  color: #e06c75;
+  color: #e06c75 !important;
 }
 .cm-host--dark .cm-sb-envref {
-  color: #56b6c2;
+  color: #56b6c2 !important;
 }
 .cm-host .cm-selectionBackground,
 .cm-host .cm-content ::selection,

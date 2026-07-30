@@ -257,6 +257,12 @@ function StepDetail({ step, onClose }: { step: ScenarioRunStepDto; onClose: () =
             {step.message && <Row k={t('scenario.message')} v={step.message} />}
             <Row k={t('api.time')} v={shortTime(step.createdAt)} />
           </ul>
+          {step.input != null && step.input !== '' && (
+            <div className="ui-field">
+              <span className="ui-field__label">Request Input</span>
+              <pre className="action-receipt__pre">{String(step.input)}</pre>
+            </div>
+          )}
           {step.output != null && step.output !== '' && (
             <div className="ui-field">
               <span className="ui-field__label">{t('action.output')}</span>

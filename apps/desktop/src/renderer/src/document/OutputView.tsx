@@ -46,6 +46,19 @@ function mimeFor(subtype: string | null): string {
   return 'text/plain';
 }
 
+/** Subtypes whose output is JSON text — pretty-printed before display so it's readable at a glance. */
+const JSON_SUBTYPES = new Set(['json', 'swagger', 'echarts']);
+
+/** Pretty-print JSON output (2-space indent); invalid JSON is shown verbatim, unchanged. */
+function formatIfJson(subtype: string | null, output: string): string {
+  if (!subtype || !JSON_SUBTYPES.has(subtype)) return output;
+  try {
+    return JSON.stringify(JSON.parse(output), null, 2);
+  } catch {
+    return output;
+  }
+}
+
 /** The output body: rendered preview for renderable subtypes, else highlighted read-only code. */
 function OutputBody({ subtype, output }: { subtype: string | null; output: string }) {
   if (subtype === 'eml') return <EmlPreview raw={output} />;
@@ -58,7 +71,7 @@ function OutputBody({ subtype, output }: { subtype: string | null; output: strin
   }
   return (
     <div className="output-code">
-      <CodeEditor value={output} language={subtype} onChange={() => {}} readOnly />
+      <CodeEditor value={formatIfJson(subtype, output)} language={subtype} onChange={() => {}} readOnly />
     </div>
   );
 }

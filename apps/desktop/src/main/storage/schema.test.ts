@@ -75,6 +75,34 @@ describe('.swaft schema classification', () => {
     db.close();
   });
 
+  it('the v25→v27 chain applies without a duplicate `input` column (frozen v25 snapshot)', async () => {
+    // Guards a regression: the v25 migration must NOT reference the live DDL constant, or `input`
+    // (added to that constant at v27) would be created twice and the v27 ALTER would collide.
+    const db = await openSqliteDb();
+    // v26 touches `environments` (not present here) — the collision under test is between v25 and v27.
+    for (const to of [25, 27]) {
+      const step = MIGRATIONS.find((m) => m.to === to);
+      expect(step, `a migration to v${to} must exist`).toBeDefined();
+      db.exec(step!.sql);
+    }
+    const cols = db.all<Row>(`PRAGMA table_info(scenario_run_steps)`).map((r) => String(r.name));
+    expect(cols).toContain('input');
+    expect(cols.filter((c) => c === 'input')).toHaveLength(1);
+    db.close();
+  });
+
+  it('the v27 migration adds `input` to an existing (pre-v27) scenario_run_steps', async () => {
+    const db = await openSqliteDb();
+    // scenario_run_steps as it stood at v25/v26 (no `input`).
+    db.exec(MIGRATIONS.find((m) => m.to === 25)!.sql);
+    const step = MIGRATIONS.find((m) => m.to === 27);
+    expect(step, 'a migration to v27 must exist').toBeDefined();
+    db.exec(step!.sql);
+    const cols = db.all<Row>(`PRAGMA table_info(scenario_run_steps)`).map((r) => String(r.name));
+    expect(cols).toContain('input');
+    db.close();
+  });
+
   it('fresh environments table carries the v26 `secret_vars` column, defaulting to an empty array', async () => {
     const db = await openSqliteDb();
     db.exec(SCHEMA_DDL);

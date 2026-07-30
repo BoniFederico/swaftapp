@@ -12,3 +12,5 @@ test-results/
 *.swaft
 .env
 .env.*
+RUNBOOK_FORMULAS.md
+build-installer.ps1
