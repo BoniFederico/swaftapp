@@ -1235,8 +1235,11 @@ export interface BlockOutput {
   logs?: string[];
   envWrites?: string[];
   error?: string | null;
-  /** Template type for output format handling (e.g. 'json' for JSON parsing in previous()). */
-  templateType?: string;
+  /**
+   * True when `output` is a JSON string that consumers (`previous(...)`) should parse into an object.
+   * Set for `document` blocks whose subtype is `json`; parse failure throws when a later block reads it.
+   */
+  jsonOutput?: boolean;
 }
 
 export type ScenarioRunStatus =

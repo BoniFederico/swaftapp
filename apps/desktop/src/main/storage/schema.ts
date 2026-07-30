@@ -522,7 +522,35 @@ export const MIGRATIONS: { to: number; sql: string }[] = [
   {
     to: 25,
     // v25 adds the scenario workflow run history (local-only): a run + its per-node steps.
-    sql: `${SCENARIO_RUNS_DDL}\n${SCENARIO_RUN_STEPS_DDL}`,
+    // FROZEN snapshot of the v25-era schema — must NOT reference the live DDL constants, or a later
+    // column (e.g. `input`, added at v27) would appear here too and collide with its own migration.
+    sql: `CREATE TABLE scenario_runs (
+  id TEXT PRIMARY KEY,
+  scenario_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  mode TEXT NOT NULL,
+  start_node_id TEXT,
+  step_count INTEGER NOT NULL DEFAULT 0,
+  error TEXT,
+  started_at TEXT NOT NULL,
+  finished_at TEXT
+);
+CREATE TABLE scenario_run_steps (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  node_id TEXT NOT NULL,
+  alias TEXT,
+  kind TEXT NOT NULL,
+  status TEXT NOT NULL,
+  method TEXT,
+  url TEXT,
+  http_status INTEGER,
+  message TEXT,
+  output TEXT,
+  duration_ms INTEGER,
+  created_at TEXT NOT NULL
+);`,
   },
   {
     to: 26,

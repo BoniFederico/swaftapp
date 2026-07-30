@@ -446,13 +446,3 @@ function edgeSourcePoint(graph: ScenarioGraph, from: string, branch: ScenarioBra
   const ports = outputPorts(node);
   return (branch ? ports.find((p) => p.branch === branch) : ports[0]) ?? null;
 }
-
-/** A readable default alias from a template name (identifier-ish, for `previous('alias')`). */
-export function slug(name: string): string {
-  const s = name
-    .trim()
-    .replace(/[^A-Za-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .replace(/^(\d)/, '_$1');
-  return s || 'block';
-}

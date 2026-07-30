@@ -281,10 +281,11 @@ export class SeeboHost {
         const key = previousRef(req) ?? s.previousAlias ?? null;
         const envelope = (key ? s.outputs[key] : undefined) ?? {};
 
-        // Parse JSON output for json-type templates
-        if (typeof envelope === 'object' && envelope !== null && 'templateType' in envelope) {
+        // A json-subtype document block flags `jsonOutput`: its `output` is a JSON string the consumer
+        // wants as an object. Parse it here (fail the formula on invalid JSON, as requested).
+        if (typeof envelope === 'object' && envelope !== null) {
           const env = envelope as Record<string, unknown>;
-          if (env.templateType === 'json' && typeof env.output === 'string') {
+          if (env.jsonOutput === true && typeof env.output === 'string') {
             try {
               return { ...env, output: JSON.parse(env.output) };
             } catch (e) {

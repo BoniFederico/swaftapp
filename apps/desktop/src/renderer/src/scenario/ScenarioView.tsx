@@ -234,7 +234,14 @@ export function ScenarioView({
         .then((res) => {
           const map = new Map<string, ResolvedTemplate>();
           for (const tpl of res.tree.templates) {
-            if (tpl.type === 'api' || tpl.type === 'action' || tpl.type === 'capability') {
+            // Every executable block kind — must match what the canvas allows on drop (anything but
+            // `scenario`). Excluding `document` here made json/document blocks show "Missing template".
+            if (
+              tpl.type === 'api' ||
+              tpl.type === 'action' ||
+              tpl.type === 'capability' ||
+              tpl.type === 'document'
+            ) {
               map.set(tpl.id, { name: tpl.name, type: tpl.type as TemplateType });
             }
           }

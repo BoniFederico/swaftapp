@@ -180,4 +180,30 @@ describe('SeeboHost — previous(...) scenario data capability', () => {
     const state = await new SeeboHost().render("${ previous('x') }", {});
     expect(state.status).toBe('completed');
   });
+
+  it('parses a json-document block’s string output into an object (jsonOutput flag)', async () => {
+    const host = new SeeboHost();
+    const state = await host.render("${ previous('cfg').output.name }", {}, undefined, ctx({
+      cfg: { kind: 'document', ok: true, output: '{"name":"asd"}', jsonOutput: true },
+    }));
+    expect(state.status).toBe('completed');
+    expect(state.output).toBe('asd');
+  });
+
+  it('fails the formula when a json-flagged output is not valid JSON', async () => {
+    const host = new SeeboHost();
+    const state = await host.render("${ previous('cfg').output }", {}, undefined, ctx({
+      cfg: { kind: 'document', ok: true, output: 'not json', jsonOutput: true },
+    }));
+    expect(state.status).toBe('failed');
+  });
+
+  it('leaves output untouched when jsonOutput is absent (plain document)', async () => {
+    const host = new SeeboHost();
+    const state = await host.render("${ previous('cfg').output }", {}, undefined, ctx({
+      cfg: { kind: 'document', ok: true, output: 'Hello asd!' },
+    }));
+    expect(state.status).toBe('completed');
+    expect(state.output).toBe('Hello asd!');
+  });
 });
