@@ -272,13 +272,29 @@ export class SeeboHost {
     // Registered unconditionally (it needs no provider — only the per-render `ctx.scenario` the runner
     // sets). Outside a run it resolves to an empty object, so a block template stays renderable on its
     // own; inside a run it returns the stored envelope. `object` contract → member access type-checks.
+    // For json-type templates, the `output` property is parsed as JSON; parse errors throw.
     capabilities.previous = defineCapability('previous', {
       type: 'object',
       resolve: (req) => {
         const s = ctx?.scenario;
         if (!s) return {};
         const key = previousRef(req) ?? s.previousAlias ?? null;
-        return (key ? s.outputs[key] : undefined) ?? {};
+        const envelope = (key ? s.outputs[key] : undefined) ?? {};
+
+        // Parse JSON output for json-type templates
+        if (typeof envelope === 'object' && envelope !== null && 'templateType' in envelope) {
+          const env = envelope as Record<string, unknown>;
+          if (env.templateType === 'json' && typeof env.output === 'string') {
+            try {
+              return { ...env, output: JSON.parse(env.output) };
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : String(e);
+              throw new Error(`Failed to parse JSON output from previous('${key}'): ${msg}`);
+            }
+          }
+        }
+
+        return envelope;
       },
     });
     dataCapabilities.push('previous');

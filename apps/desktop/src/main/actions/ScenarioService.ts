@@ -437,6 +437,7 @@ export class ScenarioService extends RepoBase {
               json,
               durationMs: res.response.durationMs,
               error: res.response.status >= 400 ? `HTTP ${res.response.status}` : null,
+              templateType: type,
             },
           };
         } catch (e) {
@@ -455,7 +456,7 @@ export class ScenarioService extends RepoBase {
           return { kind: 'error', message };
         }
         if (result.status === 'completed') {
-          return { kind: 'success', output: { kind: 'document', ok: true, output: result.output, error: null } };
+          return { kind: 'success', output: { kind: 'document', ok: true, output: result.output, error: null, templateType: type } };
         }
         return { kind: 'pending', requirements: result.pending };
       });
@@ -475,6 +476,7 @@ export class ScenarioService extends RepoBase {
           envWrites: res.envWrites,
           durationMs: res.durationMs,
           error: null,
+          templateType: type,
         };
       } catch (e) {
         return failOutput(errMsg(e), type);
@@ -710,7 +712,7 @@ function parseRequest(source: string): HttpRequestModel {
 }
 
 function failOutput(error: string, kind?: string): BlockOutput {
-  return { kind: (kind as BlockOutput['kind']) ?? 'capability', ok: false, output: null, error };
+  return { kind: (kind as BlockOutput['kind']) ?? 'capability', ok: false, output: null, error, templateType: kind };
 }
 
 /** True (with the pending requirements) when an error is a missing-input signal from the resolve step. */

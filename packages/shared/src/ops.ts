@@ -1235,6 +1235,8 @@ export interface BlockOutput {
   logs?: string[];
   envWrites?: string[];
   error?: string | null;
+  /** Template type for output format handling (e.g. 'json' for JSON parsing in previous()). */
+  templateType?: string;
 }
 
 export type ScenarioRunStatus =
