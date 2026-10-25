@@ -90,6 +90,40 @@ function assertSafeArg(value: string, code: string, label: string): void {
   }
 }
 
+/** Upper bound for a single git invocation (clones of large repos included). */
+const GIT_TIMEOUT_MS = 10 * 60 * 1000;
+
+/** Map a failed git invocation to a coded error, with friendlier messages for common setup issues. */
+export function gitError(err: unknown, args: string[]): AppError {
+  const e = err as { stderr?: string; killed?: boolean; signal?: string | null; message?: string };
+  if (e.killed && e.signal) {
+    return new AppError(
+      'GIT_TIMEOUT',
+      'execution',
+      `git ${args[0] ?? ''} did not finish within ${GIT_TIMEOUT_MS / 60000} minutes and was stopped. Check your network and credentials.`,
+      { args },
+    );
+  }
+  const stderr = e.stderr?.trim();
+  if (stderr && /please tell me who you are|unable to auto-detect email address/i.test(stderr)) {
+    return new AppError(
+      'GIT_IDENTITY_MISSING',
+      'validation',
+      'Git does not know who you are yet. Run `git config --global user.name "Your Name"` and `git config --global user.email "you@example.com"`, then try again.',
+      { args },
+    );
+  }
+  if (stderr && /terminal prompts disabled|could not read username/i.test(stderr)) {
+    return new AppError(
+      'GIT_AUTH_REQUIRED',
+      'execution',
+      'The remote asked for credentials. Configure a credential helper (e.g. Git Credential Manager) or use an SSH remote with a key loaded in your agent.',
+      { args },
+    );
+  }
+  return new AppError('GIT_COMMAND_FAILED', 'execution', stderr || e.message || 'git command failed', { args });
+}
+
 /** Derive the directory name `git clone` would create for a URL (last path segment, sans `.git`). */
 export function deriveRepoName(url: string): string {
   const cleaned = url.trim().replace(/\/+$/, '').replace(/\.git$/i, '');
@@ -103,12 +137,19 @@ export class SystemGitService implements GitService {
   /** Run a git command, mapping a non-zero exit to a coded error carrying git's stderr. */
   private async git(cwd: string, args: string[]): Promise<string> {
     try {
-      const { stdout } = await run('git', args, { cwd, windowsHide: true, maxBuffer: 32 * 1024 * 1024 });
+      const { stdout } = await run('git', args, {
+        cwd,
+        windowsHide: true,
+        maxBuffer: 32 * 1024 * 1024,
+        // There is no terminal to answer a credential prompt: fail fast instead of hanging forever
+        // (GUI credential helpers such as Git Credential Manager keep working).
+        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+        // Last-resort bound for anything else that blocks (e.g. an unanswerable SSH prompt).
+        timeout: GIT_TIMEOUT_MS,
+      });
       return stdout;
     } catch (err) {
-      const stderr = (err as { stderr?: string }).stderr?.trim();
-      const message = stderr || (err as Error).message || 'git command failed';
-      throw new AppError('GIT_COMMAND_FAILED', 'execution', message, { args });
+      throw gitError(err, args);
     }
   }
 
