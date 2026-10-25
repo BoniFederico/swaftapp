@@ -12,6 +12,9 @@ lang: en
 # or moved to a user/org page. `baseurl` must match the repository name for a project site.
 url: https://bonifederico.github.io
 baseurl: /swaftapp
+# Folder-style URLs (/installation/ rather than /installation.html): the README, release notes and
+# wiki link to pages this way.
+permalink: pretty
 
 # --- Theme ------------------------------------------------------------------
 theme: just-the-docs
