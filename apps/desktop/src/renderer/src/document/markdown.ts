@@ -21,6 +21,9 @@ function inline(s: string): string {
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    // Underscore forms only at word boundaries, so snake_case identifiers are left alone.
+    .replace(/(^|[^\w])__([^_]+)__(?!\w)/g, '$1<strong>$2</strong>')
+    .replace(/(^|[^\w])_([^_]+)_(?!\w)/g, '$1<em>$2</em>')
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text: string, href: string) =>
       // The preview iframe is sandboxed, so this is defense in depth, not the only barrier.
       safeHref(href) ? `<a href="${href}">${text}</a>` : match,
