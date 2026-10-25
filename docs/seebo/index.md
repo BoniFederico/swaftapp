@@ -1,7 +1,7 @@
 ---
 title: Seebo formulas
 layout: default
-nav_order: 5
+nav_order: 6
 has_children: true
 ---
 
@@ -25,7 +25,7 @@ This section is a practical reference for authoring formulas **inside Swaft**. I
 
 - **[Syntax & types](syntax.md)** — slots, literals, the type system, operators, `match` and methods.
 - **[Capabilities](capabilities.md)** — declaring inputs with widgets, and reading data with
-  `env`, `template` and `previous`.
+  `env`, `secret`, `template` and `previous`.
 - **[Actions & macros](actions-macros.md)** — declaring effects, and composing/laying out text with
   macros.
 
@@ -45,17 +45,22 @@ Everything outside a slot is copied through verbatim.
 
 ```text
 #{ A short order summary }
-Order ${ orderId } — ${ status.upper() }
-Total: ${ string(qty * price) } EUR
-${ note != '' ? 'Note: ' + note : '@{REMOVE_LINE}' }
+Order ${ textbox({ id: 'orderId', label: 'Order id' }) } — ${ listbox({ id: 'status', label: 'Status', options: ['open', 'shipped'] }).upper() }
+Total: ${ number({ id: 'qty', label: 'Quantity' }) * number({ id: 'price', label: 'Unit price' }) } EUR
+${ textarea({ id: 'note', label: 'Note' }) != '' ? 'Note: ' + note : '@{REMOVE_LINE}' }
 ```
 
-- `${ orderId }` reads a variable (an [environment](../guide/environments.md) value or a resolved
-  input).
-- `status.upper()` calls a **method** on a string.
-- `qty * price` is arithmetic; `string(...)` converts the number so it can sit in text.
-- the last line uses a **layout macro** to delete itself when `note` is empty (see
+- `textbox`, `listbox`, `number` and `textarea` declare **inputs**; each appears once in the Input
+  panel, keyed by its `id`.
+- `.upper()` calls a **method** on the string the input returns.
+- `qty * price` is arithmetic on two `int` inputs; the result is formatted with the workspace locale
+  when it is emitted.
+- On the last line, `note` refers back to the input declared with `id: 'note'` in the same formula.
+  When it is empty the formula emits a **layout macro** that deletes the line (see
   [Actions & macros](actions-macros.md#layout-macros)).
+
+A bare whole-slot name such as `${ BASE_URL }` that is not an input is read from the active
+[environment](../guide/environments.md).
 
 ## Key rules to remember
 

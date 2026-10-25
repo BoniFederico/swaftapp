@@ -18,77 +18,116 @@ nav_order: 1
 ---
 
 A **workspace** is everything you own in Swaft: projects, folders, tags, templates, releases,
-environments and settings. You create it from the homepage and it opens into the workspace shell.
+environments and settings. You create or open it from the homepage and it opens into the workspace
+shell.
 
-## Storage modes
+## The homepage
 
-You choose a storage mode when you create the workspace. **It cannot be changed later** — moving
-between modes means creating a new workspace and re-importing.
+| Control | What it does |
+|---------|--------------|
+| **Create** → **Local file (.swaft)** | Create a single-file workspace. |
+| **Create** → **Local folder** | Create a folder workspace (plain files, no Git). |
+| **Create** → **Git folder (.git)** | Create a workspace in a Git repository. |
+| **Open** → **From .swaft** | Open a `.swaft` file — a single-file workspace or an exported container. |
+| **Open** → **From folder** | Open a folder workspace or a Git workspace. |
+| **Open** → **Clone from URL** | Clone a repository (**Repository URL**, **Destination folder**) and open it. |
+| **Recent workspaces** | Reopen a workspace with one click. Encrypted ones carry an **Encrypted** badge. |
+| **Search recent workspaces** | Filter the recent list by name or path. |
+| **Remove from recent** | Drop an entry from the list. The workspace itself is not touched. |
 
-### Local (`.swaft` file)
+The Git entries appear only when a `git` binary is found on your `PATH`.
 
-A single portable file backed by SQLite. Copy it, back it up, or e-mail it like any document.
-Ideal for a personal, self-contained workspace.
+![The homepage Create menu: Local file (.swaft), Local folder and Git folder (.git)](../assets/screenshots/create-menu.png)
 
-- Created with **Create local workspace** → pick a path (default `workspace.swaft`).
-- Can be **encrypted** (see below).
+## Storage forms
 
-### Git (folder of files)
+You choose the storage form when you create the workspace. **It cannot be changed later.** The
+**Create workspace** dialog shows it under **Storage mode**, together with the **Workspace name**,
+the **Location** (or **Folder**) and the **Execution mode**.
 
-The workspace is stored as a folder of plain, human-readable files instead of one binary blob, so
-it can be tracked with **Git**: commit history, branches, diffs and any Git remote (GitHub, GitLab,
-a bare repo…) all work.
+| Form | On disk | Encryption | Best for |
+|------|---------|------------|----------|
+| **Local file (.swaft)** | One `.swaft` file. | Optional, with a password. | A personal, self-contained workspace you can copy or back up as one file. |
+| **Local folder** | A folder of plain, readable files. | No. | Inspecting or editing files with other tools, without Git. |
+| **Git folder (.git)** | The same plain files in a Git repository. | No. | Teams, history, branches and reviewing changes as diffs. |
 
-- Created with **Create Git workspace** → pick a folder, or **Clone** an existing repository.
-- Great for teams and for reviewing changes as diffs.
-- Git workspaces are **never encrypted at rest by Swaft** — rely on your repository's access
-  controls instead.
+The folder and Git forms use the same documented file layout — see
+[Workspace format](../reference/workspace-format.md). Folder and Git workspaces are **never
+encrypted at rest by Swaft**; rely on file-system or repository access controls instead.
 
 {: .note }
-> Secrets (API tokens, passwords) are **never** written into either storage mode. They live in your
+> Secrets (API tokens, passwords) are **never** written into any storage form. They live in your
 > operating system's secure storage — see [Security & settings](security-and-settings.md#secrets).
 
-## Encryption (local workspaces)
+## Encryption
 
-When creating a local workspace you can enable **whole-file encryption**. Swaft derives a key from
-your password with **Argon2id** and encrypts the file with **AES-256-GCM**.
+A **Local file (.swaft)** workspace can be encrypted at creation: turn on **Encrypt this workspace**,
+then enter and confirm a **Workspace password** (at least 8 characters). Swaft derives a key from
+the password with **Argon2id** and encrypts the whole file with **AES-256-GCM**.
 
-- You are prompted for the password every time the workspace is opened.
+- You are prompted for the password (**Open encrypted workspace**) every time the workspace is
+  opened.
 - Encryption is independent of anything else — there is no separate app login.
 
 {: .warning }
 > **There is no recovery.** If you forget an encrypted workspace's password, the data is gone. Keep
 > the password somewhere safe.
 
+## Exporting and opening `.swaft` containers
+
+Any open workspace — file, folder or Git — can be packaged as a portable **`.swaft` container**: a
+standard zip of the [open folder format](../reference/workspace-format.md). Use it to move a
+workspace to another machine, hand it to a colleague, or archive it.
+
+- **Export:** open **Import / Export** in the top bar and choose **Export .swaft container…**, then
+  pick where to save the file. The container is written unencrypted.
+- **Open:** use **Open** → **From .swaft** on the homepage. Swaft unpacks the container into a
+  sibling folder named after the file (for example `team.swaft` → `team/`) and opens that folder as a
+  **Local folder** workspace. If that folder already exists from an earlier open, it is reused rather
+  than overwritten. An encrypted container prompts for its password first.
+
+**Open** → **From .swaft** also opens single-file workspaces directly, including files created by
+earlier versions of Swaft.
+
+{: .tip }
+> Because a container is a regular zip, any unzip tool can read it. See
+> [Workspace format → The `.swaft` container](../reference/workspace-format.md#6-the-swaft-container).
+
 ## The workspace shell
 
 Once open, the workspace shows:
 
-- **Working Tree** (left) — your projects, folders, tags and templates. Always visible.
-  See [The Working Tree](working-tree.md).
-- **View area** (right) — a tabbed area that shows the editor/view for whatever you open. The view
-  is chosen automatically from the template's type.
-- **Top bar** — the workspace name, the [environment picker](environments.md), a **Settings** button,
-  a **Batcher** toggle, and — for Git workspaces — the **Git status** button.
+- **Working Tree** (left) — the **Project** selector, search, and your folders and templates. See
+  [The Working Tree](working-tree.md). Drag the sidebar's right edge to **resize** it; use the
+  **Collapse** button to hide it and **Open sidebar** to bring it back. When the Batcher is enabled,
+  its panel sits under the tree.
+- **Tabs** (right) — every template or folder you open gets a tab. See
+  [Tabs](working-tree.md#tabs).
+- **Top bar** — the workspace name and badges (execution mode, encryption), the Git status button
+  (Git workspaces only), the [environment picker](environments.md), the **Import / Export** menu,
+  **Settings** and **Close workspace**.
 
 ## Using Git version control
 
-In a Git workspace, the **Git status button** in the top bar opens the Git panel. From there you
-can:
+In a Git workspace, the **Git** status button in the top bar shows **Changes** or **Clean** and
+opens the Git panel:
 
-| Action | What it does |
-|--------|--------------|
-| **Status** | See changed / staged files. |
-| **Commit** | Commit all changes with a message. |
-| **Push / Pull / Fetch** | Sync with the remote (first push adds `-u` automatically). |
-| **Branch / Checkout** | Create and switch branches. |
-| **Diff** | View a file's changes in a diff viewer. |
-| **Discard** | Revert local changes to a file. |
-| **Publish / Clone** | Attach a remote, or clone a repo into a new workspace. |
+| Control | What it does |
+|---------|--------------|
+| **Branch** | Switch branches, or create one with **New branch…**. |
+| **Changes** | The changed files. **View changes** opens a side-by-side diff of **Committed (HEAD)** against **Working tree**, with syntax highlighting. |
+| **Commit message** + **Commit** | Commit all changes. |
+| **Fetch** / **Pull** / **Push** | Sync with the remote (shown once the repository has a remote; the first push sets the upstream). |
+| **Publish…** | Attach a **Remote URL** to a repository that has none, then publish. |
+| **Reload** | Re-read the workspace from disk after changes made outside Swaft. |
+| **Discard** | Discard **all** uncommitted changes (asks for confirmation; cannot be undone). |
 
 Swaft shells out to the **`git` binary installed on your machine**, so it reuses your existing SSH
-keys and credential helpers — there is nothing extra to configure. Make sure `git` is on your
-`PATH`.
+keys and credential helpers — there is nothing extra to configure.
+
+If a pull leaves **merge conflicts**, Swaft tells you so; resolve them in your usual Git tool, then
+click **Reload**.
+
 
 ### Pre-commit secret check
 
@@ -98,32 +137,24 @@ secret — a bearer token, a well-known API key format, or a high-entropy string
 labeled **secret** (see [Environments](environments.md#config-vs-secret-label)) is skipped; it's an
 acknowledged risk, not a surprise.
 
-If something is found, the commit is refused and you see exactly what was flagged (a redacted hint,
-never the full value) with the option to **commit anyway** if it's a false positive. Nothing is
-written to disk until you either fix it or confirm through. This check only runs on `git.commit` — a
-local/folder save is not gated the same way.
+If something is found, the commit is refused and a **Possible secrets found** dialog shows exactly
+what was flagged (a redacted hint, never the full value). Choose **Commit anyway** if it's a false
+positive. Nothing is written to disk until you either fix it or confirm. The check runs only on
+commit — saving a folder workspace is not gated the same way.
 
 {: .tip }
 > Because a Git workspace is just files, you can also edit history, resolve conflicts, or set up CI
-> using your normal Git tooling outside Swaft. Reopen the workspace (or use **Reload**) to pick up
-> external changes.
+> using your normal Git tooling outside Swaft. Click **Reload** to pick up external changes.
 
-## Local-only data survives a reopen
+## Local-only data
 
-Request/run history, action receipts, unsent input values and your release/environment selection are
-**local-only** — never committed, never shared, never part of the workspace file another person
-opens. For a folder or Git workspace they're kept in a small `.swaft/` cache directory next to your
-files (already `.gitignore`d, so it never shows up as a change to commit), written on save and read
-back on open — so closing and reopening the workspace no longer loses that history.
+Request and run history, action receipts, saved input values and your release and environment
+selections are **local-only** — never committed and never shared. For a folder or Git workspace they
+are kept in a small `.swaft/` cache directory next to your files (already `.gitignore`d, so it never
+shows up as a change to commit), written on save and read back on open, so closing and reopening the
+workspace keeps that history.
 
-## Opening an existing workspace
+## Version compatibility
 
-From the homepage you can:
-
-- **Open** a `.swaft` file (you'll be prompted for the password if it is encrypted),
-- **Open** a Git workspace folder,
-- **Clone** a Git repository into a new workspace,
-- pick one from the **recent workspaces** list (searchable).
-
-If a workspace was created by a **newer** version of Swaft, it will refuse to open rather than risk
+If a workspace was created by a **newer** version of Swaft, it refuses to open rather than risk
 corrupting it — update the app.

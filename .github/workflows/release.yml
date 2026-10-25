@@ -1,10 +1,13 @@
 name: Release
 
-# Manually triggered (workflow_dispatch) so the costly multi-OS build never runs on every commit —
-# see deploy.md §5.2. Currently Windows + Linux only; macOS (×10 minutes) is deferred and can be
-# added by dropping `macos-latest` into the build matrix (the mac target already exists in
-# electron-builder.yml). The release is created as a DRAFT for you to review and publish.
+# Builds the installers for every platform and publishes them as a GitHub Release.
+#
+# Triggered by pushing a version tag (`git tag v1.2.3 && git push origin v1.2.3`) — the tag must
+# match apps/desktop/package.json — or manually from the Actions tab (draft by default, handy for a
+# dry run). See docs/dev/releasing.md.
 on:
+  push:
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       draft:
@@ -17,68 +20,114 @@ permissions:
   contents: write
 
 concurrency:
-  group: release
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  # Pre-release gate: if the checks fail, the expensive build matrix never starts.
+  # Pre-release gate: if the checks fail, the build matrix never starts.
   gate:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
+      - id: meta
+        name: Read version (and check it matches the tag)
+        run: |
+          version=$(node -p "require('./apps/desktop/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match apps/desktop/package.json version $version"
+            exit 1
+          fi
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm test
+      - run: npm run verify
+      - run: npm run build
+      - run: npx playwright install-deps
+      # Electron needs a display: run the e2e smoke under a virtual X server.
+      - run: xvfb-run --auto-servernum npm run e2e
 
   build:
     needs: gate
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      # gen:icons → electron-vite build → electron-builder (builds for the current OS: AppImage on
-      # Linux, NSIS on Windows). No --publish here; assets are collected and released in one place
-      # by the publish job below (avoids two runners racing to create the same release).
-      - run: npm run dist
+      # gen:icons → electron-vite build → electron-builder for the runner's OS: NSIS on Windows,
+      # AppImage + .deb on Linux, dmg (arm64 + x64) on macOS. `--publish never`: the publish job
+      # below creates the release once, from all platforms' artifacts.
+      - run: npm --workspace @swaft/desktop run package -- --publish never
+        env:
+          # No signing certificate is configured yet: build unsigned instead of failing.
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - uses: actions/upload-artifact@v4
         with:
           name: dist-${{ matrix.os }}
           path: |
             apps/desktop/release/*.exe
             apps/desktop/release/*.AppImage
-            apps/desktop/release/*.yml
-            apps/desktop/release/*.blockmap
+            apps/desktop/release/*.deb
+            apps/desktop/release/*.dmg
           if-no-files-found: error
 
   publish:
-    needs: build
+    needs: [gate, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # The release tag/name comes from the app version — bump apps/desktop/package.json before a
-      # release (see deploy.md §4).
-      - id: meta
-        run: echo "version=$(node -p "require('./apps/desktop/package.json').version")" >> "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
+      - name: Checksums
+        working-directory: artifacts
+        run: sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: Release notes from CHANGELOG.md
+        run: |
+          version='${{ needs.gate.outputs.version }}'
+          # The section between "## [<version>]" and the next "## [" heading.
+          awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" { on = 1; next }
+            on && /^## \[/ { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          {
+            echo
+            echo '---'
+            echo
+            echo '**Downloads:** Windows → `Swaft-'"$version"'-setup.exe` · macOS → `Swaft-'"$version"'-arm64.dmg` (Apple silicon) or `-x64.dmg` (Intel) · Linux → `.AppImage` or `.deb`.'
+            echo 'The builds are not code-signed yet: see the [installation guide](https://bonifederico.github.io/swaftapp/installation/) for the one-time OS confirmation.'
+          } >> notes.md
+          cat notes.md
+      # A manual (dry) run must never touch a release that already exists: action-gh-release would
+      # update it in place (new assets, and possibly flip it back to draft).
+      - name: Refuse to overwrite an existing release on manual runs
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if gh release view "v${{ needs.gate.outputs.version }}" >/dev/null 2>&1; then
+            echo "::error::Release v${{ needs.gate.outputs.version }} already exists. Bump the version, or delete the release first."
+            exit 1
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.meta.outputs.version }}
-          name: Swaft v${{ steps.meta.outputs.version }}
-          draft: ${{ inputs.draft }}
+          tag_name: v${{ needs.gate.outputs.version }}
+          # For manual runs the tag doesn't exist yet: create it on the commit that was built.
+          target_commitish: ${{ github.sha }}
+          name: Swaft v${{ needs.gate.outputs.version }}
+          body_path: notes.md
+          draft: ${{ github.event_name == 'workflow_dispatch' && inputs.draft }}
           files: artifacts/*

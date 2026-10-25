@@ -1,0 +1,8 @@
+{
+  "id": "dd3f89fc-c04b-4dd7-9355-2662068c8066",
+  "name": "v1",
+  "source": "# Welcome to ${ template('company').name }, ${ textbox({ id: 'name', label: 'Your name', type: string() }) }!\n\nThanks for choosing the **${ listbox({ id: 'plan', label: 'Plan', options: ['Free', 'Pro', 'Team'] }) }** plan.\n\n${ template('company').name } helps you turn templates into documents, API calls and workflows.\nQuestions? Write to ${ template('company').support }.\n\n_Generated in ${ now().year() }._\n",
+  "subtype": "markdown",
+  "templateId": "de000010-0000-4000-8000-000000000000",
+  "version": 1
+}

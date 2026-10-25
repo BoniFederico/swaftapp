@@ -21,6 +21,7 @@ import {
   type NameColorRequest,
   type SecretSetRequest,
   type SecretDeleteRequest,
+  type SecretsResponse,
   type OpName,
   type PingRequest,
   type PingResponse,
@@ -114,6 +115,12 @@ async function svc<T>(fn: () => Promise<T> | T): Promise<T | ErrorEnvelope> {
     if (envelope) return envelope;
     throw err;
   }
+}
+
+/** Secret names (never values) plus how well this machine protects them at rest. */
+function secretsResponse(): SecretsResponse {
+  const secrets = getSecretService();
+  return { refs: secrets.list(), storage: secrets.storageLevel() };
 }
 
 export const handlers: Record<OpName, Handler> = {
@@ -409,13 +416,13 @@ export const handlers: Record<OpName, Handler> = {
     svc(() => {
       const r = p as SecretSetRequest;
       getSecretService().set(r.ref, r.value);
-      return { refs: getSecretService().list() };
+      return secretsResponse();
     }),
-  'secret.list': () => ({ refs: getSecretService().list() }),
+  'secret.list': () => secretsResponse(),
   'secret.delete': (p) =>
     svc(() => {
       getSecretService().delete((p as SecretDeleteRequest).ref);
-      return { refs: getSecretService().list() };
+      return secretsResponse();
     }),
 
   // Batcher + actions (M10)

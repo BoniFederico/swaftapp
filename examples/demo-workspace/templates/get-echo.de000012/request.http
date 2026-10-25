@@ -1,0 +1,3 @@
+# Echoes the query string back (httpbin.org). The base URL comes from the **Public echo** environment.
+GET ${ env('BASE_URL') }/get?name=${ textbox({ id: 'name', label: 'Name', type: string() }) }
+Accept: application/json

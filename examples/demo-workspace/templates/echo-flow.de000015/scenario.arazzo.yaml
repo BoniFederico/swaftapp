@@ -1,0 +1,84 @@
+arazzo: 1.0.0
+info:
+  title: Echo flow
+  version: 1.0.0
+workflows:
+  - workflowId: echo-flow
+    summary: Echo flow
+    steps:
+      - stepId: get
+        operationId: de000012-0000-4000-8000-000000000000
+        x-swaft:
+          kind: template
+          ref: de000012-0000-4000-8000-000000000000
+          templateType: api
+          alias: echo
+          inputs:
+            name: Ada
+          position:
+            x: 250
+            'y': 200
+        onSuccess:
+          - name: next
+            type: goto
+            stepId: ok
+      - stepId: ok
+        x-swaft:
+          kind: decision
+          condition: ${ previous('echo').status == 200 }
+          position:
+            x: 470
+            'y': 200
+          label: Status 200?
+        onSuccess:
+          - name: 'true'
+            type: goto
+            stepId: post
+        onFailure:
+          - name: 'false'
+            type: goto
+            stepId: wait
+      - stepId: post
+        operationId: de000013-0000-4000-8000-000000000000
+        x-swaft:
+          kind: template
+          ref: de000013-0000-4000-8000-000000000000
+          templateType: api
+          alias: post
+          inputs:
+            name: ${ previous('echo').json.args.name }
+            plan: Pro
+          position:
+            x: 650
+            'y': 80
+        onSuccess:
+          - name: next
+            type: goto
+            stepId: letter
+      - stepId: letter
+        x-swaft:
+          kind: template
+          ref: de000010-0000-4000-8000-000000000000
+          templateType: document
+          alias: letter
+          inputs:
+            name: ${ previous('post').json.json.name }
+            plan: ${ previous('post').json.json.plan }
+          position:
+            x: 880
+            'y': 80
+      - stepId: wait
+        x-swaft:
+          kind: delay
+          ms: 1000
+          position:
+            x: 650
+            'y': 320
+          label: Wait 1s
+    x-swaft-version: 1
+    x-swaft-start:
+      id: start
+      position:
+        x: 40
+        'y': 200
+      next: get

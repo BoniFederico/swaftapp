@@ -3,7 +3,24 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { deriveRepoName, parseStatus, SystemGitService } from './GitService';
+import { deriveRepoName, gitError, parseStatus, SystemGitService } from './GitService';
+
+describe('gitError', () => {
+  it('maps common failures to friendly coded errors', () => {
+    expect(gitError({ stderr: '*** Please tell me who you are.\n\nRun git config' }, ['commit']).code).toBe(
+      'GIT_IDENTITY_MISSING',
+    );
+    expect(
+      gitError({ stderr: "fatal: could not read Username for 'https://github.com': terminal prompts disabled" }, [
+        'push',
+      ]).code,
+    ).toBe('GIT_AUTH_REQUIRED');
+    expect(gitError({ killed: true, signal: 'SIGTERM' }, ['clone']).code).toBe('GIT_TIMEOUT');
+    const other = gitError({ stderr: 'fatal: not a git repository' }, ['status']);
+    expect(other.code).toBe('GIT_COMMAND_FAILED');
+    expect(other.message).toBe('fatal: not a git repository');
+  });
+});
 
 describe('deriveRepoName', () => {
   it('extracts the repo folder name from clone URLs', () => {
@@ -67,7 +84,9 @@ try {
   gitAvailable = false;
 }
 
-describe.skipIf(!gitAvailable)('SystemGitService (integration)', () => {
+// Real git processes: on Windows each spawn costs ~100ms+, so multi-command flows (push + clone)
+// can exceed vitest's 5s default under load. Give the suite a generous budget.
+describe.skipIf(!gitAvailable)('SystemGitService (integration)', { timeout: 30_000 }, () => {
   const svc = new SystemGitService();
   let dir: string;
 

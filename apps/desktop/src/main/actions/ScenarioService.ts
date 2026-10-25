@@ -67,6 +67,8 @@ interface RunState {
   resume: ((v: Record<string, unknown> | 'cancelled') => void) | null;
   /** Input values the user opted to reuse across the run, keyed by requirement id. */
   rememberedInputs: Record<string, unknown>;
+  /** {@link WorkspaceService.generation} when the run started; a mismatch detaches the run. */
+  generation: number;
 }
 
 interface RunRow {
@@ -181,10 +183,16 @@ export class ScenarioService extends RepoBase {
       pausedAtNodeId: null,
       resume: null,
       rememberedInputs: {},
+      generation: this.ws.generation,
     };
     this.active.set(runId, state);
     await this.insertRun(run);
-    const done = this.loop(state).catch((e) => void this.finish(state, 'failed', errMsg(e)));
+    // `done` must always settle and the run must always leave the live map, even if recording the
+    // failure itself fails (e.g. the workspace was closed mid-run).
+    const done = this.loop(state)
+      .catch((e) => this.finish(state, 'failed', errMsg(e)))
+      .catch((e) => logRunError(runId, e))
+      .finally(() => this.active.delete(runId));
     return { runId, done };
   }
 
@@ -242,7 +250,13 @@ export class ScenarioService extends RepoBase {
       source?: string;
     },
   ): Promise<void> {
+    const generation = this.ws.generation;
     for (let i = 0; i < req.count && !batch.cancelled; i++) {
+      // The workspace was switched or closed: never start the next run in a different workspace.
+      if (this.ws.generation !== generation) {
+        batch.cancelled = true;
+        break;
+      }
       const { runId, done } = await this.startRun({
         id: req.id,
         startNodeId: req.startNodeId,
@@ -365,9 +379,11 @@ export class ScenarioService extends RepoBase {
         });
         node = this.nextNode(state, current, branch ? 'true' : 'false');
       } else {
-        if (current.breakpoint) {
+        // Breakpoints are for attended debugging; unattended batch runs ignore them.
+        if (current.breakpoint && state.mode !== 'batch') {
           const held = await this.pauseForBreakpoint(state, current.id);
-          if (held === 'cancelled') break;
+          // Re-check after the pause: the workspace may have been switched while it was held.
+          if (held === 'cancelled' || state.cancelled) break;
         }
         const out = await this.execBlock(state, current, ctx);
         if (out === 'cancelled') break;
@@ -432,7 +448,7 @@ export class ScenarioService extends RepoBase {
               status: res.response.status,
               statusText: res.response.statusText,
               headers: res.response.headers,
-              input: JSON.stringify(values),
+              input: JSON.stringify(redactInputs(values)),
               body: res.response.body,
               json,
               durationMs: res.response.durationMs,
@@ -530,14 +546,14 @@ export class ScenarioService extends RepoBase {
   ): Promise<Record<string, unknown> | 'cancelled'> {
     state.pending = { nodeId, requirements };
     state.run.status = 'awaiting-input';
-    void this.updateRunStatus(state);
+    this.updateRunStatusQuietly(state);
     return new Promise((resolve) => {
       state.resume = (v) => {
         state.resume = null;
         state.pending = null;
         if (v !== 'cancelled') {
           state.run.status = 'running';
-          void this.updateRunStatus(state);
+          this.updateRunStatusQuietly(state);
         }
         resolve(v);
       };
@@ -567,7 +583,7 @@ export class ScenarioService extends RepoBase {
       if (remaining.length === 0) continue;
       if (state.mode === 'batch') return failOutput('Missing inputs (unattended run).', blockKind);
       const provided = await this.pauseForInput(state, node.id, remaining);
-      if (provided === 'cancelled') return 'cancelled';
+      if (provided === 'cancelled' || state.cancelled) return 'cancelled';
       values = { ...values, ...provided };
     }
   }
@@ -593,7 +609,7 @@ export class ScenarioService extends RepoBase {
   private pauseForBreakpoint(state: RunState, nodeId: string): Promise<'continue' | 'cancelled'> {
     state.pausedAtNodeId = nodeId;
     state.run.status = 'paused-breakpoint';
-    void this.updateRunStatus(state);
+    this.updateRunStatusQuietly(state);
     return new Promise((resolve) => {
       state.resume = (v) => {
         state.resume = null;
@@ -603,7 +619,7 @@ export class ScenarioService extends RepoBase {
           return;
         }
         state.run.status = 'running';
-        void this.updateRunStatus(state);
+        this.updateRunStatusQuietly(state);
         resolve('continue');
       };
     });
@@ -642,7 +658,24 @@ export class ScenarioService extends RepoBase {
     await this.ws.save();
   }
 
+  /**
+   * True when the workspace this run started in is no longer the open one. The run is then cancelled
+   * (and any pause released) and its remaining writes are dropped instead of landing elsewhere.
+   */
+  private detached(state: RunState): boolean {
+    if (this.ws.generation === state.generation) return false;
+    state.cancelled = true;
+    state.resume?.('cancelled');
+    return true;
+  }
+
+  /** Fire-and-forget status write from a pause/resume callback; failures are logged, never unhandled. */
+  private updateRunStatusQuietly(state: RunState): void {
+    this.updateRunStatus(state).catch((e) => logRunError(state.run.id, e));
+  }
+
   private async updateRunStatus(state: RunState): Promise<void> {
+    if (this.detached(state)) return;
     const r = state.run;
     await this.adapter.run(
       `UPDATE scenario_runs SET status = ?, step_count = ?, error = ?, finished_at = ? WHERE id = ?`,
@@ -665,6 +698,7 @@ export class ScenarioService extends RepoBase {
         : out.ok
           ? 'succeeded'
           : 'failed';
+    if (this.detached(state)) return;
     const isApi = out.kind === 'api';
     await this.adapter.run(
       `INSERT INTO scenario_run_steps (id, run_id, seq, node_id, alias, kind, status, method, url, http_status, message, input, output, duration_ms, created_at)
@@ -696,10 +730,52 @@ export class ScenarioService extends RepoBase {
     state.run.error = error;
     state.run.finishedAt = this.ws.nowIso();
     state.pending = null;
-    await this.updateRunStatus(state);
-    // Keep the finished run out of the live map; the DB holds its final state for polling.
-    this.active.delete(state.run.id);
+    try {
+      await this.updateRunStatus(state);
+    } finally {
+      // Keep the finished run out of the live map; the DB holds its final state for polling.
+      this.active.delete(state.run.id);
+    }
   }
+}
+
+function logRunError(runId: string, e: unknown): void {
+  console.error(`[scenario] run ${runId}: ${errMsg(e)}`);
+}
+
+/** Words that mark an input id as a credential (`password`, `api_key`, `accessToken`, …). */
+const SENSITIVE_WORDS = new Set([
+  'pass',
+  'passwd',
+  'password',
+  'passphrase',
+  'pwd',
+  'secret',
+  'token',
+  'apikey',
+  'auth',
+  'authorization',
+  'credential',
+  'credentials',
+]);
+
+/** True when an input id looks like a credential, matched on whole words (so `author` is not). */
+function isSensitiveInput(id: string): boolean {
+  const words = id
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+  return words.some((w, i) => SENSITIVE_WORDS.has(w) || (w === 'api' && words[i + 1] === 'key'));
+}
+
+/** Mask credential-looking input values before they are persisted with a run step. */
+export function redactInputs(values: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(values)) {
+    out[k] = isSensitiveInput(k) && v !== '' && v != null ? '•••' : v;
+  }
+  return out;
 }
 
 // --- helpers ----------------------------------------------------------------

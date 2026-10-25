@@ -1476,7 +1476,14 @@ export interface UserCodeRunResponse {
 }
 export interface SecretsResponse {
   refs: string[];
+  /**
+   * How well the OS protects stored secrets: `secure` (DPAPI / Keychain / a Linux keyring),
+   * `weak` (Linux without a keyring: Electron falls back to a fixed key) or `unavailable`
+   * (secrets cannot be stored at all).
+   */
+  storage?: SecretStorageLevel;
 }
+export type SecretStorageLevel = 'secure' | 'weak' | 'unavailable';
 export interface OkResponse {
   ok: true;
 }

@@ -1,0 +1,12 @@
+{
+  "folderId": "de000005-0000-4000-8000-000000000000",
+  "hasDraft": true,
+  "id": "de000015-0000-4000-8000-000000000000",
+  "name": "Echo flow",
+  "projectId": null,
+  "subtype": "json",
+  "tags": [
+    "39fc599d-a0b9-474d-b35d-d71dc09f0482"
+  ],
+  "type": "scenario"
+}

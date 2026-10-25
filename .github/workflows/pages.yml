@@ -1,10 +1,16 @@
 name: Docs (GitHub Pages)
 
 # Build the Jekyll documentation site in docs/ and deploy it to GitHub Pages.
-# Runs when the docs change on main (or the docs branch), and can be triggered manually.
+# Runs when the docs change on main (or the docs branch), and can be triggered manually. Pull requests
+# that touch the docs only build the site (catching Jekyll/Liquid errors before merge), never deploy.
 on:
   push:
     branches: [main, docs]
+    paths:
+      - "docs/**"
+      - ".github/workflows/pages.yml"
+  pull_request:
+    branches: [main]
     paths:
       - "docs/**"
       - ".github/workflows/pages.yml"
@@ -12,7 +18,7 @@ on:
 
 # Allow only one concurrent deployment; don't cancel an in-progress one.
 concurrency:
-  group: pages
+  group: pages-${{ github.event_name == 'pull_request' && github.ref || 'deploy' }}
   cancel-in-progress: false
 
 permissions:
@@ -34,6 +40,7 @@ jobs:
           bundler-cache: true
           working-directory: docs
       - uses: actions/configure-pages@v5
+        id: pages
       - name: Build site
         run: bundle exec jekyll build --baseurl "${{ steps.pages.outputs.base_path }}"
         env:
@@ -43,6 +50,7 @@ jobs:
           path: docs/_site
 
   deploy:
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     environment:

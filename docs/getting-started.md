@@ -1,13 +1,13 @@
 ---
 title: Getting started
 layout: default
-nav_order: 2
+nav_order: 3
 ---
 
 # Getting started
 {: .no_toc }
 
-This page takes you from an empty machine to a first rendered template.
+This page takes you from a freshly installed Swaft to a first rendered template.
 {: .fs-6 .fw-300 }
 
 <details open markdown="block">
@@ -19,105 +19,107 @@ This page takes you from an empty machine to a first rendered template.
 
 ---
 
-## Requirements
+## Before you begin
 
-- **Node.js 20 LTS or newer** (developed on Node 20–24) and **npm ≥ 10** — needed to run or build
-  the app from source.
-- **Windows or macOS** (the current build targets). Linux builds are produced by CI but less
-  exercised.
-- **[Git](https://git-scm.com/)** on your `PATH` — optional, only required if you want to use a
-  **Git-backed workspace**. Swaft calls your installed `git` binary directly and reuses your
-  existing SSH keys / credential helper.
+- **Install Swaft** — see [Installation](installation.md). To run or package the app from a source
+  checkout instead, see [Building from source](building-from-source.md).
+- **[Git](https://git-scm.com/)** on your `PATH` is optional. You only need it for **Git folder**
+  workspaces; Swaft calls your installed `git` binary directly and reuses your existing SSH keys and
+  credential helper.
 
 {: .note }
-> There is **no account and no sign-in**. Swaft is local-first: you launch the app and go
-> straight to the homepage. The only password you may ever set is the optional one that
-> **encrypts a workspace file** (see [Workspaces](guide/workspaces.md)).
+> There is **no account and no sign-in**. Swaft is local-first: you launch the app and go straight to
+> the homepage. The only password you may ever set is the optional one that **encrypts a workspace
+> file** (see [Workspaces](guide/workspaces.md#encryption)).
 
-## Install and run
+## The homepage
 
-Swaft is currently run from source. Clone the repository and install dependencies:
+When the app opens you land on the **homepage**. It lists your **Recent workspaces** (with a
+**Search recent workspaces** box and a **Remove from recent** button on each entry) and offers two
+menus:
 
-```bash
-git clone https://github.com/BoniFederico/swaftapp.git
-cd swaft
-npm install
-```
+| Menu | Entry | What it does |
+|------|-------|--------------|
+| **Create** | **Local file (.swaft)** | A new workspace stored as a single `.swaft` file. Can be encrypted. |
+| | **Local folder** | A new workspace stored as a folder of plain, readable files (no Git). |
+| | **Git folder (.git)** | A new workspace stored as plain files in a Git repository. |
+| **Open** | **From .swaft** | Open a `.swaft` file. |
+| | **From folder** | Open a folder or Git workspace. |
+| | **Clone from URL** | Clone a Git repository and open it as a workspace. |
 
-The first install downloads the Electron binary, so it needs network access. If a later
-`npm run dev` fails with `Error: Electron uninstall`, the binary did not unpack — reinstall
-cleanly:
+The Git entries are shown only when a `git` binary is available. See
+[Workspaces](guide/workspaces.md) for how the three storage forms compare.
 
-```bash
-rm -rf node_modules package-lock.json && npm install
-```
+![The Swaft homepage with the Create and Open menus and the recent-workspaces list](assets/screenshots/homepage.png)
 
-Launch the app with hot-reload:
+## Try the demo workspace
 
-```bash
-npm run dev      # or: npm run see  (an alias)
-```
+The quickest way to see every feature is the demo workspace that ships in the repository:
 
-To produce an installable desktop package instead, see
-[Building from source](building-from-source.md).
+1. Download [`examples/demo-workspace`](https://github.com/BoniFederico/swaftapp/tree/main/examples)
+   (clone the repository, or *Code → Download ZIP* on GitHub and extract it).
+2. On the homepage choose **Open → From folder** and select the `demo-workspace` folder.
+3. In the Working Tree, open the **Project** selector and pick **Getting started**.
+4. In the header, choose the **Public echo** environment. The demo's HTTP requests and its scenario
+   call <https://httpbin.org>, so they need it and an internet connection.
+
+![The Working Tree with the demo project folders and templates](assets/screenshots/working-tree.png)
+
+Then open **Welcome letter** (a Markdown document with inputs), **Get echo** (an API request),
+**greeting** (a JavaScript capability) and **Echo flow** (a scenario that chains them). Click **Run**
+on the scenario to watch it execute.
 
 ## Your first workspace
 
-When the app opens you land on the **homepage**. Create a workspace:
+1. Open **Create** and choose **Local file (.swaft)**.
+2. In the **Create workspace** dialog, enter a **Workspace name**, then click **Choose…** to pick
+   where the file is saved (for example `demo.swaft`).
+3. *(Optional)* Turn on **Encrypt this workspace** and enter a password (at least 8 characters).
 
-1. Click **Create local workspace**.
-2. Choose a file location and name (e.g. `demo.swaft`).
-3. *(Optional)* Turn on **encryption** and set a password.
    {: .warning }
    > If you encrypt a workspace and lose the password, the data is **unrecoverable** — there is no
    > backdoor and no reset.
-4. The workspace opens into the **Workspace shell**: the **Working Tree** on the left, a tabbed
-   view area on the right, and a top bar with the environment picker, settings and (for Git
-   workspaces) the Git status button.
 
-Prefer files you can track in Git? Choose **Create Git workspace** and point it at a folder — Swaft
-stores the workspace as plain, diff-friendly files instead of a single binary `.swaft`. See
-[Workspaces](guide/workspaces.md) for the trade-offs.
+4. Leave **Execution mode** on **Sandbox (recommended)** and click **Create**.
+
+The workspace opens into the **workspace shell**: the **Working Tree** on the left, a tabbed view
+area on the right, and a top bar with the environment picker, the **Import / Export** menu,
+**Settings** and — for Git workspaces — the Git status button.
+
+Prefer files you can read, diff and version? Choose **Local folder** or **Git folder (.git)** instead
+and pick a folder. The storage form is fixed once the workspace is created.
 
 ## Your first template
 
-1. In the Working Tree, create a **Project** (a top-level container that filters the tree), then
-   inside it create a **Document** template.
-2. A new document opens already renderable, with one input widget. Its source is:
+1. In the Working Tree, open the **Project** selector and choose **Create project**. Give it a name
+   (and optionally a description). Projects filter the tree; everything lives inside one.
+2. Click **Create template**, choose the **Document** type, give it a name and click **Create**.
+3. Open the template. It starts with one input already declared. Its source is:
 
    ```text
    Hello ${ textbox({ id: 'name', label: 'Your name', type: string() }) }!
    ```
 
-   That `${ … }` is a **Seebo formula**. `textbox({ … })` declares an input; the **Input panel**
-   on the left renders a text box for it.
-3. Type a value into the **Your name** field. The **Output** updates to `Hello <name>!`.
+   That `${ … }` is a **Seebo formula**. `textbox({ … })` declares an input; the **Input** panel
+   renders a text box for it.
+4. Type a value into the **Your name** field. The **Output** updates to `Hello <name>!`.
 
 That is the core loop: **a template declares inputs with formulas, you fill the Input panel, Swaft
 renders the output.** From here you can:
 
-- Switch the document **subtype** (Markdown, HTML, Mermaid, ECharts, JSON, YAML, e-mail…) to change
-  how the output is rendered — see [Document templates](guide/document-templates.md).
+- Change the document **subtype** (Markdown, HTML, Mermaid, ECharts, JSON, YAML, e-mail…) in the
+  template editor to change how the output is rendered — see
+  [Document templates](guide/document-templates.md).
 - Build an **[API request](guide/api-requests.md)** whose URL, headers and body contain the same
   `${ … }` formulas.
 - Add **[environments](guide/environments.md)** so `${ BASE_URL }` resolves from a variable set you
   can switch in one click.
-- Cut a **[release](guide/batcher-and-releases.md)** to freeze a version of the template.
-
-## Verify a source checkout
-
-If you cloned the repo to develop, confirm everything is wired up:
-
-```bash
-npm run verify   # typecheck + lint + unit/component tests
-```
-
-See [Building from source](building-from-source.md) for the full script list, the heavy test suites
-and the end-to-end smoke test.
+- Cut a **[release](guide/batcher-and-releases.md#releases)** to freeze a version of the template.
 
 ## Where to go next
 
 - **[Core concepts](concepts.md)** — the vocabulary (workspace, Working Tree, template types,
   releases, environments) in one page.
 - **[User guide](guide/index.md)** — step-by-step for every feature.
+- **[Keyboard shortcuts](guide/keyboard-shortcuts.md)** — save, search, undo and more.
 - **[Seebo formulas](seebo/index.md)** — everything you can write inside `${ … }`.

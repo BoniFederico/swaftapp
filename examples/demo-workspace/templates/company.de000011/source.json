@@ -1,0 +1,11 @@
+---
+swaftId: de000011-0000-4000-8000-000000000000
+name: company
+type: document
+subtype: json
+---
+{
+  "name": "Acme Corp",
+  "support": "support@acme.example",
+  "website": "https://acme.example"
+}

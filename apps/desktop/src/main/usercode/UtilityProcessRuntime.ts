@@ -82,6 +82,9 @@ export class UtilityProcessRuntime implements ScriptRuntime {
       else this.settle(message);
     });
     child.on('exit', () => {
+      // A process killed after a timeout exits late, when a replacement may already be running:
+      // only the current child's exit may clear it and fail the pending calls.
+      if (this.child !== child) return;
       this.child = null;
       this.failAll(scriptError('USER_CODE_HOST_UNAVAILABLE', 'the script host stopped unexpectedly'));
     });

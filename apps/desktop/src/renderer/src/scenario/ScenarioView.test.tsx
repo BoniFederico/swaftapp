@@ -96,6 +96,15 @@ function renderView(runCalls: Record<string, unknown>[], seededRuns: unknown[] =
   );
 }
 
+/**
+ * Click Run once the graph has loaded. Before that the graph has no start node, so Run (a split
+ * button that runs directly only with a single start) would open an empty menu instead.
+ */
+async function clickRun() {
+  await waitFor(() => expect(document.querySelector('.scenario__canvas')?.textContent).toContain('Start'));
+  fireEvent.click(screen.getByRole('button', { name: 'Run' }));
+}
+
 describe('ScenarioView toolbar', () => {
   it('renders the condensed Add menu, Run/Run batch controls, snap toggle and version listbox', async () => {
     renderView([]);
@@ -115,7 +124,7 @@ describe('ScenarioView toolbar', () => {
   it('runs the current in-memory graph — passing its source to scenario.run', async () => {
     const runCalls: Record<string, unknown>[] = [];
     renderView(runCalls);
-    fireEvent.click(await screen.findByRole('button', { name: 'Run' }));
+    await clickRun();
 
     await waitFor(() => expect(runCalls.length).toBe(1));
     const call = runCalls[0]!;
@@ -130,7 +139,7 @@ describe('ScenarioView toolbar', () => {
     // detail. Run it, then click its history row (same id) — the steps must stay visible.
     localStorage.setItem('swaft:scenarioRunMin', 'off');
     const { container } = renderView([], [COMPLETED_RUN]);
-    fireEvent.click(await screen.findByRole('button', { name: 'Run' }));
+    await clickRun();
     // The live run's step is shown.
     expect(await screen.findByText('login')).toBeTruthy();
     // Click the same run in the history (id === the followed run id).
@@ -148,10 +157,55 @@ describe('ScenarioView toolbar', () => {
   it('drops the followed run (detail + highlight) on a canvas click', async () => {
     localStorage.setItem('swaft:scenarioRunMin', 'off');
     const { container } = renderView([], [COMPLETED_RUN]);
-    fireEvent.click(await screen.findByRole('button', { name: 'Run' }));
+    await clickRun();
     expect(await screen.findByText('login')).toBeTruthy();
     // A pointer-down anywhere on the canvas clears the (completed) run's focus.
     fireEvent.pointerDown(container.querySelector('.scenario__canvas')!);
     await waitFor(() => expect(screen.queryByText('login')).toBeNull());
+  });
+});
+
+describe('ScenarioView keyboard shortcuts', () => {
+  /** Render with a transport that counts saves; make the graph dirty by adding a delay node. */
+  async function renderDirty() {
+    const saves: unknown[] = [];
+    const base = makeTransport([]);
+    const transport: Transport = {
+      call(op, payload) {
+        if (op === 'template.updateSource') saves.push(payload);
+        return base.call(op, payload);
+      },
+    };
+    render(
+      <AppProviders>
+        <ScenarioView client={new ApiClient(transport)} templateId="sc1" />
+      </AppProviders>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Add' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Add delay' }));
+    return saves;
+  }
+
+  it('ignores Ctrl+S while the scenario tab is hidden (another tab is active)', async () => {
+    // jsdom has no layout: offsetParent is null, exactly like a mounted-but-hidden tab.
+    const saves = await renderDirty();
+    fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(saves).toHaveLength(0);
+  });
+
+  it('saves on Ctrl+S when the scenario is the visible tab', async () => {
+    const desc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetParent');
+    Object.defineProperty(HTMLElement.prototype, 'offsetParent', {
+      configurable: true,
+      get: () => document.body,
+    });
+    try {
+      const saves = await renderDirty();
+      fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+      await waitFor(() => expect(saves).toHaveLength(1));
+    } finally {
+      if (desc) Object.defineProperty(HTMLElement.prototype, 'offsetParent', desc);
+    }
   });
 });

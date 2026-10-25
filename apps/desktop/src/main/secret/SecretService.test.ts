@@ -42,11 +42,31 @@ describe('SecretService', () => {
     expect(svc.get('zeta')).toBeNull();
   });
 
-  it('treats a corrupt store file as empty instead of failing to construct', () => {
+  it('sets a corrupt store file aside (never overwrites it) and starts empty', () => {
     writeFileSync(file, '{not json', 'utf8');
-    const svc = new SecretService(file, new IdentityCipher());
+    const svc = new SecretService(file, new IdentityCipher(), () => new Date(1234));
     expect(svc.list()).toEqual([]);
+    expect(readFileSync(`${file}.corrupt-1234`, 'utf8')).toBe('{not json');
     svc.set('k', 'v'); // and it can still write
     expect(new SecretService(file, new IdentityCipher()).get('k')).toBe('v');
+  });
+
+  it('reports an undecryptable secret with a coded error', () => {
+    const svc = new SecretService(file, new IdentityCipher());
+    svc.set('k', 'v');
+    const broken = new SecretService(file, {
+      isAvailable: () => true,
+      protect: (s) => s,
+      reveal: () => {
+        throw new Error('Error while decrypting the ciphertext provided to safeStorage.decryptString.');
+      },
+    });
+    expect(() => broken.get('k')).toThrow(expect.objectContaining({ code: 'SECRET_UNREADABLE' }));
+  });
+
+  it('derives the storage level from the cipher', () => {
+    expect(new SecretService(file, new IdentityCipher()).storageLevel()).toBe('secure');
+    const weak = { isAvailable: () => true, level: () => 'weak' as const, protect: (s: string) => s, reveal: (s: string) => s };
+    expect(new SecretService(file, weak).storageLevel()).toBe('weak');
   });
 });

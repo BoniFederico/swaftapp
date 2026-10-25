@@ -429,9 +429,14 @@ export function ScenarioView({
     setSelection(null);
   }, [selection, commit]);
 
-  // Keyboard: delete selection, undo/redo, save — ignored while a text field has focus.
+  // Keyboard: delete selection, undo/redo, save — ignored while a text field has focus. Tabs stay
+  // mounted but hidden, so only the visible scenario (and only when no modal owns the keyboard)
+  // reacts; otherwise a shortcut pressed in another tab would edit or save this one.
+  const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (rootRef.current?.offsetParent == null) return;
+      if (document.querySelector('[aria-modal="true"]')) return;
       const el = document.activeElement as HTMLElement | null;
       const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
       const mod = e.ctrlKey || e.metaKey;
@@ -518,7 +523,7 @@ export function ScenarioView({
   const runActive = runCtl.active || runCtl.batchActive;
 
   return (
-    <div className="scenario">
+    <div className="scenario" ref={rootRef}>
       <div className="scenario__toolbar">
         {/* Zone: add nodes (one condensed menu) */}
         <SplitButton

@@ -9,6 +9,17 @@ import type { ApiClient } from '../api-client/client';
 
 const TERMINAL: ReadonlySet<string> = new Set(['completed', 'failed', 'cancelled']);
 const POLL_MS = 400;
+/** Consecutive polling failures tolerated (with backoff) before the run is shown as lost. */
+const MAX_POLL_FAILURES = 5;
+
+/** Delay before the next poll after `failures` consecutive errors (400ms, 800ms, … capped at 5s). */
+function pollDelay(failures: number): number {
+  return Math.min(POLL_MS * 2 ** failures, 5000);
+}
+
+function errorText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
 
 /** Per-node visual status for the canvas, derived from a run's recorded steps + the paused node. */
 export type NodeRunStatus = 'succeeded' | 'failed' | 'branch-true' | 'branch-false' | 'awaiting' | 'paused';
@@ -72,15 +83,34 @@ export function useScenarioRun(client: ApiClient, scenarioId: string): ScenarioR
     if (!runId) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let failures = 0;
     const tick = async () => {
       try {
         const s = await client.call('scenario.runStatus', { runId });
         if (cancelled) return;
+        failures = 0;
         setStatus(s);
         if (!TERMINAL.has(s.run.status)) timer = setTimeout(() => void tick(), POLL_MS);
         else refreshRuns();
-      } catch {
-        /* stop polling on error */
+      } catch (e) {
+        if (cancelled) return;
+        // A transient error (busy main process) retries with backoff; a persistent one (the
+        // workspace was closed, the run is gone) ends the run in the UI instead of a stuck spinner.
+        if (++failures < MAX_POLL_FAILURES) {
+          timer = setTimeout(() => void tick(), pollDelay(failures));
+          return;
+        }
+        setStatus((prev) =>
+          prev && !TERMINAL.has(prev.run.status)
+            ? {
+                ...prev,
+                pending: null,
+                pausedAtNodeId: null,
+                run: { ...prev.run, status: 'failed', error: prev.run.error ?? errorText(e) },
+              }
+            : prev,
+        );
+        refreshRuns();
       }
     };
     void tick();
@@ -95,16 +125,26 @@ export function useScenarioRun(client: ApiClient, scenarioId: string): ScenarioR
     if (!batchId) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let failures = 0;
     const tick = async () => {
       try {
         const { batch: b } = await client.call('scenario.batchStatus', { batchId });
         if (cancelled) return;
+        failures = 0;
         setBatch(b);
         if (b.currentRunId) setRunId(b.currentRunId);
         if (b.status === 'running') timer = setTimeout(() => void tick(), POLL_MS);
         else refreshRuns();
       } catch {
-        /* stop polling on error */
+        if (cancelled) return;
+        if (++failures < MAX_POLL_FAILURES) {
+          timer = setTimeout(() => void tick(), pollDelay(failures));
+          return;
+        }
+        setBatch((prev) =>
+          prev && prev.status === 'running' ? { ...prev, status: 'failed', currentRunId: null } : prev,
+        );
+        refreshRuns();
       }
     };
     void tick();

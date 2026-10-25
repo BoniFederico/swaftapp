@@ -9,7 +9,7 @@ import { MemoryDirFs } from './dir-fs';
 import { dumpWorkspace } from './projection';
 
 /**
- * The published JSON Schemas (FORMAT.md) are the contract for the on-disk form. This test dumps a
+ * The published JSON Schemas (docs/reference/workspace-format.md) are the contract for the on-disk form. This test dumps a
  * workspace that exercises every file shape and validates each emitted JSON file against its schema,
  * so schema drift (a projection change not reflected in the schemas, or vice-versa) fails loudly.
  */
@@ -116,7 +116,7 @@ async function fullWorkspace(): Promise<LocalAdapter> {
   return a;
 }
 
-describe('on-disk JSON Schemas (FORMAT.md)', () => {
+describe('on-disk JSON Schemas (docs/reference/workspace-format.md)', () => {
   it('validates every emitted JSON file against its published schema', async () => {
     const a = await fullWorkspace();
     const fs = new MemoryDirFs();

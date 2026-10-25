@@ -16,7 +16,7 @@ import { TemplateService } from '../workspace/TemplateService';
 import { WorkspaceService, type WorkspaceFs } from '../workspace/WorkspaceService';
 import type { ApiRunService } from '../workspace/ApiRunService';
 import type { UserCodeRegistry } from '../usercode/UserCodeRegistry';
-import { ScenarioService } from './ScenarioService';
+import { ScenarioService, redactInputs } from './ScenarioService';
 
 /** A stub `apiRun` that returns a canned response per template id (or throws INPUT_REQUIRED once). */
 function makeApiRunStub() {
@@ -112,7 +112,7 @@ async function setup() {
     throw new Error('waitFor timed out');
   }
 
-  return { scenario, newTemplate, newScenario, waitFor, api };
+  return { scenario, newTemplate, newScenario, waitFor, api, ws };
 }
 
 const at = (x: number) => ({ x, y: 0 });
@@ -302,6 +302,121 @@ describe('ScenarioService runner', () => {
     }
     expect(scenario.batchStatus(batchId).status).toBe('cancelled');
     expect(scenario.batchStatus(batchId).completed).toBeLessThan(100);
+  });
+
+  it('pauses a single run at a breakpoint and continues on resume', async () => {
+    const { scenario, newTemplate, newScenario, waitFor, api } = await setup();
+    const a = await newTemplate('A', 'api');
+    const graph: ScenarioGraph = {
+      version: 1,
+      nodes: [
+        { id: 'start', kind: 'start', position: at(0) },
+        { id: 'na', kind: 'template', ref: a, templateType: 'api', alias: 'a', breakpoint: true, position: at(1) },
+      ],
+      edges: [{ id: 'e0', from: 'start', to: 'na' }],
+    };
+    const sid = await newScenario('Flow', graph);
+    const { runId } = await scenario.run({ id: sid, mode: 'single', authorizeActions: false });
+    const paused = await waitFor(runId, (s) => s.run.status === 'paused-breakpoint');
+    expect(paused.pausedAtNodeId).toBe('na');
+    expect(api.calls.length).toBe(0);
+    await scenario.resume(runId);
+    const done = await waitFor(runId, (s) => s.run.status === 'completed');
+    expect(done.steps.map((st) => st.alias)).toEqual([null, 'a']);
+    expect(api.calls.length).toBe(1);
+  });
+
+  it('ignores breakpoints in unattended batch runs', async () => {
+    const { scenario, newTemplate, newScenario } = await setup();
+    const a = await newTemplate('A', 'api');
+    const graph: ScenarioGraph = {
+      version: 1,
+      nodes: [
+        { id: 'start', kind: 'start', position: at(0) },
+        { id: 'na', kind: 'template', ref: a, templateType: 'api', alias: 'a', breakpoint: true, position: at(1) },
+      ],
+      edges: [{ id: 'e0', from: 'start', to: 'na' }],
+    };
+    const sid = await newScenario('Flow', graph);
+    const { batchId } = await scenario.runBatch({ id: sid, count: 2, interRunDelayMs: 0, authorizeActions: false });
+    const start = Date.now();
+    while (Date.now() - start < 3000) {
+      if (scenario.batchStatus(batchId).status === 'completed') break;
+      await new Promise((r) => setTimeout(r, 8));
+    }
+    expect(scenario.batchStatus(batchId)).toMatchObject({ status: 'completed', completed: 2 });
+  });
+
+  it('stops a run (and its batch) when the workspace is closed mid-run', async () => {
+    const { scenario, newScenario, ws } = await setup();
+    const graph: ScenarioGraph = {
+      version: 1,
+      nodes: [
+        { id: 'start', kind: 'start', position: at(0) },
+        { id: 'nd', kind: 'delay', ms: 200, position: at(1) },
+      ],
+      edges: [{ id: 'e0', from: 'start', to: 'nd' }],
+    };
+    const sid = await newScenario('Flow', graph);
+    const { batchId } = await scenario.runBatch({ id: sid, count: 5, interRunDelayMs: 0, authorizeActions: false });
+    await new Promise((r) => setTimeout(r, 30));
+    await ws.close();
+    const start = Date.now();
+    while (Date.now() - start < 3000) {
+      if (scenario.batchStatus(batchId).status !== 'running') break;
+      await new Promise((r) => setTimeout(r, 8));
+    }
+    // The batch ends instead of hanging or starting runs in no / another workspace.
+    expect(scenario.batchStatus(batchId).status).toBe('cancelled');
+    expect(scenario.batchStatus(batchId).completed).toBeLessThan(5);
+  });
+
+  it('never executes the held block when a paused run is resumed after a workspace switch', async () => {
+    const { scenario, newTemplate, newScenario, waitFor, api, ws } = await setup();
+    const a = await newTemplate('A', 'api');
+    const graph: ScenarioGraph = {
+      version: 1,
+      nodes: [
+        { id: 'start', kind: 'start', position: at(0) },
+        { id: 'na', kind: 'template', ref: a, templateType: 'api', alias: 'a', breakpoint: true, position: at(1) },
+      ],
+      edges: [{ id: 'e0', from: 'start', to: 'na' }],
+    };
+    const sid = await newScenario('Flow', graph);
+    const { runId } = await scenario.run({ id: sid, mode: 'single', authorizeActions: false });
+    await waitFor(runId, (s) => s.run.status === 'paused-breakpoint');
+    await ws.create({ name: 'Other', location: 'mem://other.swaft', encrypt: false });
+    await scenario.resume(runId);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(api.calls.length).toBe(0);
+  });
+
+  it('masks credential-looking inputs in stored step history', () => {
+    expect(
+      redactInputs({
+        user: 'bob',
+        password: 'hunter2',
+        apiKey: 'k',
+        api_key: 'k',
+        accessToken: 't',
+        'client-secret': 's',
+        token: '',
+        author: 'Ada',
+        passenger: 'Bob',
+        q: 1,
+      }),
+    ).toEqual({
+      user: 'bob',
+      password: '•••',
+      apiKey: '•••',
+      api_key: '•••',
+      accessToken: '•••',
+      'client-secret': '•••',
+      token: '',
+      author: 'Ada',
+      passenger: 'Bob',
+      q: 1,
+    });
   });
 
   it('runs the current in-memory source override, not the stored version', async () => {

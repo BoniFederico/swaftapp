@@ -167,10 +167,10 @@ describe('Workspace shell (M5)', () => {
     fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Final' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
 
-    // Open the changelog panel and verify the entry is attributed to the signed-in user.
+    // Open the changelog panel and verify the entry is recorded (there are no accounts, so entries
+    // carry no author attribution).
     fireEvent.click(screen.getByRole('button', { name: 'Changelog' }));
     expect(await screen.findByText('Release "Final" created')).toBeInTheDocument();
-    expect(await screen.findByText(/tech ·/)).toBeInTheDocument();
   });
 
   it('renames the workspace from the Settings modal (General section)', async () => {

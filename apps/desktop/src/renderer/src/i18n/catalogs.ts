@@ -108,7 +108,7 @@ export const en = {
   'ws.settings': 'Settings',
   'ws.welcome.title': 'Workspace ready',
   'ws.welcome.hint':
-    'Create projects, folders and tags in the Working Tree. Opening templates arrives in M6.',
+    'Pick or create a project in the Working Tree, then open a template to start working on it.',
   'ws.openTabs': 'Open templates',
 
   'tree.title': 'Working Tree',
@@ -549,6 +549,10 @@ export const en = {
   'set.preferences': 'Preferences',
   'secrets.intro':
     "Secrets are stored in your OS keychain — never in the workspace files, the .swaft, or git — and are revealed only when a request is sent. Reference one with ${ secret('NAME') }. Values are never shown here.",
+  'secrets.storageWeak':
+    'No OS keyring was found (common on Linux without GNOME Keyring / KWallet): secrets saved here are only obfuscated, not securely encrypted. Install and unlock a keyring for real protection.',
+  'secrets.storageUnavailable':
+    'This system offers no secure storage, so secrets cannot be saved here.',
   'secrets.name': 'Secret name',
   'secrets.namePlaceholder': 'e.g. API_TOKEN',
   'secrets.value': 'Value',
@@ -759,7 +763,7 @@ export const it: Partial<Record<TranslationKey, string>> = {
   'ws.settings': 'Impostazioni',
   'ws.welcome.title': 'Workspace pronto',
   'ws.welcome.hint':
-    'Crea progetti, cartelle e tag nel Working Tree. L’apertura dei template arriva in M6.',
+    'Scegli o crea un progetto nel Working Tree, poi apri un template per iniziare a lavorarci.',
   'ws.openTabs': 'Template aperti',
 
   'tree.title': 'Working Tree',
@@ -1199,6 +1203,10 @@ export const it: Partial<Record<TranslationKey, string>> = {
   'set.preferences': 'Preferenze',
   'secrets.intro':
     "I secret sono salvati nel keychain del sistema operativo — mai nei file del workspace, nel .swaft o in git — e vengono rivelati solo all'invio di una richiesta. Riferiscili con ${ secret('NOME') }. I valori non sono mai mostrati qui.",
+  'secrets.storageWeak':
+    'Nessun keyring del sistema trovato (frequente su Linux senza GNOME Keyring / KWallet): i secret salvati qui sono solo offuscati, non cifrati in modo sicuro. Installa e sblocca un keyring per una protezione reale.',
+  'secrets.storageUnavailable':
+    'Questo sistema non offre uno storage sicuro, quindi qui non è possibile salvare secret.',
   'secrets.name': 'Nome del secret',
   'secrets.namePlaceholder': 'es. API_TOKEN',
   'secrets.value': 'Valore',
