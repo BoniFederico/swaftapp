@@ -1,8 +1,18 @@
 {
   "name": "@swaft/desktop",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Swaft — Strange Workspace App for Technician",
+  "license": "MIT",
+  "homepage": "https://bonifederico.github.io/swaftapp/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BoniFederico/swaftapp.git",
+    "directory": "apps/desktop"
+  },
+  "bugs": {
+    "url": "https://github.com/BoniFederico/swaftapp/issues"
+  },
   "author": "Federico Boni <federicoboni67@gmail.com>",
   "main": "./out/main/index.js",
   "scripts": {

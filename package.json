@@ -1,8 +1,17 @@
 {
   "name": "swaft",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
-  "description": "Swaft — Strange Web App for Technician (Electron desktop app)",
+  "description": "Swaft — Strange Workspace App for Technician (Electron desktop app)",
+  "license": "MIT",
+  "homepage": "https://bonifederico.github.io/swaftapp/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BoniFederico/swaftapp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/BoniFederico/swaftapp/issues"
+  },
   "workspaces": [
     "packages/*",
     "apps/*"
@@ -10,6 +19,7 @@
   "scripts": {
     "dev": "npm --workspace @swaft/desktop run dev",
     "build": "npm --workspace @swaft/desktop run build",
+    "start": "npm --workspace @swaft/desktop run start",
     "dist": "npm --workspace @swaft/desktop run package",
     "dist:dir": "npm --workspace @swaft/desktop run package:dir",
     "typecheck": "npm --workspace @swaft/shared run typecheck && npm --workspace @swaft/desktop run typecheck",
@@ -19,7 +29,7 @@
     "test:watch": "vitest",
     "e2e": "playwright test",
     "verify": "npm run typecheck && npm run lint && npm run test",
-    "see": "npm run dev"
+    "screenshots": "npm run build && playwright test -c scripts/screenshots",    "see": "npm run dev"
   },
   "devDependencies": {
     "@eslint/js": "^9.13.0",
