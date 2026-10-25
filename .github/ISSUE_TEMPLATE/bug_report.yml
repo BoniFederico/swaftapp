@@ -1,0 +1,58 @@
+name: Bug report
+description: Something in Swaft does not work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please search the
+        [existing issues](https://github.com/BoniFederico/swaftapp/issues) first.
+        **Security problems:** please report them privately (see SECURITY.md), not here.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the problem, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a workspace…
+        2. Click…
+        3. See error…
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Swaft version
+      description: The installer version (e.g. 1.0.0), or the commit if you run from source.
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
+  - type: dropdown
+    id: storage
+    attributes:
+      label: Workspace type
+      options:
+        - Local file (.swaft)
+        - Local folder
+        - Git folder
+        - Not relevant
+  - type: textarea
+    id: logs
+    attributes:
+      label: Screenshots, logs or error messages
+      description: Remove any secrets or personal data before pasting.

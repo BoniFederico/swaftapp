@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://bonifederico.github.io/swaftapp/
+    about: Guides for installing and using Swaft.
+  - name: Report a security vulnerability
+    url: https://github.com/BoniFederico/swaftapp/security/advisories/new
+    about: Please report security issues privately.

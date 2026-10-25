@@ -1,8 +1,8 @@
 # electron-builder — packages the electron-vite build (apps/desktop/out) into distributables.
-# See ../../deploy.md for the release strategy (tag-based release, free-tier minute budget, signing).
+# See ../../docs/dev/releasing.md for the release process (tag push → CI builds → GitHub Release).
 appId: com.swaft.desktop
 productName: Swaft
-copyright: Copyright © 2026 Swaft
+copyright: Copyright © 2026 Federico Boni
 
 directories:
   # Icons live in buildResources/ because `build/` is gitignored at the repo root.
@@ -26,29 +26,49 @@ win:
     - target: nsis
       arch: [x64]
 
+# Assisted (non one-click) installer: license page, per-user by default with an optional
+# per-machine choice, a chooseable directory, and Start-menu + desktop shortcuts.
 nsis:
   oneClick: false
   perMachine: false
+  allowElevation: true
   allowToChangeInstallationDirectory: true
+  license: ../../LICENSE
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: Swaft
+  uninstallDisplayName: Swaft ${version}
   artifactName: ${productName}-${version}-setup.${ext}
 
 mac:
-  # arm64-only by default to keep the (×10-cost) macOS job cheap — add `x64` here when Intel Macs
-  # need a native build (see deploy.md §5.4).
+  # One dmg per architecture (Apple silicon + Intel). Builds are unsigned until a Developer ID
+  # certificate is configured — see docs/installation.md for opening an unsigned app.
   target:
     - target: dmg
-      arch: [arm64]
+      arch: [arm64, x64]
   category: public.app-category.developer-tools
   artifactName: ${productName}-${version}-${arch}.${ext}
+
+dmg:
+  title: Swaft ${version}
 
 linux:
   target:
     - target: AppImage
       arch: [x64]
+    - target: deb
+      arch: [x64]
   category: Development
-  artifactName: ${productName}-${version}.${ext}
+  synopsis: Desktop workspace for templates, HTTP requests, code and visual scenarios
+  maintainer: Federico Boni <federicoboni67@gmail.com>
+  artifactName: ${productName}-${version}-${arch}.${ext}
 
-# GitHub Releases as the distribution feed (see deploy.md §5/§8). `electron-builder --publish` uploads
-# the artifacts; the release workflow is triggered on a version tag.
+deb:
+  artifactName: swaft_${version}_amd64.${ext}
+
+# Releases are published by .github/workflows/release.yml (which uploads the installers itself);
+# local `npm run dist` never publishes.
 publish:
   provider: github
+  owner: BoniFederico
+  repo: swaftapp
