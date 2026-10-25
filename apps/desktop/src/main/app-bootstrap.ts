@@ -198,7 +198,17 @@ export function bootstrapWorkspace(getWindow: () => BrowserWindow | null): void 
     join(app.getPath('userData'), 'secrets.json'),
     new SafeStorageCipher(),
   );
-  const secretData = { resolve: (name: string) => secretService.get(name) ?? '' };
+  // Lenient like an absent secret: an undecryptable one (keyring reset, profile copied) must not
+  // crash a live preview. Sending a request with a secretRef still surfaces SECRET_UNREADABLE.
+  const secretData = {
+    resolve: (name: string) => {
+      try {
+        return secretService.get(name) ?? '';
+      } catch {
+        return '';
+      }
+    },
+  };
   const host = new SeeboHost(
     {},
     { templateData, envData: environments, secretData, userCapabilities },

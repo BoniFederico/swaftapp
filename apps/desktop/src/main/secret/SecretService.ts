@@ -1,4 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync } from 'node:fs';
+import type { SecretStorageLevel } from '@swaft/shared';
+import { AppError } from '../errors';
 import { writeFileAtomicSync } from '../storage/atomic-file';
 import type { SecureCipher } from './SecureCipher';
 
@@ -17,6 +19,7 @@ export class SecretService {
   constructor(
     private readonly filePath: string,
     private readonly cipher: SecureCipher,
+    private readonly now: () => Date = () => new Date(),
   ) {
     this.data = this.load();
   }
@@ -26,13 +29,26 @@ export class SecretService {
     try {
       const parsed = JSON.parse(readFileSync(this.filePath, 'utf8')) as Partial<SecretFile>;
       return { secrets: parsed.secrets ?? {} };
-    } catch {
+    } catch (e) {
+      // Never let the next save overwrite an unreadable store: set it aside so it can be recovered.
+      const backup = `${this.filePath}.corrupt-${this.now().getTime()}`;
+      try {
+        renameSync(this.filePath, backup);
+        console.error(`[secrets] unreadable secrets file moved to ${backup}:`, e);
+      } catch (renameErr) {
+        console.error('[secrets] unreadable secrets file could not be moved aside:', renameErr);
+      }
       return { secrets: {} };
     }
   }
 
   private persist(): void {
     writeFileAtomicSync(this.filePath, JSON.stringify(this.data, null, 2), { mode: 0o600 });
+  }
+
+  /** How well stored secrets are protected on this machine (shown as a warning when not secure). */
+  storageLevel(): SecretStorageLevel {
+    return this.cipher.level?.() ?? (this.cipher.isAvailable() ? 'secure' : 'unavailable');
   }
 
   set(ref: string, value: string): void {
@@ -43,7 +59,17 @@ export class SecretService {
   /** Reveal a secret (main-process only). */
   get(ref: string): string | null {
     const protectedValue = this.data.secrets[ref];
-    return protectedValue ? this.cipher.reveal(protectedValue) : null;
+    if (!protectedValue) return null;
+    try {
+      return this.cipher.reveal(protectedValue);
+    } catch {
+      // Typically a profile copied from another machine/user, or a reset OS keyring.
+      throw new AppError(
+        'SECRET_UNREADABLE',
+        'policy',
+        `Secret "${ref}" can no longer be decrypted on this machine. Set its value again in Settings → Secrets.`,
+      );
+    }
   }
 
   /** Non-secret list of secret references (safe for the renderer). */

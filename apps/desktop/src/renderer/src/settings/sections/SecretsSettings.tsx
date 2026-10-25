@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { SecretStorageLevel } from '@swaft/shared';
 import type { ApiClient } from '../../api-client/client';
 import { useI18n } from '../../i18n/I18nProvider';
 import { Button, TextField, useToast } from '../../ui';
@@ -14,6 +15,7 @@ export function SecretsSettings({ client }: { client: ApiClient }) {
   const { t } = useI18n();
   const toast = useToast();
   const [refs, setRefs] = useState<string[]>([]);
+  const [storage, setStorage] = useState<SecretStorageLevel>('secure');
   const [name, setName] = useState('');
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
@@ -21,7 +23,10 @@ export function SecretsSettings({ client }: { client: ApiClient }) {
   useEffect(() => {
     void client
       .call('secret.list')
-      .then((r) => setRefs(r.refs))
+      .then((r) => {
+        setRefs(r.refs);
+        setStorage(r.storage ?? 'secure');
+      })
       .catch(() => setRefs([]));
   }, [client]);
 
@@ -58,6 +63,11 @@ export function SecretsSettings({ client }: { client: ApiClient }) {
   return (
     <div className="settings-form">
       <p className="field-hint">{t('secrets.intro')}</p>
+      {storage !== 'secure' && (
+        <div className="auth-error" role="alert">
+          {t(storage === 'weak' ? 'secrets.storageWeak' : 'secrets.storageUnavailable')}
+        </div>
+      )}
 
       <div className="col" style={{ gap: 'var(--space-3)' }}>
         <TextField
