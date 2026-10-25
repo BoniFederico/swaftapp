@@ -14,6 +14,14 @@ describe('markdownToHtml', () => {
     expect(markdownToHtml('call my_var_name now')).toBe('<p>call my_var_name now</p>');
   });
 
+  it('never applies emphasis inside code spans or link targets', () => {
+    expect(markdownToHtml('`__init__` and `_tmp_`')).toBe('<p><code>__init__</code> and <code>_tmp_</code></p>');
+    expect(markdownToHtml('[_docs_](https://ex.com/_private_/x)')).toBe(
+      '<p><a href="https://ex.com/_private_/x"><em>docs</em></a></p>',
+    );
+    expect(markdownToHtml('`a*b*c` *d*')).toBe('<p><code>a*b*c</code> <em>d</em></p>');
+  });
+
   it('neutralizes unsafe links and escapes HTML', () => {
     expect(markdownToHtml('[x](javascript:alert(1)) <b>')).toBe(
       '<p>[x](javascript:alert(1)) &lt;b&gt;</p>',

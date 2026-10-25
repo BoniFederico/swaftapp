@@ -382,7 +382,8 @@ export class ScenarioService extends RepoBase {
         // Breakpoints are for attended debugging; unattended batch runs ignore them.
         if (current.breakpoint && state.mode !== 'batch') {
           const held = await this.pauseForBreakpoint(state, current.id);
-          if (held === 'cancelled') break;
+          // Re-check after the pause: the workspace may have been switched while it was held.
+          if (held === 'cancelled' || state.cancelled) break;
         }
         const out = await this.execBlock(state, current, ctx);
         if (out === 'cancelled') break;
@@ -582,7 +583,7 @@ export class ScenarioService extends RepoBase {
       if (remaining.length === 0) continue;
       if (state.mode === 'batch') return failOutput('Missing inputs (unattended run).', blockKind);
       const provided = await this.pauseForInput(state, node.id, remaining);
-      if (provided === 'cancelled') return 'cancelled';
+      if (provided === 'cancelled' || state.cancelled) return 'cancelled';
       values = { ...values, ...provided };
     }
   }
@@ -742,14 +743,37 @@ function logRunError(runId: string, e: unknown): void {
   console.error(`[scenario] run ${runId}: ${errMsg(e)}`);
 }
 
-/** Input ids that look like credentials; their values are masked in the stored step history. */
-const SENSITIVE_INPUT = /pass(word)?|secret|token|api[-_]?key|auth/i;
+/** Words that mark an input id as a credential (`password`, `api_key`, `accessToken`, …). */
+const SENSITIVE_WORDS = new Set([
+  'pass',
+  'passwd',
+  'password',
+  'passphrase',
+  'pwd',
+  'secret',
+  'token',
+  'apikey',
+  'auth',
+  'authorization',
+  'credential',
+  'credentials',
+]);
+
+/** True when an input id looks like a credential, matched on whole words (so `author` is not). */
+function isSensitiveInput(id: string): boolean {
+  const words = id
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+  return words.some((w, i) => SENSITIVE_WORDS.has(w) || (w === 'api' && words[i + 1] === 'key'));
+}
 
 /** Mask credential-looking input values before they are persisted with a run step. */
 export function redactInputs(values: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(values)) {
-    out[k] = SENSITIVE_INPUT.test(k) && v !== '' && v != null ? '•••' : v;
+    out[k] = isSensitiveInput(k) && v !== '' && v != null ? '•••' : v;
   }
   return out;
 }

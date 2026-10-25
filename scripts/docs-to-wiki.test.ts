@@ -149,3 +149,12 @@ describe('docs-to-wiki', () => {
     );
   });
 });
+
+describe('docs-to-wiki callouts in lists', () => {
+  it('keeps a callout nested under a list item inside that item', () => {
+    const body = ['1. Step one', '', '   {: .warning }', '   > Careful here.', '', '2. Step two'].join('\n');
+    expect(convertBody(body)).toBe(
+      ['1. Step one', '', '   > **Warning**', '   >', '   > Careful here.', '', '2. Step two', ''].join('\n'),
+    );
+  });
+});

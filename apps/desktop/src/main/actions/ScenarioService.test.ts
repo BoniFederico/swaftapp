@@ -371,12 +371,50 @@ describe('ScenarioService runner', () => {
     expect(scenario.batchStatus(batchId).completed).toBeLessThan(5);
   });
 
+  it('never executes the held block when a paused run is resumed after a workspace switch', async () => {
+    const { scenario, newTemplate, newScenario, waitFor, api, ws } = await setup();
+    const a = await newTemplate('A', 'api');
+    const graph: ScenarioGraph = {
+      version: 1,
+      nodes: [
+        { id: 'start', kind: 'start', position: at(0) },
+        { id: 'na', kind: 'template', ref: a, templateType: 'api', alias: 'a', breakpoint: true, position: at(1) },
+      ],
+      edges: [{ id: 'e0', from: 'start', to: 'na' }],
+    };
+    const sid = await newScenario('Flow', graph);
+    const { runId } = await scenario.run({ id: sid, mode: 'single', authorizeActions: false });
+    await waitFor(runId, (s) => s.run.status === 'paused-breakpoint');
+    await ws.create({ name: 'Other', location: 'mem://other.swaft', encrypt: false });
+    await scenario.resume(runId);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(api.calls.length).toBe(0);
+  });
+
   it('masks credential-looking inputs in stored step history', () => {
-    expect(redactInputs({ user: 'bob', password: 'hunter2', apiKey: 'k', token: '', q: 1 })).toEqual({
+    expect(
+      redactInputs({
+        user: 'bob',
+        password: 'hunter2',
+        apiKey: 'k',
+        api_key: 'k',
+        accessToken: 't',
+        'client-secret': 's',
+        token: '',
+        author: 'Ada',
+        passenger: 'Bob',
+        q: 1,
+      }),
+    ).toEqual({
       user: 'bob',
       password: '•••',
       apiKey: '•••',
+      api_key: '•••',
+      accessToken: '•••',
+      'client-secret': '•••',
       token: '',
+      author: 'Ada',
+      passenger: 'Bob',
       q: 1,
     });
   });

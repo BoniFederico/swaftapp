@@ -111,9 +111,22 @@ jobs:
             echo 'The builds are not code-signed yet: see the [installation guide](https://bonifederico.github.io/swaftapp/installation/) for the one-time OS confirmation.'
           } >> notes.md
           cat notes.md
+      # A manual (dry) run must never touch a release that already exists: action-gh-release would
+      # update it in place (new assets, and possibly flip it back to draft).
+      - name: Refuse to overwrite an existing release on manual runs
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if gh release view "v${{ needs.gate.outputs.version }}" >/dev/null 2>&1; then
+            echo "::error::Release v${{ needs.gate.outputs.version }} already exists. Bump the version, or delete the release first."
+            exit 1
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.gate.outputs.version }}
+          # For manual runs the tag doesn't exist yet: create it on the commit that was built.
+          target_commitish: ${{ github.sha }}
           name: Swaft v${{ needs.gate.outputs.version }}
           body_path: notes.md
           draft: ${{ github.event_name == 'workflow_dispatch' && inputs.draft }}

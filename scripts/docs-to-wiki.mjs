@@ -59,22 +59,28 @@ export function convertBody(body) {
   const lines = text.split(/\r?\n/);
   let inFence = false;
   let callout = null; // label waiting for the next block
+  let calloutIndent = ''; // a callout nested in a list item keeps the item's indentation
   let inCallout = false;
+  const quote = (line) => {
+    const body = line.startsWith(calloutIndent) ? line.slice(calloutIndent.length) : line.trimStart();
+    return `${calloutIndent}${body.startsWith('>') ? body : `> ${body}`}`;
+  };
   for (const line of lines) {
     if (/^\s*(```|~~~)/.test(line)) inFence = !inFence;
     if (inFence) {
-      out.push(inCallout ? `> ${line}` : line);
+      out.push(inCallout ? quote(line) : line);
       continue;
     }
-    const attr = /^\s*\{:\s*\.(\w+)[^}]*\}\s*$/.exec(line);
-    if (attr && CALLOUTS[attr[1]]) {
-      callout = CALLOUTS[attr[1]];
+    const attr = /^(\s*)\{:\s*\.(\w+)[^}]*\}\s*$/.exec(line);
+    if (attr && CALLOUTS[attr[2]]) {
+      callout = CALLOUTS[attr[2]];
+      calloutIndent = attr[1];
       continue;
     }
     if (/^\s*\{:[^}]*\}\s*$/.test(line)) continue; // other attribute lists ({: .no_toc }, {:toc}, …)
     let clean = line.replace(/\s*\{:\s*[^}]*\}/g, ''); // inline IALs, e.g. "[Start](x.md){: .btn }"
     if (callout && clean.trim() !== '') {
-      out.push(`> **${callout}**`, '>');
+      out.push(`${calloutIndent}> **${callout}**`, `${calloutIndent}>`);
       inCallout = true;
       callout = null;
     }
@@ -84,7 +90,7 @@ export function convertBody(body) {
         out.push('');
         continue;
       }
-      clean = clean.startsWith('>') ? clean : `> ${clean}`;
+      clean = quote(clean);
     }
     out.push(clean);
   }
