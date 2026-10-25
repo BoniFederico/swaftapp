@@ -63,6 +63,8 @@ interface OpenState {
 export class WorkspaceService {
   private state: OpenState | null = null;
   private rev = 0;
+  /** Bumped when the open workspace is replaced or closed (not on an in-place reload). */
+  private gen = 0;
   private queue: Promise<unknown> = Promise.resolve();
   /** The default (`local`) persistence, built from the injected backend/crypto/fs. */
   private readonly local: LocalFilePersistence;
@@ -186,6 +188,8 @@ export class WorkspaceService {
       await this.closeCurrent();
       this.state = { summary, adapter: opened.adapter, persistence: ctx.persistence, password: ctx.password };
       this.rev++;
+      // A reload (notify: false) keeps the same workspace identity; a fresh open/create does not.
+      if (ctx.notify) this.gen++;
       if (ctx.notify) this.deps.onOpened?.(summary);
       return summary;
     } catch (err) {
@@ -237,6 +241,7 @@ export class WorkspaceService {
   close(): Promise<void> {
     return this.locked(async () => {
       this.rev++;
+      this.gen++;
       await this.closeCurrent();
     });
   }
@@ -267,6 +272,15 @@ export class WorkspaceService {
    */
   get revision(): number {
     return this.rev;
+  }
+
+  /**
+   * Identity of the open workspace: changes whenever a different workspace is opened/created or the
+   * current one is closed, but not on {@link reload}. Long-running work (scenario runs) captures it at
+   * start and stops once it no longer matches, so it never writes into the wrong workspace.
+   */
+  get generation(): number {
+    return this.gen;
   }
 
   current(): WorkspaceSummary | null {

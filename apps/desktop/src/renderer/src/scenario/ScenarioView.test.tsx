@@ -155,3 +155,48 @@ describe('ScenarioView toolbar', () => {
     await waitFor(() => expect(screen.queryByText('login')).toBeNull());
   });
 });
+
+describe('ScenarioView keyboard shortcuts', () => {
+  /** Render with a transport that counts saves; make the graph dirty by adding a delay node. */
+  async function renderDirty() {
+    const saves: unknown[] = [];
+    const base = makeTransport([]);
+    const transport: Transport = {
+      call(op, payload) {
+        if (op === 'template.updateSource') saves.push(payload);
+        return base.call(op, payload);
+      },
+    };
+    render(
+      <AppProviders>
+        <ScenarioView client={new ApiClient(transport)} templateId="sc1" />
+      </AppProviders>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Add' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Add delay' }));
+    return saves;
+  }
+
+  it('ignores Ctrl+S while the scenario tab is hidden (another tab is active)', async () => {
+    // jsdom has no layout: offsetParent is null, exactly like a mounted-but-hidden tab.
+    const saves = await renderDirty();
+    fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(saves).toHaveLength(0);
+  });
+
+  it('saves on Ctrl+S when the scenario is the visible tab', async () => {
+    const desc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetParent');
+    Object.defineProperty(HTMLElement.prototype, 'offsetParent', {
+      configurable: true,
+      get: () => document.body,
+    });
+    try {
+      const saves = await renderDirty();
+      fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+      await waitFor(() => expect(saves).toHaveLength(1));
+    } finally {
+      if (desc) Object.defineProperty(HTMLElement.prototype, 'offsetParent', desc);
+    }
+  });
+});
