@@ -59,11 +59,15 @@ describe('AppStore', () => {
 
   it('keeps the recent list unique across path spellings (separators, trailing slash, case on win)', () => {
     const store = new AppStore(file);
-    // Same directory reached via `/` then `\` with a trailing slash + a redundant `.` segment.
-    store.recordRecent(summary('C:/Users/me/ws', 'WS'));
-    store.recordRecent(summary('C:\\Users\\me\\.\\ws\\', 'WS again'));
     if (process.platform === 'win32') {
+      // Same directory reached via `/` then `\` with a trailing slash + a redundant `.` segment.
+      store.recordRecent(summary('C:/Users/me/ws', 'WS'));
+      store.recordRecent(summary('C:\\Users\\me\\.\\ws\\', 'WS again'));
       store.recordRecent(summary('c:\\users\\me\\ws', 'WS lowercased')); // case-insensitive on Windows
+    } else {
+      // On POSIX `\` is an ordinary file-name character, so only `/` spellings are equivalent.
+      store.recordRecent(summary('/home/me/ws', 'WS'));
+      store.recordRecent(summary('/home/me/./ws/', 'WS again'));
     }
 
     const recent = store.getRecent();

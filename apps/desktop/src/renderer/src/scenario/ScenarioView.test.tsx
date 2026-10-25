@@ -96,6 +96,15 @@ function renderView(runCalls: Record<string, unknown>[], seededRuns: unknown[] =
   );
 }
 
+/**
+ * Click Run once the graph has loaded. Before that the graph has no start node, so Run (a split
+ * button that runs directly only with a single start) would open an empty menu instead.
+ */
+async function clickRun() {
+  await waitFor(() => expect(document.querySelector('.scenario__canvas')?.textContent).toContain('Start'));
+  fireEvent.click(screen.getByRole('button', { name: 'Run' }));
+}
+
 describe('ScenarioView toolbar', () => {
   it('renders the condensed Add menu, Run/Run batch controls, snap toggle and version listbox', async () => {
     renderView([]);
@@ -115,7 +124,7 @@ describe('ScenarioView toolbar', () => {
   it('runs the current in-memory graph — passing its source to scenario.run', async () => {
     const runCalls: Record<string, unknown>[] = [];
     renderView(runCalls);
-    fireEvent.click(await screen.findByRole('button', { name: 'Run' }));
+    await clickRun();
 
     await waitFor(() => expect(runCalls.length).toBe(1));
     const call = runCalls[0]!;
@@ -130,7 +139,7 @@ describe('ScenarioView toolbar', () => {
     // detail. Run it, then click its history row (same id) — the steps must stay visible.
     localStorage.setItem('swaft:scenarioRunMin', 'off');
     const { container } = renderView([], [COMPLETED_RUN]);
-    fireEvent.click(await screen.findByRole('button', { name: 'Run' }));
+    await clickRun();
     // The live run's step is shown.
     expect(await screen.findByText('login')).toBeTruthy();
     // Click the same run in the history (id === the followed run id).
@@ -148,7 +157,7 @@ describe('ScenarioView toolbar', () => {
   it('drops the followed run (detail + highlight) on a canvas click', async () => {
     localStorage.setItem('swaft:scenarioRunMin', 'off');
     const { container } = renderView([], [COMPLETED_RUN]);
-    fireEvent.click(await screen.findByRole('button', { name: 'Run' }));
+    await clickRun();
     expect(await screen.findByText('login')).toBeTruthy();
     // A pointer-down anywhere on the canvas clears the (completed) run's focus.
     fireEvent.pointerDown(container.querySelector('.scenario__canvas')!);

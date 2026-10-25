@@ -324,7 +324,7 @@ try {
   gitAvailable = false;
 }
 
-describe.skipIf(!gitAvailable)('GitOpsService.clone (real git)', () => {
+describe.skipIf(!gitAvailable)('GitOpsService.clone (real git)', { timeout: 30_000 }, () => {
   let root: string;
   const git = new SystemGitService();
   const backend = (bytes?: Uint8Array) => InProcessDbBackend.open(bytes);
@@ -353,10 +353,30 @@ describe.skipIf(!gitAvailable)('GitOpsService.clone (real git)', () => {
     return mkdtempSync(join(root, `${name}-`));
   }
 
+  // The service commits with the user's git identity; CI runners have none configured, so provide
+  // one through git's environment overrides (and restore whatever was there afterwards).
+  const IDENTITY = {
+    GIT_AUTHOR_NAME: 'Swaft Test',
+    GIT_AUTHOR_EMAIL: 'test@swaft.test',
+    GIT_COMMITTER_NAME: 'Swaft Test',
+    GIT_COMMITTER_EMAIL: 'test@swaft.test',
+  };
+  const savedEnv: Record<string, string | undefined> = {};
+
   beforeAll(() => {
     root = mkdtempSync(join(tmpdir(), 'swaft-cloneops-'));
+    for (const [k, v] of Object.entries(IDENTITY)) {
+      savedEnv[k] = process.env[k];
+      process.env[k] = v;
+    }
   });
-  afterAll(() => rmSync(root, { recursive: true, force: true }));
+  afterAll(() => {
+    rmSync(root, { recursive: true, force: true });
+    for (const [k, v] of Object.entries(savedEnv)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
 
   it('initializes a new workspace when cloning an empty repository', async () => {
     const remote = join(root, 'empty.git');

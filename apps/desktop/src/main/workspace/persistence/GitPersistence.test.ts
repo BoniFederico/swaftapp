@@ -161,7 +161,7 @@ try {
   gitAvailable = false;
 }
 
-describe.skipIf(!gitAvailable)('GitPersistence (real git)', () => {
+describe.skipIf(!gitAvailable)('GitPersistence (real git)', { timeout: 30_000 }, () => {
   const git = new SystemGitService();
   let dir: string;
 
