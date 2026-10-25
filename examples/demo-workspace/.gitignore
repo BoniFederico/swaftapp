@@ -1,0 +1,3 @@
+# Swaft workspace — never commit local caches or OS cruft.
+/.swaft/
+.DS_Store

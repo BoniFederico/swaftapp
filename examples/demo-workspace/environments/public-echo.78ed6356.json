@@ -1,0 +1,11 @@
+{
+  "description": "Public echo service used by the HTTP demo requests.",
+  "id": "78ed6356-cd18-4717-ab21-ac901c94ac05",
+  "name": "Public echo",
+  "ownerId": null,
+  "ownerKind": "workspace",
+  "secretVars": [],
+  "vars": {
+    "BASE_URL": "https://httpbin.org"
+  }
+}

@@ -1,0 +1,8 @@
+# Posts a small JSON body and gets it echoed back under `json`.
+POST ${ env('BASE_URL') }/post
+Content-Type: application/json
+
+{
+  "name": "${ textbox({ id: 'name', label: 'Name', type: string() }) }",
+  "plan": "${ listbox({ id: 'plan', label: 'Plan', options: ['Free', 'Pro', 'Team'] }) }"
+}

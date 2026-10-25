@@ -12,7 +12,7 @@ const sharedAlias = {
 // process, so nothing is orphaned. See the verification-gotchas notes.
 const pool = 'threads' as const;
 
-// The two long full-app jsdom flows (sign up → create workspace/project/folder/template → open/drag)
+// The two long full-app jsdom flows (create workspace/project/folder/template → open/drag)
 // hang the jsdom worker on some machines (RC=124, "only the RUN header") — a pre-existing environmental
 // limit, not a product bug (node + every isolated component test is clean). They are excluded from the
 // default `npm test` so the suite is reliable; opt in on a machine/CI where jsdom copes by setting
@@ -32,6 +32,7 @@ export default defineWorkspace([
         'packages/**/src/**/*.test.ts',
         'apps/desktop/src/main/**/*.test.ts',
         'apps/desktop/src/preload/**/*.test.ts',
+        'scripts/**/*.test.ts',
       ],
     },
   },
