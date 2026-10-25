@@ -59,8 +59,8 @@ select `examples/demo-workspace` from your clone (see [`examples/`](https://gith
 Working on a copy keeps your clone clean.
 
 {: .note }
-> In development the app stores its profile (preferences, recent workspaces, secrets) in Electron's
-> user-data folder for the development app name — `%APPDATA%\@swaft\desktop` on Windows,
+> The development app uses the same profile folder as an installed Swaft (preferences, recent
+> workspaces, secrets): `%APPDATA%\@swaft\desktop` on Windows,
 > `~/Library/Application Support/@swaft/desktop` on macOS, `~/.config/@swaft/desktop` on Linux. To
 > use a throwaway profile, set `SWAFT_USER_DATA_DIR` (see [Environment variables](#environment-variables)).
 

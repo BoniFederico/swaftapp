@@ -119,9 +119,9 @@ Swaft stores two kinds of data in different places:
 
   | System | Folder |
   |--------|--------|
-  | Windows | `%APPDATA%\Swaft` |
-  | macOS | `~/Library/Application Support/Swaft` |
-  | Linux | `~/.config/Swaft` |
+  | Windows | `%APPDATA%\@swaft\desktop` |
+  | macOS | `~/Library/Application Support/@swaft/desktop` |
+  | Linux | `~/.config/@swaft/desktop` |
 
 Uninstalling Swaft never deletes your workspaces. To remove the profile too, delete that folder.
 Secrets can't be decrypted on another computer or user account, so after moving to a new machine,
