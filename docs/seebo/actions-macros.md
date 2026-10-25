@@ -33,26 +33,30 @@ where you want the effect to occur:
 ```text
 ${ action({
   id: 'save',
-  type: 'myAction',          # the action template's type name
-  input: { orderId: ${ id } },
+  type: 'myAction',
+  input: { orderId: textbox({ id: 'orderId', label: 'Order id' }) },
   confirm: true,
   environment: 'test'
 }) }
 ```
 
+Everything inside `${ … }` is one expression: reference values directly (an input call, `env('X')`,
+another field) — never nest a second `${ … }`. Formulas have no comment syntax; put notes in a
+separate `#{ … }` slot.
+
 | Field | Meaning |
 |-------|---------|
 | `id` | Unique id for this action within the render. |
-| `type` | Which [action template](../guide/code-and-actions.md#action-templates) handles it. |
+| `type` | The name of the [action template](../guide/code-and-actions.md#action-templates) that handles it. |
 | `input` | The values passed to the handler (may reference inputs/data). |
 | `confirm` | `true` requires explicit confirmation before it can run. |
-| `environment` | Target environment (`test`, `preprod`, `prod`); the sandbox forbids `prod`. |
+| `environment` | Target environment (`test`, `preprod`, `prod`); defaults to `test`. The sandbox forbids `prod`. |
 
 Actions are collected **only when their branch is actually reached**, so an action behind a ternary
 that isn't taken is never prepared:
 
 ```text
-${ shouldSave ? action({ id: 'save', type: 'myAction', confirm: true }) : '' }
+${ boolean({ id: 'shouldSave', label: 'Save?' }) ? action({ id: 'save', type: 'myAction', confirm: true }) : '' }
 ```
 
 For the full execution model — confirmation, receipts, environments and trust — see
@@ -74,7 +78,7 @@ reusable fragments, and the mechanism behind the
 
 ```text
 @{ ABSORB('header') }
-Body for ${ name }
+Body for ${ textbox({ id: 'name', label: 'Name' }) }
 Footer: @{ MERGE('foot_*', ' | ') }
 ```
 
@@ -88,7 +92,7 @@ marker from a formula so a line **removes itself** when a value is empty.
 
 ```text
 From: noreply@acme.io
-${ note != '' ? 'Note: ' + note : '@{REMOVE_LINE}' }
+${ textarea({ id: 'note', label: 'Note' }) != '' ? 'Note: ' + note : '@{REMOVE_LINE}' }
 ```
 
 When `note` is empty, the second line disappears entirely.

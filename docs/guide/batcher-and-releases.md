@@ -22,11 +22,19 @@ Two ways to work with more than one version or document at a time.
 
 ## The Batcher
 
-The **Batcher** renders several **document templates together** into one combined output. Open it
-from the top bar; it appears as a panel under the Working Tree.
+The **Batcher** renders several **document templates together** into one combined output. It is a
+collapsible panel under the Working Tree.
 
-- **Drag document templates** into the batcher, in the order you want them combined. Order is
-  significant.
+1. **Drag document templates** from the tree into the panel, in the order you want them combined.
+   Order is significant. **Remove from batch** drops one; **Clear batch** empties the panel.
+2. Click **Load inputs**. The view area opens **Batch inputs (*N* templates)** with the inputs of
+   every template in the batch.
+3. Fill them in and click **Render batch** to produce the combined output.
+
+![The Batcher panel expanded at the bottom of the sidebar](../assets/screenshots/batcher.png)
+
+How inputs and composition work:
+
 - **Shared inputs are resolved once.** If several documents declare an input with the same `id`, you
   fill it a single time and the value is reused across all of them.
 - **Merge macros apply.** Templates can pull each other in with Seebo's
@@ -37,8 +45,8 @@ from the top bar; it appears as a panel under the Working Tree.
 The Batcher is a **transient composition tool**: it is not itself a saved, versioned object.
 
 {: .note }
-> A workspace admin can turn the Batcher **off** in
-> [Settings → Restrictions](security-and-settings.md#restrictions).
+> The Batcher can be turned **off** for a workspace in
+> [Settings → Restrictions](security-and-settings.md#restrictions), which hides the panel.
 
 ## Releases
 
@@ -47,27 +55,29 @@ keep a stable version around while you continue editing.
 
 ### The draft and releases
 
-Every template has an editable **Draft**. From the editor you can:
+Every template has an editable **Draft**. In the [template editor](working-tree.md#the-template-editor):
 
-- **Create a release** — snapshot the current draft under a name/version.
-- **Update a release** — releases are **editable in place** in this build, so you can correct a
-  saved version without cutting a new one.
-- **Delete a release** — remove one you no longer need. (You can even delete the Draft, leaving only
-  releases.)
-- **Changelog** — record what changed; the changelog is common to all template types.
+- **New release** — snapshot the current content under a name (for example `v1.2`).
+- **Save** — saves whichever version is selected in the **Release** picker. Releases are **editable
+  in place**, so you can correct a saved version without cutting a new one.
+- **Delete** — use the × next to a release in the picker (**Delete release**). You can even delete
+  the Draft (**Delete draft**), leaving only releases.
+- **Changelog** — shows the template's history of changes; the changelog is common to all template
+  types.
+
+![The Version picker listing the draft and the v1 release of a template](../assets/screenshots/releases.png)
 
 ### Selecting which version you use
 
-**Release selection** decides which version a template renders/executes as. It is set from the
-Working Tree's **Select release** menu and is:
+The **Version** picker in each view — document, API request and scenario — selects which version
+the template renders or executes as. The selection is:
 
 - **per template**, and
-- **personal and local to your device** — your selection never changes what anyone else sees in a
-  shared workspace.
+- **personal and local to your device** — it never changes what anyone else sees in a shared
+  workspace.
 
 If you haven't chosen one, Swaft falls back to the **latest release**, or the **Draft** when there
-are no releases. The **release picker** inside a template's view lets you preview any version on the
-spot.
+are no releases.
 
 {: .tip }
 > Because release selection is per-device, two people can pin **different** releases of the same

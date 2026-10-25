@@ -44,13 +44,19 @@ Opening a document template shows three areas:
 └──────────────┴───────────────────────────────┴───────────────────────────┘
 ```
 
-- The **Input panel** is generated from the inputs your template declares (see below).
-- The **Output** re-renders as you edit inputs. Renderable subtypes (Markdown, HTML, Mermaid…) show
-  a visual preview; code subtypes show highlighted source.
-- The **Action panel** appears **only if** the render declares one or more
+- The **Input** panel is generated from the inputs your template declares (see below). Only the
+  inputs the render actually reaches are shown — an input behind an untaken branch stays hidden.
+- The **Output** re-renders automatically as you edit inputs. Renderable subtypes (Markdown, HTML,
+  Mermaid…) show a visual preview; code subtypes show highlighted source. Its toolbar offers **Copy
+  output**, **Download output** and **Fullscreen output**.
+- The **Actions** panel appears **only if** the render declares one or more
   [actions](code-and-actions.md#action-templates).
-- A **release picker** lets you view/render the draft or a specific
+- The **Version** picker renders the **Draft** or a specific
   [release](batcher-and-releases.md#releases).
+
+Drag the dividers to resize the input, output and action panels.
+
+![A Markdown document template: input form on the left, rendered output on the right](../assets/screenshots/document-template.png)
 
 ## Declaring inputs with widgets
 
@@ -89,7 +95,7 @@ A dropdown whose choices come from the formula (no hard-coding in the UI):
 
 ```text
 Plan: ${ listbox({ id: 'plan', label: 'Plan', type: string(),
-                   values: ['Free', 'Pro', 'Enterprise'] }) }
+                   options: ['Free', 'Pro', 'Enterprise'] }) }
 ```
 
 A number and a boolean, combined in an expression:
@@ -110,7 +116,10 @@ See [Seebo → Capabilities](../seebo/capabilities.md) for the full input model,
 
 ## Subtypes
 
-A document's **subtype** controls how the Output area renders it. Change it in the editor.
+A document's **subtype** controls how the Output area renders it. Change it with the **Subtype**
+picker in the [template editor](working-tree.md#the-template-editor). For `html` and `markdown`, the
+editor also has a **Show render** / **Show code** toggle, so you can preview the result inline while
+you edit the source.
 
 | Subtype | Rendered as | Notes |
 |---------|-------------|-------|
@@ -151,6 +160,8 @@ Beyond user inputs, a document can pull in **data** that resolves automatically 
 
 - **`env('KEY')`** — a variable from the active [environment](environments.md). The shorthand
   `${ KEY }` also works.
+- **`secret('NAME')`** — a secret stored in **Settings → Secrets** (see
+  [Security & settings](security-and-settings.md#secrets)).
 - **`template('other')`** — the parsed content of another `json` template in the same project,
   as an object you can index: `${ template('config').baseUrl }`.
 - **`myCapability({ … })`** — a value returned by one of your
@@ -158,12 +169,13 @@ Beyond user inputs, a document can pull in **data** that resolves automatically 
 
 These never appear in the Input panel; they are filled in for you.
 
-## Formatting & last inputs
+## Saving inputs & formatting
 
-- **Last input values** are remembered per template (locally, per device) so a document reopens
-  with what you last typed.
-- Formattable code subtypes (`json`, `yaml`, `html`, `css`, `javascript`, `java`, `markdown`,
-  `swagger`) offer a **Format** action (powered by Prettier).
+- **Save input config** in the Input panel (or **Ctrl+S** / **Cmd+S** while the document tab is
+  active) stores the current input values for this template, locally on this device, so the document
+  reopens with them. Until you save, the tab shows an unsaved-changes dot.
+- Formattable subtypes (`json`, `yaml`, `html`, `css`, `javascript`, `java`, `markdown`, `swagger`)
+  offer a **Format** button in the template editor (powered by Prettier).
 
 ## Errors
 

@@ -23,34 +23,40 @@ An **environment** is a named set of variables — plain string values like `BAS
 
 {: .important }
 > Environment variables are for **non-secret** configuration. Do **not** put passwords or API tokens
-> in them — those belong in [secrets](security-and-settings.md#secrets), which are encrypted in the OS
-> keychain. Environment values are stored as plain text in the workspace.
+> in them — those belong in [secrets](security-and-settings.md#secrets), which are stored in the OS
+> keychain and read with `${ secret('NAME') }`. Environment values are stored as plain text in the
+> workspace.
 
-## Personal vs. shared
+## Personal vs. Workspace
 
-Each environment has a **scope**:
+Each environment has an owner, shown as a badge next to its name:
 
-| Scope | Who sees it | Stored |
-|-------|-------------|--------|
-| **Workspace** | Everyone using the workspace. | In the workspace (shared). |
-| **User** | Only you, on this device. | Local to your device. |
+| Badge | Meaning |
+|-------|---------|
+| **Workspace** | Shared: everyone using the workspace sees it. |
+| **Personal** | Owned by you. |
 
-Use **workspace** environments for shared config the whole team needs, and **user** environments for
-your personal overrides.
+Environments you create in **Settings → Environments** are **Workspace** environments. Think twice
+before [exporting](working-tree.md#bundling-environments) a Personal one to someone else.
 
 ## Managing environments
 
-Open **Settings → Environments**. There you can create environments, add key/value variables, and
-edit them. The **active environment** is chosen from the **picker in the top bar** — switching it
-re-resolves every `env(...)` reference across the app.
+Open **Settings → Environments** (or **Manage environments…** at the bottom of the environment
+picker). There you can create an environment (**New environment**), give it a **Name** and
+**Description**, add **Variables** as key/value rows (**Add variable**), **Save** it, or **Delete**
+it.
 
-The active selection is **local to your device**, so switching environments never changes anything
-for other users of a shared workspace.
+The **active environment** is chosen from the **Active environment** picker in the top bar (or
+**No environment**). Switching it re-renders every open document and re-resolves every `env(...)`
+reference across the app. The active selection is **local to your device**, so switching
+environments never changes anything for other users of a shared workspace.
+
+![The environment picker in the header, listing the Public echo environment](../assets/screenshots/environments.png)
 
 ## Config vs. secret label
 
-Each variable can be marked **config** (the default) or **secret** with a lock-icon toggle next to
-its row. A secret-labeled value is masked (shown as a password field) in the editor.
+Each variable can be marked **config** (the default) or **secret** with the lock-icon toggle next to
+its row (**Mark as secret** / **Mark as config**). A secret-labeled value is masked (shown as a password field) in the editor.
 
 {: .warning }
 > The label is **advisory only** — it does not encrypt the value or change how `env(...)` resolves it.
@@ -84,8 +90,11 @@ There is also a **shorthand**: a bare `${ NAME }` that Seebo doesn't otherwise r
 resolved as `env('NAME')`:
 
 ```text
-${ BASE_URL }/v1/orders          # same as env('BASE_URL')
+${ BASE_URL }/v1/orders    #{ same as env('BASE_URL') }
 ```
+
+The shorthand applies only when the slot contains **nothing but the name**. Inside a larger
+expression, write `env('NAME')` explicitly — `${ env('BASE_URL') + '/v1' }`.
 
 `env(...)` resolves during rendering and never appears in the [Input panel](document-templates.md) —
 it is data, not a prompt. This works everywhere formulas do: documents, API request URLs/headers/

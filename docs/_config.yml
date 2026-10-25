@@ -80,3 +80,5 @@ exclude:
   - vendor
   - README.md
   - node_modules
+  # Maintainer notes (release process, internal status ledgers) are read on GitHub, not published.
+  - dev/

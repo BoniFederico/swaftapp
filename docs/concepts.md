@@ -1,7 +1,7 @@
 ---
 title: Core concepts
 layout: default
-nav_order: 3
+nav_order: 4
 ---
 
 # Core concepts
@@ -23,15 +23,21 @@ that covers it in depth.
 ## Workspace
 
 A **workspace** is the top-level container and the unit of storage. It holds your projects,
-folders, tags, templates, releases, environments and settings. A workspace is one of two storage
-modes, chosen at creation and **fixed thereafter**:
+folders, tags, templates, releases, environments and settings. A workspace takes one of three
+storage forms, chosen at creation and **fixed thereafter**:
 
-- **Local** — a single portable `.swaft` file (a SQLite database), optionally encrypted.
-- **Git** — a folder of plain, human-readable files tracked by Git, so the whole workspace can be
+- **Local file (`.swaft`)** — a single portable file, optionally encrypted with a password.
+- **Local folder** — a folder of plain, human-readable files, without Git.
+- **Git folder** — the same plain files in a Git repository, so the whole workspace can be
   committed, branched, diffed and shared through any Git remote.
 
+The folder and Git forms share one documented [on-disk format](reference/workspace-format.md). Any
+open workspace can also be packaged as a portable **`.swaft` container** (a zip of that format) to
+move or archive it.
+
 There is no server and no user account. Secrets are the one thing that never lives inside the
-workspace — they are kept in your operating system's secure storage.
+workspace — they are kept in your operating system's secure storage and referenced by name with
+`${ secret('NAME') }`.
 
 → [Workspaces](guide/workspaces.md)
 
@@ -43,7 +49,7 @@ The **Working Tree** is the always-visible left pane. It organizes everything in
 |--------|------|
 | **Project** | A top-level container that **filters** the tree. Everything lives under a project. |
 | **Folder** | Groups templates. Folders can nest, and for API templates a folder also acts as an **HTTP collection** that propagates shared headers, proxy, auth and pre/post actions to the requests inside it. |
-| **Tag** | A cross-cutting label you can apply to templates and filter by. |
+| **Tag** | A cross-cutting label you attach to templates; tags can be shown as badges in the tree. |
 | **Template** | The core authored unit (see below). |
 
 → [The Working Tree](guide/working-tree.md)
@@ -62,8 +68,9 @@ which editor and view it opens in:
 | **`scenario`** | A visual graph that chains the above into a runnable workflow. | [Scenario canvas](guide/scenarios.md) |
 
 Each type also has a **subtype**. For documents the subtype selects how output is rendered
-(`markdown`, `html`, `mermaid`, `echarts`, `swagger`, `eml`, or a highlighted code language such as
-`json`, `yaml`, `sql`…). See the [template types reference](guide/document-templates.md#subtypes).
+(`markdown`, `html`, `mermaid`, `echarts`, `swagger`, `eml`, or a highlighted code format such as
+`json`, `yaml`, `csv`, `css`, `javascript`, `java`, or plain `text`). The other types have a single
+fixed subtype. See [Document templates → Subtypes](guide/document-templates.md#subtypes).
 
 ## Seebo & formulas
 
@@ -72,8 +79,8 @@ Swaft is built on the **Seebo** template engine. Anywhere you see `${ … }` you
 
 - declare **inputs** through *widget capabilities* — `${ textbox({ id:'name', type:string() }) }`
   renders a text box in the Input panel;
-- read **data** through *data capabilities* — `${ env('BASE_URL') }`, `${ template('config') }`,
-  `${ previous('login').json.token }`;
+- read **data** through *data capabilities* — `${ env('BASE_URL') }`, `${ secret('API_TOKEN') }`,
+  `${ template('config') }`, `${ previous('login').json.token }`;
 - compute values with types, operators, `match`, and methods — `${ name.upper() }`,
   `${ price * qty }`;
 - can declare **actions** — `${ action({ id:'save', type:'myAction', confirm:true }) }`.
@@ -84,8 +91,7 @@ Swaft is built on the **Seebo** template engine. Anywhere you see `${ … }` you
 
 An **environment** is a named set of variables (plain string values) such as `BASE_URL` or
 `REGION`. You pick one **active environment** from the top bar; formulas read it with `env('KEY')`
-(or the shorthand `${ KEY }`). Environments can be **personal** to you or **shared** across the
-workspace.
+(or the shorthand `${ KEY }`). An environment is either **Workspace** (shared) or **Personal**.
 
 → [Environments](guide/environments.md)
 
@@ -125,7 +131,7 @@ Swaft's backend (the Electron **main process**) is the security authority — th
 to do things through a validated, allow-listed channel. Code templates run in an **isolated,
 sandboxed process** with no ambient file or network access. Secrets are stored in the **OS
 keychain** and never handed back to the UI in clear. Outbound HTTP is filtered by a **blocked-domain
-list** with redirect re-validation. A workspace file can be **encrypted** with Argon2id +
-AES-256-GCM. Code that arrives *inside* a shared workspace is **untrusted until you approve it**.
+list** with redirect re-validation. A single-file `.swaft` workspace can be **encrypted** with
+Argon2id + AES-256-GCM. Code that arrives *inside* a shared workspace is **untrusted until you approve it**.
 
 → [Security & settings](guide/security-and-settings.md)

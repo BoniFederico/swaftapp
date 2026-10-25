@@ -75,8 +75,23 @@ Base URL is ${ myCapability({ id: 'cfg' }).baseUrl }
 Capabilities must be **pure** — same inputs, same output, no side effects. If you need to *do*
 something, use an action.
 
-The **Code view** includes a **test-run panel** so you can execute the capability with sample
-arguments while editing.
+## The Code view
+
+Opening a capability or action shows the **Code view**: the source editor on one side and a
+test-run panel on the other.
+
+| Control | Capability | Action |
+|---------|-----------|--------|
+| Registration | **Called from formulas as** `<name>`, plus the **Returns** type. | **Used in a plan as type** `<name>`. |
+| Test input | **Call arguments (JSON)** — the descriptor a formula would pass, e.g. `{ "id": "cfg" }` (an `id` is required). | **Input (JSON)** — what the caller passes as `input`. |
+| Run | **Run** shows the **Result** and how long it took. | **Run** or **Dry run**; shows the result and the **Environment variables written**. |
+| Output | **Log** — anything written with `swaft.log`. | **Log**. |
+
+**Save** (or **Ctrl+S** / **Cmd+S**) stores the code. If a capability is not registered — the name
+is not a valid identifier, clashes with a built-in capability, or is already used by another
+capability — the view tells you why.
+
+![A JavaScript capability with its call arguments and a Run button](../assets/screenshots/code-view.png)
 
 ## Action templates
 
@@ -111,23 +126,28 @@ You *declare* an action where you want it to happen — inside a document formul
 pre/post trigger:
 
 ```text
+#{ type is the action template's name; input values can come from inputs or data }
 ${ action({
   id: 'save',
-  type: 'myAction',        // the action template's type name
-  input: { orderId: ${ id } },
+  type: 'myAction',
+  input: { orderId: textbox({ id: 'orderId', label: 'Order id' }) },
   confirm: true,
   environment: 'test'
 }) }
 ```
+
+Inside a formula you write plain expressions — never a nested `${ … }`. Here the `textbox(...)` call
+declares an **Order id** input and its value becomes `input.orderId`. Comments go in a separate
+`#{ … }` slot; there is no comment syntax inside a formula.
 
 An `action({ … })` formula renders to the empty string — an effect is not text. When a render
 declares actions, the [Action panel](document-templates.md#the-document-view) appears.
 
 ### Confirmation, execution & receipts
 
-- **Nothing runs automatically.** Each action must be **explicitly confirmed** in the Action panel
-  before it executes. **Perform all** runs the confirmed actions in order, **fail-fast** (it stops
-  at the first error).
+- **Nothing runs automatically.** Each action declared in a document must be **explicitly
+  confirmed** (**Confirm action** *id*) in the **Actions** panel before it executes. **Perform
+  actions** runs the confirmed actions in order, **fail-fast** (it stops at the first error).
 - The **backend re-renders the template itself** to derive the authoritative action plan — it never
   trusts a plan sent from the UI.
 - Every execution yields a **receipt**: a local-only record of the outcome (status, environment,
@@ -135,14 +155,15 @@ declares actions, the [Action panel](document-templates.md#the-document-view) ap
 
 ### Environments & the sandbox
 
-Actions target an **environment** (`test`, `preprod`, `prod`, …). The **sandbox** profile (the
-default) **forbids `prod`**. Switching the workspace to **dev** execution mode is what unlocks
-`prod`-targeted actions.
+Actions target an **environment** (`test`, `preprod`, `prod`, …; `test` when none is given). The
+**Sandbox** execution mode (the default) **forbids `prod`**. Switching the workspace to **Developer**
+execution mode under **Settings → Restrictions** is what unlocks `prod`-targeted actions.
 
 ## Trusting imported code
 
 Because a shared workspace can travel between machines, code that **arrived inside a workspace you
 opened** (authored somewhere else) is treated as **untrusted** and stays **inert** until you review
-and approve it. Swaft shows a review banner; your approval is stored in the app's local store on
-this device — **never** inside the workspace file — so approving code on your machine never
-silently approves it on someone else's.
+and approve it. Swaft shows a banner listing the affected capabilities with a **Review** button;
+read the code, then choose **Approve and run**. Your approval is stored in the app's local store on
+this device — **never** inside the workspace — so approving code on your machine never silently
+approves it on someone else's. Editing the code revokes the approval.

@@ -41,16 +41,16 @@ Each type name is also a **constructor** you can call, both to *convert* a value
 type (for inputs). Because there is **no implicit coercion**, converting explicitly is common:
 
 ```text
-${ string(1) + 'a' }        # '1a'  — string(...) converts the int first
-${ int('5') + 1 }           # 6
+${ string(1) + 'a' }        #{ '1a'  — string(...) converts the int first }
+${ int('5') + 1 }           #{ 6 }
 ```
 
 Constructors also give you the type's methods:
 
 ```text
-${ array([3, 1, 2]).min() }                       # 1
-${ duration(50 * 3600).totalHours() }             # 50
-${ datetime('2026-06-20').truncate('month').day() } # 1
+${ array([3, 1, 2]).min() }                       #{ 1 }
+${ duration(50 * 3600).totalHours() }             #{ 50 }
+${ datetime('2026-06-20').truncate('month').day() } #{ 1 }
 ```
 
 ### Constraints
@@ -59,7 +59,7 @@ A value can carry **constraints** via `.constraints({ … })`. Breaking one is a
 `CONSTRAINT_VIOLATION`:
 
 ```text
-${ int(5).constraints({ max: 3 }) }   # fails: 5 > 3
+${ int(5).constraints({ max: 3 }) }   #{ fails: 5 > 3 }
 ```
 
 The `values` constraint is how a [choice input](../guide/document-templates.md#widget-catalog) offers
@@ -67,7 +67,7 @@ options:
 
 ```text
 ${ listbox({ id: 'plan', type: string(),
-             values: ['Free', 'Pro'] }) }
+             options: ['Free', 'Pro'] }) }
 ```
 
 ## Operators
@@ -92,7 +92,7 @@ ${ listbox({ id: 'plan', type: string(),
 `match` chooses a result by comparing a value against patterns; `*` is the default arm:
 
 ```text
-${ 2 match { 1 => 'one', 2 => 'two', * => '?' } }   # 'two'
+${ 2 match { 1 => 'one', 2 => 'two', * => '?' } }   #{ 'two' }
 ```
 
 Omitting `*` when the value's type is open is a `NON_EXHAUSTIVE_MATCH` — add a `*` arm (a `bool`
@@ -103,9 +103,9 @@ match that covers both `true` and `false` is already exhaustive).
 Methods are **type-specific** — the ones available depend on the value's type:
 
 ```text
-${ name.upper() }          # string → uppercase
-${ now().year() }          # datetime → the year
-${ [3,1,2].max() }         # array → 3
+${ textbox({ id: 'name' }).upper() }   #{ string → uppercase }
+${ now().year() }          #{ datetime → the year }
+${ [3,1,2].max() }         #{ array → 3 }
 ```
 
 The formula editor offers **autocomplete** for the methods valid on the value you're working with,
@@ -128,7 +128,7 @@ A value is turned into text **only at the moment it is emitted**, using its form
 **locale**. The same number renders differently per locale:
 
 ```text
-Total: ${ float(1234.5) }     # e.g. "1,234.5" (en) or "1.234,5" (it)
+Total: ${ float(1234.5) }     #{ digits and separators follow the locale }
 ```
 
 Numbers, dates, durations and currencies all follow the locale — you write the value, Seebo formats

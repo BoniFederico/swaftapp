@@ -1,4 +1,12 @@
+---
+title: Workspace format
+layout: default
+parent: Reference
+nav_order: 1
+---
+
 # Swaft workspace on-disk format
+{: .no_toc }
 
 This document specifies the **open, on-disk form** of a Swaft workspace: a directory of plain,
 human-readable, git-friendly files. It is the format the app reads and writes for **folder-backed
@@ -6,7 +14,7 @@ local** workspaces and **git** workspaces, and the same tree is what a **`.swaft
 holds. One format, three storage forms.
 
 The machine-checkable contracts for each JSON file live next to the projection code, under
-[`apps/desktop/src/main/workspace/projection/schemas/`](apps/desktop/src/main/workspace/projection/schemas)
+[`apps/desktop/src/main/workspace/projection/schemas/`](https://github.com/BoniFederico/swaftapp/tree/main/apps/desktop/src/main/workspace/projection/schemas)
 (JSON Schema, draft-07). A test validates every emitted file against these schemas, so this spec and
 the code cannot silently drift.
 
@@ -17,6 +25,7 @@ the code cannot silently drift.
 ---
 
 ## 1. Directory layout
+{: #1-directory-layout }
 
 ```
 workspace.json                          # manifest: formatVersion, schemaVersion, name, icon, executionMode
@@ -41,6 +50,7 @@ A `.swaft` **container** is a zip of exactly this tree (see [§6](#6-the-swaft-c
 ---
 
 ## 2. Hybrid naming
+{: #2-hybrid-naming }
 
 Files and directories are named `<slug>.<shortId>`:
 
@@ -62,25 +72,27 @@ names, for reproducible diffs.
 ---
 
 ## 3. JSON file shapes
+{: #3-json-file-shapes }
 
 All JSON is **canonical**: keys sorted, two-space indented, one trailing newline. JSON-config columns
 are inlined as real nested JSON (not escaped strings), and 0/1 flags are emitted as booleans.
 
 | File | Schema |
 |---|---|
-| `workspace.json` | [`workspace.schema.json`](apps/desktop/src/main/workspace/projection/schemas/workspace.schema.json) |
-| `settings.json` | [`settings.schema.json`](apps/desktop/src/main/workspace/projection/schemas/settings.schema.json) |
-| `projects/*.json` | [`project.schema.json`](apps/desktop/src/main/workspace/projection/schemas/project.schema.json) |
-| `folders/*.json` | [`folder.schema.json`](apps/desktop/src/main/workspace/projection/schemas/folder.schema.json) |
-| `tags/*.json` | [`tag.schema.json`](apps/desktop/src/main/workspace/projection/schemas/tag.schema.json) |
-| `environments/*.json` | [`environment.schema.json`](apps/desktop/src/main/workspace/projection/schemas/environment.schema.json) |
-| `changelog/*.json` | [`changelog.schema.json`](apps/desktop/src/main/workspace/projection/schemas/changelog.schema.json) |
-| `templates/*/template.json` | [`template.schema.json`](apps/desktop/src/main/workspace/projection/schemas/template.schema.json) |
-| `templates/*/releases/*.json` | [`release.schema.json`](apps/desktop/src/main/workspace/projection/schemas/release.schema.json) |
+| `workspace.json` | [`workspace.schema.json`](https://github.com/BoniFederico/swaftapp/blob/main/apps/desktop/src/main/workspace/projection/schemas/workspace.schema.json) |
+| `settings.json` | [`settings.schema.json`](https://github.com/BoniFederico/swaftapp/blob/main/apps/desktop/src/main/workspace/projection/schemas/settings.schema.json) |
+| `projects/*.json` | [`project.schema.json`](https://github.com/BoniFederico/swaftapp/blob/main/apps/desktop/src/main/workspace/projection/schemas/project.schema.json) |
+| `folders/*.json` | [`folder.schema.json`](https://github.com/BoniFederico/swaftapp/blob/main/apps/desktop/src/main/workspace/projection/schemas/folder.schema.json) |
+| `tags/*.json` | [`tag.schema.json`](https://github.com/BoniFederico/swaftapp/blob/main/apps/desktop/src/main/workspace/projection/schemas/tag.schema.json) |
+| `environments/*.json` | [`environment.schema.json`](https://github.com/BoniFederico/swaftapp/blob/main/apps/desktop/src/main/workspace/projection/schemas/environment.schema.json) |
+| `changelog/*.json` | [`changelog.schema.json`](https://github.com/BoniFederico/swaftapp/blob/main/apps/desktop/src/main/workspace/projection/schemas/changelog.schema.json) |
+| `templates/*/template.json` | [`template.schema.json`](https://github.com/BoniFederico/swaftapp/blob/main/apps/desktop/src/main/workspace/projection/schemas/template.schema.json) |
+| `templates/*/releases/*.json` | [`release.schema.json`](https://github.com/BoniFederico/swaftapp/blob/main/apps/desktop/src/main/workspace/projection/schemas/release.schema.json) |
 
 ---
 
 ## 4. Templates
+{: #4-templates }
 
 A template directory always has a `template.json` (generic metadata) plus a **body file** whose form
 depends on the template `type`:
@@ -111,14 +123,14 @@ Seebo formulas (`${ env('X') }`, `${ secret('API_TOKEN') }`, `${ orderId }`, and
 are stored **as-is** in `request.http` — one syntax on disk. A request with no formulas is plain,
 portable `.http` that any REST client runs unchanged. A formula-bearing file is still valid `.http`
 *syntax*, but another tool would send `${ … }` literally; cross-tool portability goes through **export**
-(Postman / Bruno / `.http`), where you choose whether to translate `env('X') → {{X}}`, snapshot values,
+(Postman / Bruno / `.http`), where you choose whether to translate {% raw %}`env('X') → {{X}}`{% endraw %}, snapshot values,
 etc. Secrets are never materialized to files.
 
 Export can optionally bundle one or more **environments** alongside the requests: Postman gets a
 companion `<name>.postman_environment.json` per environment, Bruno gets `environments/<name>.bru`
 (its native `vars { }` block); `.http` has no single-file environment concept, so a selection there is
 skipped and called out in the export's fidelity report instead. Either way, a variable labeled
-**secret** (see [Environments](guide/environments.md#config-vs-secret-label)) is always left out of the
+**secret** (see [Environments](../guide/environments.md#config-vs-secret-label)) is always left out of the
 exported file — never a literal value, just its name in a comment (see the `environments/*.json`
 entry in [§1](#1-directory-layout) for the `secretVars` label itself).
 
@@ -130,6 +142,7 @@ this and always import as fresh entities.
 ---
 
 ## 5. Versioning
+{: #5-versioning }
 
 `workspace.json` carries two integers:
 
@@ -163,6 +176,7 @@ unreadable cache is treated as "nothing to restore", never an error.
 ---
 
 ## 6. The `.swaft` container
+{: #6-the-swaft-container }
 
 A `.swaft` file is a **zip of the tree above** — a portable, single-file way to move or archive a
 workspace, **not** the live store. It can be wrapped in whole-file **AES-256-GCM** encryption (key

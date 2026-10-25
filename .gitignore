@@ -14,3 +14,5 @@ test-results/
 .env.*
 RUNBOOK_FORMULAS.md
 build-installer.ps1
+# Claude Code local state
+.claude/scheduled_tasks.lock
